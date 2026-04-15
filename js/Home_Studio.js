@@ -1,4 +1,4 @@
-let samplesPerFrame = 1.0;
+let samplesPerFrame = 8.0;
 let samplesPerFrameController;
 
 const CAMERA_PRESETS = {
@@ -154,7 +154,7 @@ function initSceneData() {
     
     sceneIsDynamic = false;
     cameraFlightSpeed = 10;
-    pixelRatio = mouseControl ? 1.0 : 1.0;
+    pixelRatio = mouseControl ? 2.0 : 2.0;
     EPS_intersect = 0.001;
     
     worldCamera.fov = 55;
@@ -183,7 +183,7 @@ function initSceneData() {
 }
 
 function setupGUI() {
-    const qualityObject = { samples_per_frame: 1.0 };
+    const qualityObject = { samples_per_frame: 8.0 };
     samplesPerFrameController = gui.add(qualityObject, 'samples_per_frame', 1.0, 8.0, 1.0).onChange(function (value) {
         samplesPerFrame = value;
         pathTracingUniforms.uSamplesPerFrame.value = value;
