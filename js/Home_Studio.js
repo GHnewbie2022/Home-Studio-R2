@@ -8,6 +8,24 @@ const MAX_Y = 3.105;
 const MIN_Z = -2.074;
 const MAX_Z = 3.256;
 
+// R2-2 顏色常量
+const C_WALL         = [1.0, 0.984, 0.949];
+const C_WALL_L       = [1.0, 0.984, 0.949];
+const C_WALL_R       = [1.0, 0.984, 0.949];
+const C_WALL_S       = [1.0, 0.984, 0.949];
+const C_BEAM         = [1.0, 0.984, 0.949];
+const C_FLOOR        = [0.55, 0.47, 0.41];
+const C_WOOD         = [0.55, 0.35, 0.17];
+const C_DARK_WOOD    = [0.36, 0.26, 0.18];
+const C_METAL        = [0.50, 0.55, 0.55];
+const C_WHITE        = [0.85, 0.85, 0.85];
+const C_SPEAKER      = [0.12, 0.12, 0.12];
+const C_STAND        = [0.08, 0.08, 0.08];
+const C_STAND_PILLAR = [0.80, 0.82, 0.85];
+const C_SPIKE        = [0.75, 0.60, 0.15];
+const C_GIK          = [0.50, 0.50, 0.50];
+const C_DARK_VENT    = [0.13, 0.13, 0.13];
+
 let samplesPerFrame = 8.0;
 let samplesPerFrameController;
 
