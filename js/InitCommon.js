@@ -1123,7 +1123,8 @@ function animate()
 	{
 		if (sceneIsDynamic)
 			sampleCounter = 1.0; // reset for continuous updating of image
-		else sampleCounter += 1.0; // for progressive refinement of image
+		else if (typeof MAX_SAMPLES === 'undefined' || sampleCounter < MAX_SAMPLES)
+			sampleCounter += 1.0; // for progressive refinement of image
 
 		frameCounter += 1.0;
 
@@ -1165,18 +1166,23 @@ function animate()
 
 
 	// RENDERING in 3 steps
+	// 到達 MAX_SAMPLES 後跳過 STEP 1/2，凍結累加 buffer，只保留 STEP 3 顯示
+	var renderingStopped = (typeof MAX_SAMPLES !== 'undefined' && sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
 
-	// STEP 1
-	// Perform PathTracing and Render(save) into pathTracingRenderTarget, a full-screen texture (on the oversized triangle).
-	// Read previous screenCopyRenderTarget(via texelFetch inside fragment shader) to use as a new starting point to blend with
-	renderer.setRenderTarget(pathTracingRenderTarget);
-	renderer.render(pathTracingScene, worldCamera);
+	if (!renderingStopped)
+	{
+		// STEP 1
+		// Perform PathTracing and Render(save) into pathTracingRenderTarget, a full-screen texture (on the oversized triangle).
+		// Read previous screenCopyRenderTarget(via texelFetch inside fragment shader) to use as a new starting point to blend with
+		renderer.setRenderTarget(pathTracingRenderTarget);
+		renderer.render(pathTracingScene, worldCamera);
 
-	// STEP 2
-	// Render(copy) the pathTracingScene output(pathTracingRenderTarget above) into screenCopyRenderTarget.
-	// This will be used as a new starting point for Step 1 above (essentially creating ping-pong buffers)
-	renderer.setRenderTarget(screenCopyRenderTarget);
-	renderer.render(screenCopyScene, orthoCamera);
+		// STEP 2
+		// Render(copy) the pathTracingScene output(pathTracingRenderTarget above) into screenCopyRenderTarget.
+		// This will be used as a new starting point for Step 1 above (essentially creating ping-pong buffers)
+		renderer.setRenderTarget(screenCopyRenderTarget);
+		renderer.render(screenCopyScene, orthoCamera);
+	}
 
 	// STEP 3
 	// Render to the oversized full-screen triangle with generated pathTracingRenderTarget in STEP 1 above.

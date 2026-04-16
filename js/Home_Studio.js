@@ -65,9 +65,24 @@ addBox([-1.91, 0.3175, 2.385], [-1.035, 0.470, 3.056], z3, C_WOOD, 1);        //
 addBox([-1.91, 0.475, 2.385], [-1.035, 0.6275, 3.056], z3, C_WOOD, 1);        // 24 頂格
 
 // R2-5 門 + 窗外景色 (index 25-27)
-addBox([-1.52, 0.0, -1.914], [-0.73, 2.03, -1.874], z3, C_WOOD, 1);          // 25 北牆木門
-addBox([-2.00, 0.09, -1.874], [-1.96, 2.04, -0.984], z3, C_METAL, 1);        // 26 西牆鐵門
+addBox([-1.52, 0.0, -1.914], [-0.73, 2.03, -1.874], z3, C_WOOD, 7);          // 25 北牆木門（type 7: 木門貼圖）
+addBox([-2.00, 0.09, -1.874], [-1.96, 2.04, -0.984], z3, C_METAL, 8);        // 26 西牆鐵門（type 8: 鐵門貼圖）
 addBox([-15.0, -5.0, 14.9], [15.0, 10.0, 15.0], z3, C_WHITE, 5);              // 27 窗外景色背板（type 5: 貼圖採樣）
+
+// R2-6 旋轉物件定義（center, halfSize, rotY, color）
+const rotatedObjects = [
+    // 左聲道
+    { name: 'uLeftSpeakerInvMatrix',    center: [-0.56825, 1.0965, 0.9842], half: [0.1125, 0.1725, 0.1365], rotY: -Math.PI/6, color: C_SPEAKER },
+    { name: 'uLeftStandBaseInvMatrix',  center: [-0.56825, 0.015,  0.9842], half: [0.125,  0.015,  0.15],   rotY: -Math.PI/6, color: C_STAND },
+    { name: 'uLeftStandPillarInvMatrix',center: [-0.56825, 0.46,   0.9842], half: [0.02,   0.43,   0.05],   rotY: -Math.PI/6, color: C_STAND_PILLAR },
+    { name: 'uLeftStandTopInvMatrix',   center: [-0.56825, 0.89,   0.9842], half: [0.10,   0.01,   0.125],  rotY: -Math.PI/6, color: C_STAND },
+    // 右聲道
+    { name: 'uRightSpeakerInvMatrix',    center: [0.56825, 1.0965, 0.9842], half: [0.1125, 0.1725, 0.1365], rotY: Math.PI/6, color: C_SPEAKER },
+    { name: 'uRightStandBaseInvMatrix',  center: [0.56825, 0.015,  0.9842], half: [0.125,  0.015,  0.15],   rotY: Math.PI/6, color: C_STAND },
+    { name: 'uRightStandPillarInvMatrix',center: [0.56825, 0.46,   0.9842], half: [0.02,   0.43,   0.05],   rotY: Math.PI/6, color: C_STAND_PILLAR },
+    { name: 'uRightStandTopInvMatrix',   center: [0.56825, 0.89,   0.9842], half: [0.10,   0.01,   0.125],  rotY: Math.PI/6, color: C_STAND },
+];
+const rotatedMeshes = [];
 
 let samplesPerFrame = 8.0;
 let samplesPerFrameController;
@@ -95,7 +110,8 @@ let acousticPanelVisibility = {
 let bloomIntensity = 0.15;
 let bloomRadius = 2.0;
 
-const SNAPSHOT_MILESTONES = [500, 1500, 3000, 6000];
+const MAX_SAMPLES = 1000;
+const SNAPSHOT_MILESTONES = [8, 100, 300, 500, 1000];
 const snapshots = [];
 let lastSnapshotCheck = -1;
 const capturedMilestones = new Set();
@@ -124,27 +140,42 @@ function captureSnapshot() {
 function buildSnapshotBar() {
     const bar = document.getElementById('snapshot-bar');
     if (!bar) return;
-    
+
+    // hover 預覽容器（只建一次）
+    var preview = document.getElementById('snapshot-preview');
+    if (!preview) {
+        preview = document.createElement('img');
+        preview.id = 'snapshot-preview';
+        preview.style.cssText = 'position:fixed; bottom:100px; left:10px; z-index:30; display:none; border:2px solid #555; background:#000; max-width:60vw; max-height:60vh; pointer-events:none;';
+        document.body.appendChild(preview);
+    }
+
     bar.innerHTML = '';
     snapshots.forEach((snap) => {
         const wrap = document.createElement('div');
-        wrap.className = 'snapshot-wrap';
-        wrap.style.cssText = 'position:relative; display:inline-block;';
-        
+        wrap.style.cssText = 'position:relative; display:inline-block; text-align:center;';
+
+        const imgWrap = document.createElement('div');
+        imgWrap.style.cssText = 'position:relative; display:inline-block;';
+
         const img = document.createElement('img');
         img.src = snap.src;
-        img.className = 'snapshot-thumb';
-        img.width = 120;
-        img.height = Math.round(120 * (window.innerHeight / window.innerWidth));
-        
-        const label = document.createElement('span');
-        label.className = 'snapshot-label';
-        label.textContent = snap.samples.toLocaleString() + ' spp';
-        
+        img.width = 60;
+        img.height = Math.round(60 * (window.innerHeight / window.innerWidth));
+        img.style.cssText = 'display:block; cursor:pointer;';
+
+        img.onmouseenter = function() {
+            preview.src = snap.src;
+            preview.style.display = 'block';
+        };
+        img.onmouseleave = function() {
+            preview.style.display = 'none';
+        };
+
         const saveBtn = document.createElement('button');
-        saveBtn.className = 'snapshot-save';
         saveBtn.textContent = '💾';
         saveBtn.title = snap.filename;
+        saveBtn.style.cssText = 'position:absolute; top:1px; right:1px; font-size:8px; padding:1px 2px; cursor:pointer; background:rgba(0,0,0,0.5); border:none; border-radius:2px; line-height:1;';
         saveBtn.onclick = (e) => {
             e.stopPropagation();
             const a = document.createElement('a');
@@ -154,10 +185,16 @@ function buildSnapshotBar() {
             a.click();
             document.body.removeChild(a);
         };
-        
-        wrap.appendChild(img);
+
+        imgWrap.appendChild(img);
+        imgWrap.appendChild(saveBtn);
+
+        const label = document.createElement('div');
+        label.style.cssText = 'color:#fff; font-size:8px; text-shadow:0 0 3px #000;';
+        label.textContent = snap.samples.toLocaleString() + ' spp';
+
+        wrap.appendChild(imgWrap);
         wrap.appendChild(label);
-        wrap.appendChild(saveBtn);
         bar.appendChild(wrap);
     });
 }
@@ -258,7 +295,7 @@ function initSceneData() {
     
     sceneIsDynamic = false;
     cameraFlightSpeed = 5;
-    pixelRatio = mouseControl ? 1.0 : 1.0;
+    pixelRatio = 1.0;
     EPS_intersect = 0.001;
     
     worldCamera.fov = 55;
@@ -287,6 +324,18 @@ function initSceneData() {
         }
     });
     
+    // === R2-6 旋轉物件逆矩陣 ===
+    var rotBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+    var rotBoxMat = new THREE.MeshBasicMaterial();
+    for (var ri = 0; ri < rotatedObjects.length; ri++) {
+        var ro = rotatedObjects[ri];
+        var mesh = new THREE.Mesh(rotBoxGeo, rotBoxMat);
+        mesh.position.set(ro.center[0], ro.center[1], ro.center[2]);
+        mesh.rotation.set(0, ro.rotY, 0);
+        mesh.updateMatrixWorld(true);
+        rotatedMeshes.push(mesh);
+    }
+
     // === BVH Build ===
     var N = sceneBoxes.length;
 
@@ -363,7 +412,12 @@ function initSceneData() {
     pathTracingUniforms.tBVHTexture = { value: bvhDataTexture };
     pathTracingUniforms.tBoxDataTexture = { value: boxDataTexture };
 
-    // 6) 載入窗外景色貼圖
+    // 6) 旋轉物件逆矩陣 uniforms
+    for (var ri = 0; ri < rotatedObjects.length; ri++) {
+        pathTracingUniforms[rotatedObjects[ri].name] = { value: new THREE.Matrix4().copy(rotatedMeshes[ri].matrixWorld).invert() };
+    }
+
+    // 7) 載入窗外景色貼圖
     const winTexLoader = new THREE.TextureLoader();
     winTexLoader.crossOrigin = 'anonymous';
     winTexLoader.load('https://duk.tw/WfvcAv.png', function(tex) {
@@ -375,6 +429,100 @@ function initSceneData() {
     });
     // 預設 1x1 白色貼圖，貼圖載入前不會黑屏
     pathTracingUniforms.uWinTex = { value: new THREE.DataTexture(new Uint8Array([255,255,255,255]), 1, 1, THREE.RGBAFormat) };
+
+    // 8) KH150 喇叭正面/背面貼圖
+    // 黑底 + 從中心放大 4%，裁掉產品照白色角落
+    var defaultTex = new THREE.DataTexture(new Uint8Array([128,128,128,255]), 1, 1, THREE.RGBAFormat);
+    pathTracingUniforms.u150F = { value: defaultTex };
+    pathTracingUniforms.u150B = { value: defaultTex };
+
+    function prepSpeakerTex(img) {
+        var c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#1f1f1f';
+        ctx.fillRect(0, 0, c.width, c.height);
+        var zoom = 1.04;
+        var dw = img.width * zoom, dh = img.height * zoom;
+        var dx = (img.width - dw) / 2, dy = (img.height - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+        var tex = new THREE.CanvasTexture(c);
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    var spkF = new Image();
+    spkF.onload = function() {
+        pathTracingUniforms.u150F.value = prepSpeakerTex(spkF);
+        cameraIsMoving = true;
+    };
+    spkF.src = 'textures/kh150_front.jpg';
+
+    var spkB = new Image();
+    spkB.onload = function() {
+        pathTracingUniforms.u150B.value = prepSpeakerTex(spkB);
+        cameraIsMoving = true;
+    };
+    spkB.src = 'textures/kh150_back.jpg';
+
+    // 9) 木門 / 鐵門貼圖（本地檔案，Image + CanvasTexture 載入）
+    var defaultDoorTex = new THREE.DataTexture(new Uint8Array([128,128,128,255]), 1, 1, THREE.RGBAFormat);
+    pathTracingUniforms.uWoodDoorTex = { value: defaultDoorTex };
+    pathTracingUniforms.uIronDoorTex = { value: defaultDoorTex };
+
+    function prepDoorTex(img) {
+        var c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        var ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        var tex = new THREE.CanvasTexture(c);
+        tex.generateMipmaps = false;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.needsUpdate = true;
+        return tex;
+    }
+
+    var woodDoorImg = new Image();
+    woodDoorImg.onload = function() {
+        pathTracingUniforms.uWoodDoorTex.value = prepDoorTex(woodDoorImg);
+        cameraIsMoving = true;
+    };
+    woodDoorImg.src = 'textures/wood_door.jpeg';
+
+    var ironDoorImg = new Image();
+    ironDoorImg.onload = function() {
+        pathTracingUniforms.uIronDoorTex.value = prepDoorTex(ironDoorImg);
+        cameraIsMoving = true;
+    };
+    ironDoorImg.src = 'textures/iron_door.jpg';
+
+    // 10) ISO-PUCK MINI 世界座標（8 顆，每側 4 顆）
+    var puckRadius = 0.022;   // 直徑 4.4cm
+    var puckHalfH = 0.012;    // 高度 2.4cm
+    var puckXOff = 0.10 - puckRadius;   // 0.078，圓週切齊頂板邊長
+    var puckZOff = 0.125 - puckRadius;  // 0.103
+    var puckYLocal = 0.01 + puckHalfH;  // 頂板表面上方的 puck 中心 Y
+    var puckLocalOffsets = [
+        new THREE.Vector3(-puckXOff, puckYLocal, -puckZOff),
+        new THREE.Vector3(-puckXOff, puckYLocal,  puckZOff),
+        new THREE.Vector3( puckXOff, puckYLocal, -puckZOff),
+        new THREE.Vector3( puckXOff, puckYLocal,  puckZOff)
+    ];
+    var puckPositions = [];
+    // index 3 = 左頂板, index 7 = 右頂板
+    [3, 7].forEach(function(topIdx) {
+        var mat = rotatedMeshes[topIdx].matrixWorld;
+        puckLocalOffsets.forEach(function(off) {
+            var p = off.clone().applyMatrix4(mat);
+            puckPositions.push(p);
+        });
+    });
+    pathTracingUniforms.uPuckPositions = { value: puckPositions };
+    pathTracingUniforms.uPuckRadius = { value: puckRadius };
+    pathTracingUniforms.uPuckHalfH = { value: puckHalfH };
 
     if (mouseControl) {
         setupGUI();
@@ -546,8 +694,8 @@ function updateVariablesAndUniforms() {
         camYawCtrl.updateDisplay();
     }
 
-    cameraInfoElement.innerHTML = "FOV: " + worldCamera.fov + " / Aperture: " + apertureSize.toFixed(2) + " / FocusDistance: " + focusDistance + "<br>" + "Samples: " + sampleCounter + " / SPF: " + samplesPerFrame;
-    
+    cameraInfoElement.innerHTML = "FOV: " + worldCamera.fov + " / Samples: " + sampleCounter + (sampleCounter >= MAX_SAMPLES ? " (休眠)" : "");
+
     if (sampleCounter < lastSnapshotCheck) {
         snapshots.length = 0;
         capturedMilestones.clear();
@@ -555,7 +703,7 @@ function updateVariablesAndUniforms() {
         if (bar) bar.innerHTML = '';
     }
     lastSnapshotCheck = sampleCounter;
-    
+
     if (SNAPSHOT_MILESTONES.includes(sampleCounter) && !capturedMilestones.has(sampleCounter)) {
         capturedMilestones.add(sampleCounter);
         const dataURL = captureSnapshot();
