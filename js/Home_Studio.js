@@ -69,6 +69,9 @@ addBox([-1.52, 0.0, -1.914], [-0.73, 2.03, -1.874], z3, C_WOOD, 7);          // 
 addBox([-2.00, 0.09, -1.874], [-1.96, 2.04, -0.984], z3, C_METAL, 8);        // 26 西牆鐵門（type 8: 鐵門貼圖）
 addBox([-15.0, -5.0, 14.9], [15.0, 10.0, 15.0], z3, C_WHITE, 5);              // 27 窗外景色背板（type 5: 貼圖採樣）
 
+// R2-7 KH750 超低音 (index 28)
+addBox([0.79, 0.0, 2.273], [1.12, 0.383, 2.656], z3, C_SPEAKER, 9);          // 28 KH750 超低音（type 9: 正背面貼圖，33×38.3×38.3cm）
+
 // R2-6 旋轉物件定義（center, halfSize, rotY, color）
 const rotatedObjects = [
     // 左聲道
@@ -466,6 +469,24 @@ function initSceneData() {
         cameraIsMoving = true;
     };
     spkB.src = 'textures/kh150_back.jpg';
+
+    // 8b) KH750 超低音正面/背面貼圖（已手動裁切白邊，黑底放大 4% 裁白角，比照 KH150）
+    pathTracingUniforms.u750F = { value: defaultTex };
+    pathTracingUniforms.u750B = { value: defaultTex };
+
+    var sub750F = new Image();
+    sub750F.onload = function() {
+        pathTracingUniforms.u750F.value = prepSpeakerTex(sub750F);
+        cameraIsMoving = true;
+    };
+    sub750F.src = 'textures/kh750_front.jpg';
+
+    var sub750B = new Image();
+    sub750B.onload = function() {
+        pathTracingUniforms.u750B.value = prepSpeakerTex(sub750B);
+        cameraIsMoving = true;
+    };
+    sub750B.src = 'textures/kh750_back.jpg';
 
     // 9) 木門 / 鐵門貼圖（本地檔案，Image + CanvasTexture 載入）
     var defaultDoorTex = new THREE.DataTexture(new Uint8Array([128,128,128,255]), 1, 1, THREE.RGBAFormat);

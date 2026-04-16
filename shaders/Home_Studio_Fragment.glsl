@@ -14,6 +14,8 @@ uniform sampler2D u150F;
 uniform sampler2D u150B;
 uniform sampler2D uWoodDoorTex;
 uniform sampler2D uIronDoorTex;
+uniform sampler2D u750F;
+uniform sampler2D u750B;
 
 // ISO-PUCK
 uniform vec3 uPuckPositions[8];
@@ -24,6 +26,7 @@ uniform float uPuckHalfH;
 #define SPEAKER 6
 #define WOOD_DOOR 7
 #define IRON_DOOR 8
+#define SUBWOOFER 9
 
 // R2-6 旋轉物件逆矩陣
 uniform mat4 uLeftSpeakerInvMatrix;
@@ -468,7 +471,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		{
 			objectID = hitObjectID;
 			// 有貼圖的表面：標記為 edge pixel，跳過降噪模糊核心
-			if (hitType == BACKDROP || hitType == SPEAKER || hitType == WOOD_DOOR || hitType == IRON_DOOR)
+			if (hitType == BACKDROP || hitType == SPEAKER || hitType == WOOD_DOOR || hitType == IRON_DOOR || hitType == SUBWOOFER)
 				pixelSharpness = 1.0;
 		}
 
@@ -618,6 +621,42 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
 			rayDirection = normalize(mix(reflDir, diffDir, 0.09)); // 0.3² = 0.09
 			rayOrigin = x + nl * uEPS_intersect;
+			continue;
+		}
+
+		if (hitType == SUBWOOFER)
+		{
+			// KH750：Z 面正背面貼圖，其餘面用 C_SPEAKER 漫射
+			vec3 aN = abs(hitNormal);
+			if (aN.z > 0.5)
+			{
+				vec3 hp = rayOrigin + rayDirection * t;
+				vec3 ctr = (hitBoxMin + hitBoxMax) * 0.5;
+				vec3 hs = (hitBoxMax - hitBoxMin) * 0.5;
+				vec3 lp = hp - ctr;
+				vec2 uv;
+				uv.x = (hitNormal.z > 0.0) ? (lp.x / hs.x * 0.5 + 0.5) : (-lp.x / hs.x * 0.5 + 0.5);
+				uv.y = lp.y / hs.y * 0.5 + 0.5;
+				if (hitNormal.z > 0.5)
+					hitColor = pow(texture(u750F, uv).rgb, vec3(2.2));
+				else
+					hitColor = pow(texture(u750B, uv).rgb, vec3(2.2));
+			}
+			// roughness 0.4, metalness 0.0：純漫反射
+			diffuseCount++;
+			mask *= hitColor;
+			bounceIsSpecular = FALSE;
+			rayOrigin = x + nl * uEPS_intersect;
+			if (diffuseCount == 1)
+			{
+				diffuseBounceMask = mask;
+				diffuseBounceRayOrigin = rayOrigin;
+				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				willNeedDiffuseBounceRay = TRUE;
+			}
+			rayDirection = sampleQuadLight(x, nl, light, weight);
+			mask *= weight * 1.5;
+			sampleLight = TRUE;
 			continue;
 		}
 
