@@ -4,8 +4,11 @@ precision highp sampler2D;
 
 #include <pathtracing_uniforms_and_defines>
 
+// BVH data textures
+uniform sampler2D tBVHTexture;
+uniform sampler2D tBoxDataTexture;
+
 #define N_QUADS 1
-#define N_BOXES 16
 
 vec3 rayOrigin, rayDirection;
 vec3 hitNormal, hitEmission, hitColor;
@@ -14,10 +17,8 @@ float hitObjectID;
 int hitType = -100;
 
 struct Quad { vec3 normal; vec3 v0; vec3 v1; vec3 v2; vec3 v3; vec3 emission; vec3 color; int type; };
-struct Box { vec3 minCorner; vec3 maxCorner; vec3 emission; vec3 color; int type; };
 
 Quad quads[N_QUADS];
-Box boxes[N_BOXES];
 
 #include <pathtracing_random_functions>
 
@@ -27,7 +28,42 @@ Box boxes[N_BOXES];
 
 #include <pathtracing_box_interior_intersect>
 
+#include <pathtracing_boundingbox_intersect>
+
 #include <pathtracing_sample_quad_light>
+
+
+// BVH node: 2 pixels per node in tBVHTexture
+// pixel 2n:   [idPrimitive, min.x, min.y, min.z]  (idPrimitive >= 0 = leaf, -1 = inner)
+// pixel 2n+1: [idRightChild, max.x, max.y, max.z]
+
+void fetchBVHNode(int idx, out float idPrimitive, out vec3 minC, out float idRightChild, out vec3 maxC) {
+	vec4 p0 = texelFetch(tBVHTexture, ivec2(idx * 2, 0), 0);
+	vec4 p1 = texelFetch(tBVHTexture, ivec2(idx * 2 + 1, 0), 0);
+	idPrimitive  = p0.x;
+	minC         = p0.yzw;
+	idRightChild = p1.x;
+	maxC         = p1.yzw;
+}
+
+// Box data: 4 pixels per box in tBoxDataTexture
+// pixel 4i:   [emission.rgb, type]
+// pixel 4i+1: [color.rgb, rotY]
+// pixel 4i+2: [min.xyz, reserved]
+// pixel 4i+3: [max.xyz, reserved]
+
+void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out vec3 bMin, out vec3 bMax) {
+	int base = idx * 4;
+	vec4 p0 = texelFetch(tBoxDataTexture, ivec2(base, 0), 0);
+	vec4 p1 = texelFetch(tBoxDataTexture, ivec2(base + 1, 0), 0);
+	vec4 p2 = texelFetch(tBoxDataTexture, ivec2(base + 2, 0), 0);
+	vec4 p3 = texelFetch(tBoxDataTexture, ivec2(base + 3, 0), 0);
+	emission = p0.xyz;
+	type     = int(p0.w);
+	color    = p1.xyz;
+	bMin     = p2.xyz;
+	bMax     = p3.xyz;
+}
 
 
 float SceneIntersect( )
@@ -36,9 +72,10 @@ float SceneIntersect( )
     float d;
 	float t = INFINITY;
 	int objectCount = 0;
-	
+
 	hitObjectID = -INFINITY;
-	
+
+	// 1) Quad light (always checked, not in BVH)
 	d = QuadIntersect( quads[0].v0, quads[0].v1, quads[0].v2, quads[0].v3, rayOrigin, rayDirection, FALSE );
 	if (d < t)
 	{
@@ -50,20 +87,51 @@ float SceneIntersect( )
 		hitObjectID = float(objectCount);
 	}
 	objectCount++;
-	
+
+	// 2) BVH traversal for boxes
+	vec3 invDir = 1.0 / rayDirection;
 	int isRayExiting = FALSE;
-	for (int i = 0; i < N_BOXES; i++) {
-		d = BoxIntersect( boxes[i].minCorner, boxes[i].maxCorner, rayOrigin, rayDirection, n, isRayExiting );
-		if (d < t && n != vec3(0,0,0))
-		{
-			t = d;
-			hitNormal = n;
-			hitEmission = boxes[i].emission;
-			hitColor = boxes[i].color;
-			hitType = boxes[i].type;
-			hitObjectID = float(objectCount);
+
+	float idPrimitive, idRightChild;
+	vec3 nodeMin, nodeMax;
+
+	int stack[32];
+	int stackPtr = 0;
+	stack[stackPtr++] = 0; // push root
+
+	while (stackPtr > 0) {
+		int nodeIdx = stack[--stackPtr];
+
+		fetchBVHNode(nodeIdx, idPrimitive, nodeMin, idRightChild, nodeMax);
+
+		// test ray against node AABB
+		d = BoundingBoxIntersect(nodeMin, nodeMax, rayOrigin, invDir);
+		if (d >= t) continue; // AABB miss or farther than current best
+
+		if (idPrimitive >= 0.0) {
+			// LEAF: test actual box primitive
+			int boxIdx = int(idPrimitive);
+			vec3 boxEmission, boxColor, boxMin, boxMax;
+			int boxType;
+			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMin, boxMax);
+
+			d = BoxIntersect(boxMin, boxMax, rayOrigin, rayDirection, n, isRayExiting);
+			if (d < t && n != vec3(0,0,0))
+			{
+				t = d;
+				hitNormal = n;
+				hitEmission = boxEmission;
+				hitColor = boxColor;
+				hitType = boxType;
+				hitObjectID = float(objectCount + boxIdx);
+			}
+		} else {
+			// INNER NODE: push children (right first so left pops first)
+			int rc = int(idRightChild);
+			if (rc > 0)
+				stack[stackPtr++] = rc;
+			stack[stackPtr++] = nodeIdx + 1; // left child
 		}
-		objectCount++;
 	}
 
 	return t;
@@ -80,14 +148,14 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	vec3 diffuseBounceMask = vec3(1);
 	vec3 diffuseBounceRayOrigin = vec3(0);
 	vec3 diffuseBounceRayDirection = vec3(0);
-        
+
 	float t = INFINITY;
 	float weight, p;
-	
+
 	int diffuseCount = 0;
 	int previousIntersecType = -100;
 	hitType = -100;
-	
+
 	int bounceIsSpecular = TRUE;
 	int sampleLight = FALSE;
 	int willNeedDiffuseBounceRay = FALSE;
@@ -103,7 +171,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		{
 			if (bounces == 0 || (bounces == 1 && previousIntersecType == SPEC))
 				pixelSharpness = 1.0;
-			
+
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
 				mask = diffuseBounceMask;
@@ -119,7 +187,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			break;
 		}
-			
+
 
 		n = normalize(hitNormal);
     nl = dot(n, rayDirection) < 0.0 ? n : -n;
@@ -135,10 +203,10 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			objectNormal += n;
 			objectColor += hitColor;
 		}
-		
-		
+
+
 		if (hitType == LIGHT)
-		{	
+		{
 			if (diffuseCount == 0)
 				pixelSharpness = 1.0;
 
@@ -160,8 +228,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			break;
 		}
-		
-		if (sampleLight == TRUE) 
+
+		if (sampleLight == TRUE)
 		{
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
@@ -178,9 +246,9 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			break;
 		}
-			
 
-    if (hitType == DIFF) 
+
+    if (hitType == DIFF)
     {
 			diffuseCount++;
 
@@ -197,15 +265,15 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			
+
 			rayDirection = sampleQuadLight(x, nl, light, weight);
 			mask *= weight * 1.5;
 			sampleLight = TRUE;
 			continue;
-                        
-    } 
-	
-    if (hitType == SPEC)  
+
+    }
+
+    if (hitType == SPEC)
 	{
 		mask *= hitColor;
 
@@ -214,9 +282,9 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 		continue;
 	}
-		
-	} 
-	
+
+	}
+
 	return max(vec3(0), accumCol);
 
 }
@@ -225,21 +293,6 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 void SetupScene(void)
 {
 	vec3 z = vec3(0);
-	
-	float MIN_X = -2.11;
-	float MAX_X = 2.11;
-	float MIN_Y = -0.20;
-	float MAX_Y = 3.105;
-	float MIN_Z = -2.074;
-	float MAX_Z = 3.256;
-	
-	vec3 C_FLOOR = vec3(0.55, 0.47, 0.41);
-	vec3 C_WALL = vec3(1.0, 0.984, 0.949);
-	vec3 C_WALL_L = vec3(1.0, 0.984, 0.949);
-	vec3 C_WALL_R = vec3(1.0, 0.984, 0.949);
-	vec3 C_WALL_S = vec3(1.0, 0.984, 0.949);
-	vec3 C_BEAM = vec3(1.0, 0.984, 0.949);
-	
 	vec3 L1 = vec3(1.0, 0.95, 0.8) * 8.0;
 
 	quads[0] = Quad( vec3(0.0, -1.0, 0.0),
@@ -248,23 +301,6 @@ void SetupScene(void)
 	                 vec3(0.5, 2.90, 0.5),
 	                 vec3(-0.5, 2.90, 0.5),
 	                 L1, z, LIGHT);
-
-	boxes[0] = Box( vec3(MIN_X, MIN_Y, MIN_Z), vec3(MAX_X, 0.0, MAX_Z), z, C_FLOOR, DIFF);
-	boxes[1] = Box( vec3(MIN_X, 2.905, MIN_Z), vec3(MAX_X, MAX_Y, MAX_Z), z, C_WALL, DIFF);
-	boxes[2] = Box( vec3(MIN_X, 0.0, MIN_Z), vec3(-1.52, 2.905, -1.874), z, C_WALL, DIFF);
-	boxes[3] = Box( vec3(-0.73, 0.0, MIN_Z), vec3(MAX_X, 2.905, -1.874), z, C_WALL, DIFF);
-	boxes[4] = Box( vec3(-1.52, 2.03, MIN_Z), vec3(-0.73, 2.905, -1.874), z, C_WALL, DIFF);
-	boxes[5] = Box( vec3(1.91, 0.0, MIN_Z), vec3(MAX_X, 2.905, MAX_Z), z, C_WALL_R, DIFF);
-	boxes[6] = Box( vec3(MIN_X, 0.0, 3.056), vec3(-1.75, 2.905, MAX_Z), z, C_WALL_S, DIFF);
-	boxes[7] = Box( vec3(0.69, 0.0, 3.056), vec3(MAX_X, 2.905, MAX_Z), z, C_WALL_S, DIFF);
-	boxes[8] = Box( vec3(-1.75, 0.0, 3.056), vec3(0.69, 1.04, MAX_Z), z, C_WALL_S, DIFF);
-	boxes[9] = Box( vec3(MIN_X, 2.04, -1.874), vec3(-1.91, 2.905, -0.984), z, C_WALL_L, DIFF);
-	boxes[10] = Box( vec3(MIN_X, 0.0, -1.874), vec3(-1.91, 0.09, -0.984), z, C_WALL_L, DIFF);
-	boxes[11] = Box( vec3(MIN_X, 0.0, -0.984), vec3(-1.91, 2.905, MAX_Z), z, C_WALL_L, DIFF);
-	boxes[12] = Box( vec3(-1.91, 2.525, MIN_Z), vec3(-1.75, 2.905, MAX_Z), z, C_BEAM, DIFF);
-	boxes[13] = Box( vec3(1.85, 2.515, MIN_Z), vec3(MAX_X, 2.905, 2.49), z, C_BEAM, DIFF);
-	boxes[14] = Box( vec3(-1.91, 0.0, 2.848), vec3(-1.75, 2.905, MAX_Z), z, C_BEAM, DIFF);
-	boxes[15] = Box( vec3(1.78, 0.0, 2.49), vec3(MAX_X, 2.905, MAX_Z), z, C_BEAM, DIFF);
 }
 
 
