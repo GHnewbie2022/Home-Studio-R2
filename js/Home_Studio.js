@@ -29,27 +29,49 @@ const C_DARK_VENT = [0.0, 0.0, 0.0];
 // === Scene Box Data (single source of truth) ===
 const sceneBoxes = [];
 const z3 = [0, 0, 0]; // zero emission shorthand
-function addBox(min, max, emission, color, type, meta) {
-    sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0 });
+function addBox(min, max, emission, color, type, meta, cullable) {
+    sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0, cullable: cullable || 0 });
 }
 
-// R2-3 牆面 (index 0-15)
-addBox([MIN_X, MIN_Y, MIN_Z], [MAX_X, 0.0, MAX_Z], z3, C_FLOOR, 1);           // 0  地面
-addBox([MIN_X, 2.905, MIN_Z], [MAX_X, MAX_Y, MAX_Z], z3, C_WALL, 1);          // 1  天花板
-addBox([MIN_X, 0.0, MIN_Z], [-1.52, 2.905, -1.874], z3, C_WALL, 1);           // 2  北牆西段
-addBox([-0.73, 0.0, MIN_Z], [MAX_X, 2.905, -1.874], z3, C_WALL, 1);           // 3  北牆東段
-addBox([-1.52, 2.03, MIN_Z], [-0.73, 2.905, -1.874], z3, C_WALL, 1);          // 4  北牆門洞上方
-addBox([1.91, 0.0, MIN_Z], [MAX_X, 2.905, MAX_Z], z3, C_WALL_R, 1);           // 5  東牆
-addBox([MIN_X, 0.0, 3.056], [-1.75, 2.905, MAX_Z], z3, C_WALL_S, 1);          // 6  南牆西段
-addBox([0.69, 0.0, 3.056], [MAX_X, 2.905, MAX_Z], z3, C_WALL_S, 1);           // 7  南牆東段
-addBox([-1.75, 0.0, 3.056], [0.69, 1.04, MAX_Z], z3, C_WALL_S, 1);            // 8  南牆窗台下方
-addBox([MIN_X, 2.04, -1.874], [-1.91, 2.905, -0.984], z3, C_WALL_L, 1);       // 9  西牆鐵門上方
-addBox([MIN_X, 0.0, -1.874], [-1.91, 0.09, -0.984], z3, C_WALL_L, 1);         // 10 西牆門坎
-addBox([MIN_X, 0.0, -0.984], [-1.91, 2.905, MAX_Z], z3, C_WALL_L, 1);         // 11 西牆南段
-addBox([-1.91, 2.525, MIN_Z], [-1.75, 2.905, MAX_Z], z3, C_BEAM, 1);          // 12 西牆橫樑
-addBox([1.85, 2.515, MIN_Z], [MAX_X, 2.905, 2.49], z3, C_BEAM, 1);            // 13 東牆橫樑
-addBox([-1.91, 0.0, 2.848], [-1.75, 2.905, MAX_Z], z3, C_BEAM, 1);            // 14 西南角柱
-addBox([1.78, 0.0, 2.49], [MAX_X, 2.905, MAX_Z], z3, C_BEAM, 1);              // 15 東南角柱
+// R2-3 牆面 (fix10：地面/天花板 9 片化、四角牆裂)
+// 地面 0 → 7 片 (fix14：Center z 延至 [MIN_Z, MAX_Z]，併入原 N/S edge)
+addBox([MIN_X, MIN_Y, MIN_Z],  [-1.91, 0.0, -1.874], z3, C_FLOOR, 1, 0, 1);         // 0a 地面 NW corner
+addBox([1.91,  MIN_Y, MIN_Z],  [MAX_X, 0.0, -1.874], z3, C_FLOOR, 1, 0, 1);         // 0c 地面 NE corner
+addBox([MIN_X, MIN_Y, -1.874], [-1.91, 0.0, 3.056],  z3, C_FLOOR, 1, 0, 1);         // 0d 地面 W edge
+addBox([-1.91, MIN_Y, -1.874], [1.91,  0.0, 3.056],  z3, C_FLOOR, 1);               // 0e 地面 Center（fix21：bmin.z→-1.874；fix23：bmax.z→3.056 對齊南牆內面與書櫃南端；N/S edge 依賴 0a/0c/0g/0i 覆蓋）
+addBox([1.91,  MIN_Y, -1.874], [MAX_X, 0.0, 3.056],  z3, C_FLOOR, 1, 0, 1);         // 0f 地面 E edge
+addBox([MIN_X, MIN_Y, 3.056],  [-1.91, 0.0, MAX_Z],  z3, C_FLOOR, 1, 0, 1);         // 0g 地面 SW corner
+addBox([1.91,  MIN_Y, 3.056],  [MAX_X, 0.0, MAX_Z],  z3, C_FLOOR, 1, 0, 1);         // 0i 地面 SE corner
+// 天花板 1 → 7 片 (fix14：Center z 延至 [MIN_Z, MAX_Z]，併入原 N/S edge)
+addBox([MIN_X, 2.905, MIN_Z],  [-1.91, MAX_Y, -1.874], z3, C_WALL, 1, 0, 1);        // 1a 天花板 NW corner
+addBox([1.91,  2.905, MIN_Z],  [MAX_X, MAX_Y, -1.874], z3, C_WALL, 1, 0, 1);        // 1c 天花板 NE corner
+addBox([MIN_X, 2.905, -1.874], [-1.91, MAX_Y, 3.056],  z3, C_WALL, 1, 0, 1);        // 1d 天花板 W edge
+addBox([-1.91, 2.905, -1.874], [1.91,  MAX_Y, 3.056],  z3, C_WALL, 1);              // 1e 天花板 Center（fix21：bmin.z→-1.874；fix23：bmax.z→3.056 對齊南牆內面；N/S edge 依賴 1a/1c/1g/1i 覆蓋）
+addBox([1.91,  2.905, -1.874], [MAX_X, MAX_Y, 3.056],  z3, C_WALL, 1, 0, 1);        // 1f 天花板 E edge
+addBox([MIN_X, 2.905, 3.056],  [-1.91, MAX_Y, MAX_Z],  z3, C_WALL, 1, 0, 1);        // 1g 天花板 SW corner
+addBox([1.91,  2.905, 3.056],  [MAX_X, MAX_Y, MAX_Z],  z3, C_WALL, 1, 0, 1);        // 1i 天花板 SE corner
+// 北牆西段 2 裂於 x=-1.91
+addBox([MIN_X, 0.0, MIN_Z], [-1.91, 2.905, -1.874], z3, C_WALL, 1, 0, 1);           // 2a 北牆西段 NW overlap
+addBox([-1.91, 0.0, MIN_Z], [-1.52, 2.905, -1.874], z3, C_WALL, 1, 0, 1);           // 2b 北牆西段 interior
+// 北牆東段 3 裂於 x=1.91
+addBox([-0.73, 0.0, MIN_Z], [1.91,  2.905, -1.874], z3, C_WALL, 1, 0, 1);           // 3a 北牆東段 interior
+addBox([1.91,  0.0, MIN_Z], [MAX_X, 2.905, -1.874], z3, C_WALL, 1, 0, 1);           // 3b 北牆東段 NE overlap
+addBox([-1.52, 2.03, MIN_Z], [-0.73, 2.905, -1.874], z3, C_WALL, 1, 0, 1);          // 4  北牆門洞上方
+addBox([1.91, 0.0, -1.874], [MAX_X, 2.905, 3.056], z3, C_WALL_R, 1, 0, 1);          // 5  東牆（fix22：bmin.z→-1.874；fix23：bmax.z→3.056 對齊南牆內面，含效 revert 隱含的南延）
+// 南牆西段 6 裂於 x=-1.91
+addBox([MIN_X, 0.0, 3.056], [-1.91, 2.905, MAX_Z], z3, C_WALL_S, 1, 0, 1);          // 6a 南牆西段 SW overlap
+addBox([-1.91, 0.0, 3.056], [-1.75, 2.905, MAX_Z], z3, C_WALL_S, 1, 0, 1);          // 6b 南牆西段 interior
+// 南牆東段 7 裂於 x=1.91
+addBox([0.69, 0.0, 3.056], [1.91,  2.905, MAX_Z], z3, C_WALL_S, 1, 0, 1);           // 7a 南牆東段 interior
+addBox([1.91, 0.0, 3.056], [MAX_X, 2.905, MAX_Z], z3, C_WALL_S, 1, 0, 1);           // 7b 南牆東段 SE overlap
+addBox([-1.91, 0.0, 3.056], [0.69, 1.04, MAX_Z], z3, C_WALL_S, 1, 0, 1);            // 8  南牆窗台下方（fix13：西端延至 -1.91 匹配桌與內牆）
+addBox([MIN_X, 2.04, -1.874], [-1.91, 2.905, -0.984], z3, C_WALL_L, 1, 0, 1);       // 9  西牆鐵門上方（fix22：bmin.z 縮至 -1.874 對齊北牆內面；20cm 懸空樑問題已由 fix21 beam Z 縮短解決，fix15 不再需要）
+addBox([MIN_X, 0.0, -1.874], [-1.91, 0.09, -0.984], z3, C_WALL_L, 1, 0, 1);         // 10 西牆門坎（fix22：bmin.z 縮至 -1.874 同上）
+addBox([MIN_X, 0.0, -0.984], [-1.91, 2.905, 3.056], z3, C_WALL_L, 1, 0, 1);         // 11 西牆南段（fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
+addBox([-1.91, 2.525, -1.874], [-1.75, 2.905, 3.056], z3, C_BEAM, 1, 0, 1);         // 12 西牆橫樑（fix21：bmin.z→-1.874；fix23：bmax.z 由 MAX_Z 縮至 3.056，含效 revert fix13 南延）
+addBox([1.85, 2.515, -1.874], [MAX_X, 2.905, 3.056], z3, C_BEAM, 1, 0, 1);          // 13 東牆橫樑（fix21：bmin.z→-1.874；fix23：bmax.z 由 MAX_Z 縮至 3.056，含效 revert fix13 南延）
+addBox([-1.91, 0.0, 2.848], [-1.75, 2.905, 3.056], z3, C_BEAM, 1, 0, 2);            // 14 西南角柱（cullable=2：依相機方位動態透視；fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
+addBox([1.78, 0.0, 2.49], [1.91, 2.905, 3.056], z3, C_BEAM, 1, 0, 2);               // 15 東南角柱（x 縮為純內凸 [1.78,1.91]，cullable=2；fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
 
 // R2-4 傢俱 (index 16-20)
 addBox([1.35, 0.0, -1.874], [1.91, 1.955, -0.703], z3, C_WOOD, 1);            // 16 東牆櫃子
@@ -65,46 +87,46 @@ addBox([-1.91, 0.3175, 2.385], [-1.035, 0.470, 3.056], z3, C_WOOD, 1);        //
 addBox([-1.91, 0.475, 2.385], [-1.035, 0.6275, 3.056], z3, C_WOOD, 1);        // 24 頂格
 
 // R2-5 門 + 窗外景色 (index 25-27)
-addBox([-1.52, 0.0, -1.914], [-0.73, 2.03, -1.874], z3, C_WOOD, 7);          // 25 北牆木門（type 7: 木門貼圖）
-addBox([-2.00, 0.09, -1.874], [-1.96, 2.04, -0.984], z3, C_METAL, 8);        // 26 西牆鐵門（type 8: 鐵門貼圖）
-addBox([-15.0, -5.0, 14.9], [15.0, 10.0, 15.0], z3, C_WHITE, 5);              // 27 窗外景色背板（type 5: 貼圖採樣）
+addBox([-1.52, 0.0, -1.914], [-0.73, 2.03, -1.874], z3, C_WOOD, 7, 0, 1);          // 25 北牆木門（type 7: 木門貼圖）
+addBox([-2.00, 0.09, -1.874], [-1.96, 2.04, -0.984], z3, C_METAL, 8, 0, 1);        // 26 西牆鐵門（type 8: 鐵門貼圖）
+addBox([-15.0, -5.0, 14.9], [15.0, 10.0, 15.0], z3, C_WHITE, 5, 0, 1);              // 27 窗外景色背板（type 5: 貼圖採樣）
 
 // R2-7 KH750 超低音 (index 28)
 addBox([0.79, 0.0, 2.273], [1.12, 0.383, 2.656], z3, C_SPEAKER, 9);          // 28 KH750 超低音（type 9: 正背面貼圖，33×38.3×38.3cm）
 
 // R2-15 插座面板 (index 29-34, type 11 = OUTLET)
-addBox([-0.39, 1.185, -1.874], [-0.27, 1.255, -1.864], z3, C_WHITE, 11);  // 29 北牆插座，距地約 120cm
-addBox([-1.91, 0.325, -0.024], [-1.90, 0.395, 0.096], z3, C_WHITE, 11);   // 30 西牆插座 1，距地約 33cm
-addBox([-1.91, 0.585, 0.656], [-1.90, 0.655, 0.776], z3, C_WHITE, 11);    // 31 西牆插座 2，距地約 59cm
-addBox([1.90, 0.725, -0.354], [1.91, 0.795, -0.234], z3, C_WHITE, 11);    // 32 東牆插座 1，距地約 73cm
-addBox([1.90, 0.740, 1.930], [1.91, 0.810, 2.050], z3, C_WHITE, 11);      // 33 東牆插座 2，距地約 74cm
-addBox([1.01, 0.355, 2.906], [1.02, 0.475, 3.026], z3, C_WHITE, 11);      // 34 南牆附近插座，距地約 36cm
+addBox([-0.39, 1.185, -1.874], [-0.27, 1.255, -1.864], z3, C_WHITE, 11, 0, 1);  // 29 北牆插座，距地約 120cm
+addBox([-1.91, 0.325, -0.024], [-1.90, 0.395, 0.096], z3, C_WHITE, 11, 0, 1);   // 30 西牆插座 1，距地約 33cm
+addBox([-1.91, 0.585, 0.656], [-1.90, 0.655, 0.776], z3, C_WHITE, 11, 0, 1);    // 31 西牆插座 2，距地約 59cm
+addBox([1.90, 0.725, -0.354], [1.91, 0.795, -0.234], z3, C_WHITE, 11, 0, 1);    // 32 東牆插座 1，距地約 73cm
+addBox([1.90, 0.740, 1.930], [1.91, 0.810, 2.050], z3, C_WHITE, 11, 0, 1);      // 33 東牆插座 2，距地約 74cm
+addBox([1.01, 0.355, 2.906], [1.02, 0.475, 3.026], z3, C_WHITE, 11, 0, 1);      // 34 南牆附近插座，距地約 36cm
 
 // R2-13 冷氣與通風口 (index 35-36)
-addBox([0.83, 2.425, 2.681], [1.7, 2.725, 3.181], z3, C_WHITE, 1);      // 35 冷氣主體
-addBox([0.91, 2.425, 2.681], [1.62, 2.455, 2.9], z3, C_DARK_VENT, 1);  // 36 冷氣出風口
+addBox([0.83, 2.425, 2.681], [1.7, 2.725, 3.056], z3, C_WHITE, 1, 0, 1);      // 35 冷氣主體（fix23：bmax.z 由 3.181 縮至 3.056 消除卡進南牆 12.5cm，機身深度由 50cm 縮為 37.5cm）
+addBox([0.91, 2.425, 2.681], [1.62, 2.455, 2.9], z3, C_DARK_VENT, 1, 0, 1);  // 36 冷氣出風口
 
 // R2-8 吸音板
-const BASE_BOX_COUNT = 37; // index 0-36 為基礎場景（牆面+傢俱+門+窗+KH750+插座+冷氣）
+const BASE_BOX_COUNT = 53; // fix14：地面/天花板 併 N/S edge 入 Center，由 9 片降為 7 片，基礎 box 57 → 53
 
 // Config 1：3 片灰色（第一反射點）
 const panelConfig1 = [
-    { min: [1.792, 0.655, 0.198], max: [1.91, 1.855, 0.798], color: C_GIK, meta: 0 },     // E2 東牆
-    { min: [-1.91, 0.655, 0.198], max: [-1.792, 1.855, 0.798], color: C_GIK, meta: 0 },    // W2 西牆
-    { min: [-0.27, 0.655, -1.874], max: [0.33, 1.855, -1.756], color: C_GIK, meta: 0 },      // N_v 北牆垂直（Y 統一與側牆齊高，X 東移避開插座）
+    { min: [1.792, 0.655, 0.198], max: [1.91, 1.855, 0.798], color: C_GIK, meta: 0, cullable: 1 },     // E2 東牆
+    { min: [-1.91, 0.655, 0.198], max: [-1.792, 1.855, 0.798], color: C_GIK, meta: 0, cullable: 1 },    // W2 西牆
+    { min: [-0.27, 0.655, -1.874], max: [0.33, 1.855, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N_v 北牆垂直（Y 統一與側牆齊高，X 東移避開插座）
 ];
 
 // Config 2：9 片（北 3 灰水平 + 東 3 白 + 西 3 白）
 const panelConfig2 = [
-    { min: [-0.6, 0.585, -1.874], max: [0.6, 1.185, -1.756], color: C_GIK, meta: 0 },      // N1 下層
-    { min: [-0.6, 1.255, -1.874], max: [0.6, 1.855, -1.756], color: C_GIK, meta: 0 },      // N2 中層
-    { min: [-0.6, 1.925, -1.874], max: [0.6, 2.525, -1.756], color: C_GIK, meta: 0 },      // N3 上層
-    { min: [1.792, 0.795, -0.5525], max: [1.91, 1.995, 0.0475], color: C_WHITE, meta: 1 },  // E1 東牆
-    { min: [1.792, 0.655, 0.198], max: [1.91, 1.855, 0.798], color: C_WHITE, meta: 1 },     // E2 東牆
-    { min: [1.792, 0.795, 0.9485], max: [1.91, 1.995, 1.5485], color: C_WHITE, meta: 1 },   // E3 東牆
-    { min: [-1.91, 0.795, -0.5525], max: [-1.792, 1.995, 0.0475], color: C_WHITE, meta: 1 },// W1 西牆
-    { min: [-1.91, 0.655, 0.198], max: [-1.792, 1.855, 0.798], color: C_WHITE, meta: 1 },   // W2 西牆
-    { min: [-1.91, 0.795, 0.9485], max: [-1.792, 1.995, 1.5485], color: C_WHITE, meta: 1 }, // W3 西牆
+    { min: [-0.6, 0.585, -1.874], max: [0.6, 1.185, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N1 下層
+    { min: [-0.6, 1.255, -1.874], max: [0.6, 1.855, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N2 中層
+    { min: [-0.6, 1.925, -1.874], max: [0.6, 2.525, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N3 上層
+    { min: [1.792, 0.795, -0.5525], max: [1.91, 1.995, 0.0475], color: C_WHITE, meta: 1, cullable: 1 },  // E1 東牆
+    { min: [1.792, 0.655, 0.198], max: [1.91, 1.855, 0.798], color: C_WHITE, meta: 1, cullable: 1 },     // E2 東牆
+    { min: [1.792, 0.795, 0.9485], max: [1.91, 1.995, 1.5485], color: C_WHITE, meta: 1, cullable: 1 },   // E3 東牆
+    { min: [-1.91, 0.795, -0.5525], max: [-1.792, 1.995, 0.0475], color: C_WHITE, meta: 1, cullable: 1 },// W1 西牆
+    { min: [-1.91, 0.655, 0.198], max: [-1.792, 1.855, 0.798], color: C_WHITE, meta: 1, cullable: 1 },   // W2 西牆
+    { min: [-1.91, 0.795, 0.9485], max: [-1.792, 1.995, 1.5485], color: C_WHITE, meta: 1, cullable: 1 }, // W3 西牆
 ];
 
 let currentPanelConfig = 1;
@@ -162,7 +184,7 @@ function buildSceneBVH() {
         boxArr[(p + 1) * 4 + 0] = b.color[0]; boxArr[(p + 1) * 4 + 1] = b.color[1];
         boxArr[(p + 1) * 4 + 2] = b.color[2]; boxArr[(p + 1) * 4 + 3] = b.meta || 0;
         boxArr[(p + 2) * 4 + 0] = b.min[0]; boxArr[(p + 2) * 4 + 1] = b.min[1];
-        boxArr[(p + 2) * 4 + 2] = b.min[2]; boxArr[(p + 2) * 4 + 3] = 0.0;
+        boxArr[(p + 2) * 4 + 2] = b.min[2]; boxArr[(p + 2) * 4 + 3] = b.cullable || 0;
         boxArr[(p + 3) * 4 + 0] = b.max[0]; boxArr[(p + 3) * 4 + 1] = b.max[1];
         boxArr[(p + 3) * 4 + 2] = b.max[2]; boxArr[(p + 3) * 4 + 3] = 0.0;
     }
@@ -189,7 +211,7 @@ function applyPanelConfig(config) {
     sceneBoxes.length = BASE_BOX_COUNT;
     var panels = (config === 1) ? panelConfig1 : panelConfig2;
     panels.forEach(function (p) {
-        addBox(p.min, p.max, z3, p.color, 10, p.meta);
+        addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
     });
     currentPanelConfig = config;
     buildSceneBVH();
@@ -223,9 +245,9 @@ const CAMERA_PRESETS = {
 let currentCameraPreset = 'cam1';
 let camPosXCtrl, camPosYCtrl, camPosZCtrl, camPitchCtrl, camYawCtrl;
 
-let basicBrightness = 800.0;
+let basicBrightness = 1050.0;
 let colorTemperature = 4000;
-let wallAlbedo = 0.8;
+let wallAlbedo = 0.9;
 
 // acousticPanelVisibility 已被 R2-8 Config 1/Config 2 切換取代
 
@@ -620,6 +642,14 @@ function initSceneData() {
     // uLightEmission 初始值（4000K × 800 × 0.05764），每幀由 updateVariablesAndUniforms 更新
     pathTracingUniforms.uLightEmission = { value: new THREE.Vector3(8.0, 7.6, 6.4) };
 
+    // R2-13 X-ray 透視剝離：primary ray 自動隱藏相機同側牆系物件
+    pathTracingUniforms.uCamPos = { value: new THREE.Vector3(0, 0, 0) };
+    pathTracingUniforms.uRoomMin = { value: new THREE.Vector3(-1.91, 0.0, -1.874) };
+    pathTracingUniforms.uRoomMax = { value: new THREE.Vector3(1.91, 2.905, 3.056) };
+    pathTracingUniforms.uCullThreshold = { value: 0.30 };
+    pathTracingUniforms.uCullEpsilon = { value: 0.01 };
+    pathTracingUniforms.uXrayEnabled = { value: 1.0 };
+
     if (mouseControl) {
         setupGUI();
     }
@@ -709,6 +739,17 @@ function setupGUI() {
     attachMetaClickReset(camPitchCtrl, CAMERA_PRESETS.cam1.pitch);
     attachMetaClickReset(camYawCtrl, CAMERA_PRESETS.cam1.yaw);
 
+    // R2-13 X-ray 透視剝離 toggle（預設開 = 自動透視：相機位於房外時同側牆面自動消隱）
+    // checkbox 實為 debug override —— 取消勾選可強制顯示完整牆面（用於檢查牆體細節）
+    // 沿用 wallAlbedo 同式：uniform 更新 + wakeRender() 即足。
+    cameraFolder.add({ xray: true }, 'xray').name('X-ray 透視 (自動)').onChange(function (value) {
+        if (pathTracingUniforms && pathTracingUniforms.uXrayEnabled) {
+            pathTracingUniforms.uXrayEnabled.value = value ? 1.0 : 0.0;
+        }
+        console.log('[X-ray] onChange fired, value =', value, '→ uXrayEnabled =', value ? 1.0 : 0.0);
+        wakeRender();
+    });
+
     cameraFolder.open();
 
     // Prevent GUI clicks from bubbling to body's pointer lock handler
@@ -716,11 +757,11 @@ function setupGUI() {
 
     const lightFolder = gui.addFolder('Light Settings');
 
-    const brightnessCtrl = lightFolder.add({ brightness: 800 }, 'brightness', 0, 4000, 1).onChange(function (value) {
+    const brightnessCtrl = lightFolder.add({ brightness: 1050 }, 'brightness', 0, 4000, 1).onChange(function (value) {
         basicBrightness = value;
         wakeRender();
     });
-    attachMetaClickReset(brightnessCtrl, 800);
+    attachMetaClickReset(brightnessCtrl, 1050);
 
     const colorTempCtrl = lightFolder.add({ colorTemp: 4000 }, 'colorTemp', 2700, 6500, 100).onChange(function (value) {
         colorTemperature = value;
@@ -732,14 +773,14 @@ function setupGUI() {
 
     const matFolder = gui.addFolder('Material Settings');
 
-    const wallAlbedoCtrl = matFolder.add({ wallAlbedo: 0.8 }, 'wallAlbedo', 0.1, 1.0, 0.05).onChange(function (value) {
+    const wallAlbedoCtrl = matFolder.add({ wallAlbedo: 0.9 }, 'wallAlbedo', 0.1, 1.0, 0.05).onChange(function (value) {
         wallAlbedo = value;
         if (pathTracingUniforms.uWallAlbedo) {
             pathTracingUniforms.uWallAlbedo.value = value;
         }
         wakeRender();
     });
-    attachMetaClickReset(wallAlbedoCtrl, 0.8);
+    attachMetaClickReset(wallAlbedoCtrl, 0.9);
 
     const panelFolder = matFolder.addFolder('Acoustic Panels');
     var panelActions = {
@@ -829,6 +870,13 @@ function updateVariablesAndUniforms() {
     var rgb = kelvinToRGB(colorTemperature);
     var s = basicBrightness * 0.05764;
     pathTracingUniforms.uLightEmission.value.set(rgb.r * s, rgb.g * s, rgb.b * s);
+
+    // R2-13 X-ray 透視剝離：每幀同步相機世界座標供 shader 判定剝離方向
+    pathTracingUniforms.uCamPos.value.set(
+        cameraControlsObject.position.x,
+        cameraControlsObject.position.y,
+        cameraControlsObject.position.z
+    );
 
     // 每幀同步攝影機實際值到 GUI（updateDisplay 不觸發 onChange）
     if (camPosXCtrl) {

@@ -30,8 +30,18 @@ uniform vec3 uCeilingLampPos;
 uniform float uCeilingLampRadius;
 uniform float uCeilingLampHalfH;
 
-uniform float uWallAlbedo; // R2-UI：牆/天花板/柱樑反射率（box index 1..15）
+uniform float uWallAlbedo; // R2-UI：結構表面反射率（地板/天花板/牆/樑/柱，陣列索引 0..31；fix19 修正原 1..15 漏蓋多數牆段之索引錯誤）
 uniform float uMaxBounces; // R2-UI：最大反彈次數 1~14，runtime 可調，硬性編譯期上限 14
+
+// R2-13 X-ray 透視剝離
+uniform vec3 uCamPos;
+uniform vec3 uRoomMin;
+uniform vec3 uRoomMax;
+uniform float uCullThreshold;
+uniform float uCullEpsilon;
+uniform float uXrayEnabled; // 0.0 = off, 1.0 = on
+
+int primaryRay = 1; // 僅 bounces==0 為 1，其餘為 0
 
 #define BACKDROP 5
 #define SPEAKER 6
@@ -260,7 +270,7 @@ void fetchBVHNode(int idx, out float idPrimitive, out vec3 minC, out float idRig
 // pixel 4i+2: [min.xyz, reserved]
 // pixel 4i+3: [max.xyz, reserved]
 
-void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out float meta, out vec3 bMin, out vec3 bMax) {
+void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out float meta, out vec3 bMin, out vec3 bMax, out float cullable) {
 	int base = idx * 4;
 	vec4 p0 = texelFetch(tBoxDataTexture, ivec2(base, 0), 0);
 	vec4 p1 = texelFetch(tBoxDataTexture, ivec2(base + 1, 0), 0);
@@ -272,8 +282,46 @@ void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out 
 	meta     = p1.w;
 	bMin     = p2.xyz;
 	bMax     = p3.xyz;
+	cullable = p2.w;
 }
 
+
+// R2-13 X-ray 透視剝離：雙層 cullable tier
+//   cullable=0：家具（永不透）
+//   cullable=1：牆／樑／GIK／插座 —— box 之內向角近牆面（薄板貼牆）
+//   cullable=2：柱等大型遮擋 —— box 中心位於相機同側半空間（擋在相機與室心之間即透）
+bool isBoxCulled(vec3 bmin, vec3 bmax, float cullable)
+{
+	if (uXrayEnabled < 0.5) return false;
+	// fix12：移除 primaryRay==0 提前 return，使 secondary ray 亦視剝離 box 為透明，
+	//        消除陰影殘跡。室內相機 uCamPos 在房內，下方四向判式之 cam 條件皆失敗，
+	//        isBoxCulled 仍返 false，室內打光表現不受影響。
+	if (cullable < 0.5) return false;
+
+	float T = uCullThreshold;
+	float eps = uCullEpsilon;
+
+	if (cullable < 1.5)
+	{
+		// cullable=1：貼牆薄板，以「內向角近牆面」為判
+		if (uCamPos.x > uRoomMax.x + eps && bmin.x > uRoomMax.x - T) return true;
+		if (uCamPos.x < uRoomMin.x - eps && bmax.x < uRoomMin.x + T) return true;
+		if (uCamPos.z > uRoomMax.z + eps && bmin.z > uRoomMax.z - T) return true;
+		if (uCamPos.z < uRoomMin.z - eps && bmax.z < uRoomMin.z + T) return true;
+	}
+	else
+	{
+		// cullable=2：柱等大型遮擋，以「box 中心位於相機同側半空間」為判
+		vec3 roomCenter = (uRoomMin + uRoomMax) * 0.5;
+		vec3 boxCenter = (bmin + bmax) * 0.5;
+		if (uCamPos.x > uRoomMax.x + eps && boxCenter.x > roomCenter.x) return true;
+		if (uCamPos.x < uRoomMin.x - eps && boxCenter.x < roomCenter.x) return true;
+		if (uCamPos.z > uRoomMax.z + eps && boxCenter.z > roomCenter.z) return true;
+		if (uCamPos.z < uRoomMin.z - eps && boxCenter.z < roomCenter.z) return true;
+	}
+
+	return false;
+}
 
 float SceneIntersect( )
 {
@@ -311,23 +359,31 @@ float SceneIntersect( )
 			int boxIdx = int(idPrimitive);
 			vec3 boxEmission, boxColor, boxMin, boxMax;
 			int boxType;
-			float boxMeta;
-			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax);
+			float boxMeta, boxCullable;
+			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax, boxCullable);
 
-			d = BoxIntersect(boxMin, boxMax, rayOrigin, rayDirection, n, isRayExiting);
-			if (d < t && n != vec3(0,0,0))
+			// R2-13 X-ray 透視剝離：primary ray 時跳過顯式 cullable 的牆系附著物
+			if (!isBoxCulled(boxMin, boxMax, boxCullable))
 			{
-				t = d;
-				hitNormal = n;
-				hitEmission = boxEmission;
-				hitColor = boxColor;
-				// R2-UI：僅對牆/天花板/柱樑（index 1..15）套用 uWallAlbedo，地板 (index 0) 與家具、貼圖物件不受影響
-				if (boxIdx >= 1 && boxIdx <= 15) hitColor *= uWallAlbedo;
-				hitType = boxType;
-				hitMeta = boxMeta;
-				hitBoxMin = boxMin;
-				hitBoxMax = boxMax;
-				hitObjectID = float(objectCount + boxIdx);
+				d = BoxIntersect(boxMin, boxMax, rayOrigin, rayDirection, n, isRayExiting);
+				if (d < t && n != vec3(0,0,0))
+				{
+					t = d;
+					hitNormal = n;
+					hitEmission = boxEmission;
+					hitColor = boxColor;
+					// R2-UI（fix19）：對所有結構表面（地板/天花板/牆/樑/柱，陣列索引 0..31）套用 uWallAlbedo，家具（索引 32+）與貼圖物件不受影響
+					// 歷史：原寫 index 1..15，但 fix10 地板/天花板重切後陣列索引重排，導致僅 2a/2b 被套用 albedo 而 3a 起不受影響，造成木門西側 asymmetric 暗化
+					if (boxIdx <= 31) hitColor *= uWallAlbedo;
+					hitType = boxType;
+					hitMeta = boxMeta;
+					hitBoxMin = boxMin;
+					hitBoxMax = boxMax;
+					// fix20：結構性 box（索引 0..31：地板/天花板/牆/樑/柱）統一 objectID=1，使邊界間 fwidth(objectID)=0，
+					// 避免 PathTracingCommon.js main() 之 objectDifference>=1.0 觸發 pixelSharpness=1 而於共邊永保 raw noise
+					// 傢俱與貼圖物件（索引 32+）保留各自獨特 ID（+1 讓最小為 33 避免與結構組撞）；確保 wall-furniture 邊緣仍受 edge 保護
+					hitObjectID = float(objectCount + (boxIdx <= 31 ? 1 : boxIdx + 1));
+				}
 			}
 		} else {
 			// INNER NODE: push children (right first so left pops first)
@@ -469,6 +525,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	for (int bounces = 0; bounces < 14; bounces++)
 	{
 		if (bounces >= int(uMaxBounces)) break; // R2-UI：runtime 動態上限
+		primaryRay = (bounces == 0) ? 1 : 0; // R2-13 僅首次 primary ray 套用 X-ray 剔除
 		previousIntersecType = hitType;
 
 		t = SceneIntersect();

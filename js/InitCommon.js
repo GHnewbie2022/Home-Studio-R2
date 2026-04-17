@@ -720,8 +720,8 @@ function initTHREEjs()
 	pathTracingUniforms.uUseOrthographicCamera = { type: "b1", value: false };
 	pathTracingUniforms.uSceneIsDynamic = { type: "b1", value: false };
 
-	// R2-UI: 牆面反射率（牆/天花板/柱樑），預設 0.8
-	pathTracingUniforms.uWallAlbedo = { type: "f", value: 0.8 };
+	// R2-UI: 牆面反射率（牆/天花板/柱樑），預設 0.9
+	pathTracingUniforms.uWallAlbedo = { type: "f", value: 0.9 };
 
 	// R2-UI: 最大反彈次數 runtime 可調（硬性上限 14 寫死在 shader for 迴圈編譯期）
 	pathTracingUniforms.uMaxBounces = { type: "f", value: 4.0 };
