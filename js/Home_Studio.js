@@ -33,8 +33,38 @@ const z3 = [0, 0, 0]; // zero emission shorthand
 // R2-14：第八參數 fixtureGroup 為「可切換裝置」分群標識
 // 0 = 恆顯、1 = R2-14 東西投射燈軌道、2 = R2-15 南北廣角燈軌道、3 = R2-16 Cloud 吸音板、4 = R2-17 Cloud 漫射燈條
 // 預留為 R2-16/17 各階段之開關鎖鍊；值對應 shader 中 uTrackLightEnabled / uWideTrackLightEnabled 等 uniform 的 gating
-function addBox(min, max, emission, color, type, meta, cullable, fixtureGroup) {
-    sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0, cullable: cullable || 0, fixtureGroup: fixtureGroup || 0 });
+// R2-18：第 9、10 參數 roughness / metalness；未傳則依 type + color + fixtureGroup auto-assign（規則見下方 autoAssignMaterial）
+function _colorEq(c1, c2) {
+    return Math.abs(c1[0] - c2[0]) < 0.01 &&
+           Math.abs(c1[1] - c2[1]) < 0.01 &&
+           Math.abs(c1[2] - c2[2]) < 0.01;
+}
+function autoAssignMaterial(color, type, fixtureGroup, boxIdx) {
+    // R2-18 Y 方案（scalar roughness mix + metalness）：依 type/color/fixtureGroup 推預設
+    // 結構（地板/天花板/牆/樑/柱，index 0..31）= 0.9；木系傢俱 = 0.7；其他白色傢俱 = 0.8；貼圖金屬 = 依 type
+    if (type === 8) return { roughness: 0.3, metalness: 1.0 };                    // IRON_DOOR
+    if (type === 7) return { roughness: 0.9, metalness: 0.0 };                    // WOOD_DOOR（plan 表 0.9，類 Lambertian）
+    if (type === 6) return { roughness: 0.4, metalness: 0.0 };                    // SPEAKER（KH150）
+    if (type === 9) return { roughness: 0.4, metalness: 0.0 };                    // SUBWOOFER（KH750）
+    if (type === 10 && (fixtureGroup || 0) === 3) return { roughness: 0.5, metalness: 0.0 }; // ACOUSTIC_PANEL Cloud
+    if (type === 10) return { roughness: 0.85, metalness: 0.0 };                  // ACOUSTIC_PANEL 牆掛
+    if (type === 5) return { roughness: 0.8, metalness: 0.0 };                    // BACKDROP 窗外背板
+    if (type === 11 || type === 12 || type === 13 || type === 14) return { roughness: 0.85, metalness: 0.0 }; // OUTLET / LAMP_SHELL / TRACK / CLOUD_LIGHT
+    if (type === 1) {
+        if (_colorEq(color, C_WOOD) || _colorEq(color, C_DARK_WOOD)) return { roughness: 0.7, metalness: 0.0 };
+        if (boxIdx <= 31) return { roughness: 0.9, metalness: 0.0 };               // 結構組（floor/ceiling/wall/beam/pillar）
+        return { roughness: 0.8, metalness: 0.0 };                                  // 其他家具白色系（櫃體、冷氣、通風口）
+    }
+    return { roughness: 0.8, metalness: 0.0 }; // 保底
+}
+function addBox(min, max, emission, color, type, meta, cullable, fixtureGroup, roughness, metalness) {
+    var fg = fixtureGroup || 0;
+    if (roughness === undefined || metalness === undefined) {
+        var autoMat = autoAssignMaterial(color, type, fg, sceneBoxes.length);
+        if (roughness === undefined) roughness = autoMat.roughness;
+        if (metalness === undefined) metalness = autoMat.metalness;
+    }
+    sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0, cullable: cullable || 0, fixtureGroup: fg, roughness: roughness, metalness: metalness });
 }
 
 // R2-3 牆面 (fix10：地面/天花板 9 片化、四角牆裂)
@@ -219,11 +249,12 @@ function buildSceneBVH() {
     bvhDataTexture.generateMipmaps = false;
     bvhDataTexture.needsUpdate = true;
 
-    // 4) Box Data Texture (512x1, RGBA32F, 4 pixels per box)
+    // 4) Box Data Texture (512x1, RGBA32F, 5 pixels per box)
+    // R2-18：pixel 4 新增 [roughness, metalness, 0, 0]；75 box × 5 = 375 ≤ BVH_TEX_W=512
     var boxArr = new Float32Array(BVH_TEX_W * 1 * 4);
     for (var i = 0; i < N; i++) {
         var b = sceneBoxes[i];
-        var p = i * 4;
+        var p = i * 5;
         boxArr[(p) * 4 + 0] = b.emission[0]; boxArr[(p) * 4 + 1] = b.emission[1];
         boxArr[(p) * 4 + 2] = b.emission[2]; boxArr[(p) * 4 + 3] = b.type;
         boxArr[(p + 1) * 4 + 0] = b.color[0]; boxArr[(p + 1) * 4 + 1] = b.color[1];
@@ -232,6 +263,8 @@ function buildSceneBVH() {
         boxArr[(p + 2) * 4 + 2] = b.min[2]; boxArr[(p + 2) * 4 + 3] = b.cullable || 0;
         boxArr[(p + 3) * 4 + 0] = b.max[0]; boxArr[(p + 3) * 4 + 1] = b.max[1];
         boxArr[(p + 3) * 4 + 2] = b.max[2]; boxArr[(p + 3) * 4 + 3] = b.fixtureGroup || 0; // R2-14：裝置開關分群
+        boxArr[(p + 4) * 4 + 0] = b.roughness; boxArr[(p + 4) * 4 + 1] = b.metalness;
+        boxArr[(p + 4) * 4 + 2] = 0; boxArr[(p + 4) * 4 + 3] = 0; // R2-18 保留槽位
     }
     var boxDataTexture = new THREE.DataTexture(boxArr, BVH_TEX_W, 1, THREE.RGBAFormat, THREE.FloatType);
     boxDataTexture.wrapS = THREE.ClampToEdgeWrapping;
@@ -254,12 +287,47 @@ function buildSceneBVH() {
 
 function applyPanelConfig(config) {
     sceneBoxes.length = BASE_BOX_COUNT;
-    var panels = (config === 1) ? panelConfig1 : panelConfig2;
-    panels.forEach(function (p) {
-        addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
-    });
+    // R2-18 fix22：Config 1/2/3 三者互斥
+    // fix25：Config 3 = 全 GIK（9 片牆 + 6 片天花 Cloud + 燈條 + 軌道燈），表示「完整吸音處理」
+    if (config === 1) {
+        panelConfig1.forEach(function (p) {
+            addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
+        });
+    } else if (config === 2 || config === 3) {
+        panelConfig2.forEach(function (p) {
+            addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
+        });
+    }
+    // Cloud 聯動：config 3 時開 Cloud 板+燈條+吸頂燈北移；否則關
+    // fix24：軌道燈（投射/廣角）亦隨 Config 3 連動（Config 1/2 關、Config 3 開）
+    var cloudOn = (config === 3);
+    if (pathTracingUniforms && pathTracingUniforms.uCloudPanelEnabled) {
+        pathTracingUniforms.uCloudPanelEnabled.value = cloudOn ? 1.0 : 0.0;
+    }
+    if (pathTracingUniforms && pathTracingUniforms.uCloudLightEnabled) {
+        pathTracingUniforms.uCloudLightEnabled.value = cloudOn ? 1.0 : 0.0;
+    }
+    if (pathTracingUniforms && pathTracingUniforms.uTrackLightEnabled) {
+        pathTracingUniforms.uTrackLightEnabled.value = cloudOn ? 1.0 : 0.0;
+    }
+    if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
+        pathTracingUniforms.uWideTrackLightEnabled.value = cloudOn ? 1.0 : 0.0;
+    }
+    if (pathTracingUniforms && pathTracingUniforms.uCeilingLampPos) {
+        pathTracingUniforms.uCeilingLampPos.value.z = cloudOn ? -1.5 : 0.591;
+    }
+    // GUI checkbox 同步（若已建構）
+    if (typeof trackLightState !== 'undefined' && trackLightState) {
+        trackLightState.trackLight = cloudOn;
+        if (trackLightCtrl && trackLightCtrl.updateDisplay) trackLightCtrl.updateDisplay();
+    }
+    if (typeof wideTrackLightState !== 'undefined' && wideTrackLightState) {
+        wideTrackLightState.wideTrackLight = cloudOn;
+        if (wideTrackLightCtrl && wideTrackLightCtrl.updateDisplay) wideTrackLightCtrl.updateDisplay();
+    }
     currentPanelConfig = config;
     buildSceneBVH();
+    needClearAccumulation = true;
     cameraIsMoving = true;
     cameraSwitchFrames = 3; // 讓 updateVariablesAndUniforms 持續 3 幀重置累積緩衝區
 }
@@ -290,13 +358,16 @@ const CAMERA_PRESETS = {
 let currentCameraPreset = 'cam1';
 let camPosXCtrl, camPosYCtrl, camPosZCtrl, camPitchCtrl, camYawCtrl;
 
-let basicBrightness = 1050.0;
+let basicBrightness = 900.0;
+// R2-18 fix24：軌道燈 checkbox 狀態與 controller 引用（供 applyPanelConfig 聯動更新）
+let trackLightState = null, trackLightCtrl = null;
+let wideTrackLightState = null, wideTrackLightCtrl = null;
 let colorTemperature = 4000;
-let wallAlbedo = 0.9;
+let wallAlbedo = 1.0;
 
 // acousticPanelVisibility 已被 R2-8 Config 1/Config 2 切換取代
 
-let bloomIntensity = 0.03;
+let bloomIntensity = 0.025;
 // R2-UI：bloom pyramid 層數（Jimenez / Unreal / Blender Eevee），取代舊 radius slider
 //   層數多 → halo 廣、柔；少 → halo 集中、窄
 let bloomMipCount = 7;
@@ -487,7 +558,7 @@ function initSceneData() {
     demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=' + Date.now();
 
     sceneIsDynamic = false;
-    cameraFlightSpeed = 5;
+    cameraFlightSpeed = 3;
     pixelRatio = 1.0;
     EPS_intersect = 0.001;
 
@@ -683,7 +754,7 @@ function initSceneData() {
     // R2-11 中央吸頂燈（圓柱燈體 + 底面發光 quad）；R2-16 起位置隨 uCloudPanelEnabled 聯動
     // Cloud ON → z=-1.5（跨過 R2-15 北軌道 z≈-1.1 之更北側，距北軌道 14.8cm、距北牆 13.9cm；非真實安裝位置，純示意有燈亮）
     // Cloud OFF → z=0.591（原房間中央）
-    pathTracingUniforms.uCeilingLampPos = { value: new THREE.Vector3(0, 2.855, -1.5) };
+    pathTracingUniforms.uCeilingLampPos = { value: new THREE.Vector3(0, 2.855, 0.591) };
     pathTracingUniforms.uCeilingLampRadius = { value: 0.235 };
     pathTracingUniforms.uCeilingLampHalfH = { value: 0.02 };
     // uLightEmission 初始值（4000K × 800 × 0.05764），每幀由 updateVariablesAndUniforms 更新
@@ -697,17 +768,36 @@ function initSceneData() {
     pathTracingUniforms.uCullEpsilon = { value: 0.01 };
     pathTracingUniforms.uXrayEnabled = { value: 1.0 };
 
-    // R2-14 東西投射燈軌道（fixtureGroup=1）開關；預設開
-    pathTracingUniforms.uTrackLightEnabled = { value: 1.0 };
+    // R2-14 東西投射燈軌道（fixtureGroup=1）開關；fix24：預設關，僅 Config 3（Cloud）時開
+    pathTracingUniforms.uTrackLightEnabled = { value: 0.0 };
 
-    // R2-15 南北廣角燈軌道（fixtureGroup=2）開關；預設開
-    pathTracingUniforms.uWideTrackLightEnabled = { value: 1.0 };
+    // R2-15 南北廣角燈軌道（fixtureGroup=2）開關；fix24：預設關，僅 Config 3 時開
+    pathTracingUniforms.uWideTrackLightEnabled = { value: 0.0 };
 
-    // R2-16 Cloud 吸音板（fixtureGroup=3）開關；預設開，吸頂燈同步北移避開 Cloud 遮擋
-    pathTracingUniforms.uCloudPanelEnabled = { value: 1.0 };
+    // R2-16 Cloud 吸音板（fixtureGroup=3）開關；fix21：預設關，吸頂燈留房間中央 z=0.591
+    pathTracingUniforms.uCloudPanelEnabled = { value: 0.0 };
 
-    // R2-17 Cloud 漫射燈條（fixtureGroup=4）開關；預設開；emission=0 僅視覺幾何
-    pathTracingUniforms.uCloudLightEnabled = { value: 1.0 };
+    // R2-17 Cloud 漫射燈條（fixtureGroup=4）開關；fix21：預設關且與 Cloud 吸音板綁定（燈條不能懸空於無板狀態）
+    pathTracingUniforms.uCloudLightEnabled = { value: 0.0 };
+
+    // R2-18 全域 roughness / metalness multiplier；GUI 於 Step 6 接入，Step 1 僅宣告 uniform 保留默認 1.0
+    // R2-18 Step 6 per-class scale：金屬三類分離（C_STAND_PILLAR 預設霧面化 1.2 / 0.65）
+    pathTracingUniforms.uIronDoorRoughnessScale = { value: 0.25 };
+    pathTracingUniforms.uIronDoorMetalnessScale = { value: 0.85 };
+    pathTracingUniforms.uStandRoughnessScale = { value: 1.3 };
+    pathTracingUniforms.uStandMetalnessScale = { value: 0.5 };
+    pathTracingUniforms.uStandPillarRoughnessScale = { value: 1.2 };
+    pathTracingUniforms.uStandPillarMetalnessScale = { value: 0.65 };
+
+    // R2-18 Phase 2：軌道+燈具本體束包（TRACK 軌道 + LAMP_SHELL 吸頂燈殼 + CLOUD_LIGHT 燈條 + 投射/廣角燈頭）
+    pathTracingUniforms.uFixtureRoughness = { value: 0.5 };
+    pathTracingUniforms.uFixtureMetalness = { value: 0.2 };
+
+    // R2-18 fix17：地板霧面磁磚（dielectric Fresnel F0=0.04 + roughness blur）；fix18 預設 0.1 肉眼校準
+    pathTracingUniforms.uFloorRoughness = { value: 0.1 };
+
+    // R2-18 fix19：間接光倍率（1.0=原值，>1 提亮陰影區）；fix21 預設 1.7
+    pathTracingUniforms.uIndirectMultiplier = { value: 1.7 };
 
     // R2-14 fix02：4 盞圓柱燈頭靜態 uniforms（R3/R4 階段改為 UI 動態更新）
     // pivot = 支架底（y_pivot = trackBaseY - 0.076 = 2.819）；tilt=45° 由軌道中心朝外傾
@@ -774,17 +864,22 @@ function setupGUI() {
     });
     attachMetaClickReset(samplesPerFrameController, 1.0);
 
-    // R2-UI：最大反彈次數（1~14，預設 4），shader 內動態 break 控制實際 bounce 數
-    const bouncesObject = { max_bounces: 4 };
-    const bouncesCtrl = gui.add(bouncesObject, 'max_bounces', 1, 14, 1).onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) {
-            pathTracingUniforms.uMaxBounces.value = value;
-        }
-        wakeRender();
-    });
-    attachMetaClickReset(bouncesCtrl, 4);
+    // R2-18 fix23：Scene Setup 收納 Acoustic Panels + Camera View，預設展開（max_bounces 移至 Light Settings）
+    const setupFolder = gui.addFolder('Scene Setup');
 
-    const cameraFolder = gui.addFolder('Camera View');
+    // R2-18 fix22：Config 3 = Cloud 6 片+燈條（天花板），與 Config 1/2 三者互斥
+    const panelFolder = setupFolder.addFolder('Panels & Lights');
+    var panelActions = {
+        config1: function () { applyPanelConfig(1); },
+        config2: function () { applyPanelConfig(2); },
+        config3: function () { applyPanelConfig(3); }
+    };
+    panelFolder.add(panelActions, 'config1').name('Config 1 (牆3+吸頂燈)');
+    panelFolder.add(panelActions, 'config2').name('Config 2 (牆9+吸頂燈)');
+    panelFolder.add(panelActions, 'config3').name('Config 3 (牆9+雲6+漫射燈+軌道燈)');
+    panelFolder.open();
+
+    const cameraFolder = setupFolder.addFolder('Camera View');
     var camActions = {
         cam1: function () { switchCamera('cam1'); },
         cam2: function () { switchCamera('cam2'); },
@@ -842,44 +937,25 @@ function setupGUI() {
         wakeRender();
     });
 
-    // R2-14 東西投射燈軌道 toggle（fixtureGroup=1）：關閉時 8 個 box 於 shader 層整體跳過，連帶無陰影
-    cameraFolder.add({ trackLight: true }, 'trackLight').name('投射燈軌道 (東西)').onChange(function (value) {
+    // R2-14 東西投射燈軌道 toggle（fixtureGroup=1）；fix24：預設 OFF，由 Config 3 聯動開
+    trackLightState = { trackLight: false };
+    trackLightCtrl = cameraFolder.add(trackLightState, 'trackLight').name('投射燈軌道 (東西)').onChange(function (value) {
         if (pathTracingUniforms && pathTracingUniforms.uTrackLightEnabled) {
             pathTracingUniforms.uTrackLightEnabled.value = value ? 1.0 : 0.0;
         }
-        console.log('[TrackLight] onChange fired, value =', value, '→ uTrackLightEnabled =', value ? 1.0 : 0.0);
         wakeRender();
     });
 
-    // R2-15 南北廣角燈軌道 toggle（fixtureGroup=2）
-    cameraFolder.add({ wideTrackLight: true }, 'wideTrackLight').name('廣角燈軌道 (南北)').onChange(function (value) {
+    // R2-15 南北廣角燈軌道 toggle（fixtureGroup=2）；fix24：預設 OFF，由 Config 3 聯動開
+    wideTrackLightState = { wideTrackLight: false };
+    wideTrackLightCtrl = cameraFolder.add(wideTrackLightState, 'wideTrackLight').name('廣角燈軌道 (南北)').onChange(function (value) {
         if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
             pathTracingUniforms.uWideTrackLightEnabled.value = value ? 1.0 : 0.0;
         }
         wakeRender();
     });
 
-    // R2-16 Cloud 吸音板 toggle（fixtureGroup=3）；吸頂燈位置隨之聯動避開遮擋
-    cameraFolder.add({ cloudPanel: true }, 'cloudPanel').name('Cloud 吸音板 (6片)').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uCloudPanelEnabled) {
-            pathTracingUniforms.uCloudPanelEnabled.value = value ? 1.0 : 0.0;
-        }
-        // 吸頂燈聯動：ON → 北移 z=-1.5（越過 R2-15 北軌道，避開 Cloud 與軌道卡位）；OFF → 回房間中央 z=0.591
-        if (pathTracingUniforms && pathTracingUniforms.uCeilingLampPos) {
-            pathTracingUniforms.uCeilingLampPos.value.z = value ? -1.5 : 0.591;
-        }
-        // 吸頂燈位置大幅位移會留前位殘影，比照 Cam 切換（R2-11 Debug_Log）瞬清兩個 render target
-        needClearAccumulation = true;
-        wakeRender();
-    });
-
-    // R2-17 Cloud 漫射燈條 toggle（fixtureGroup=4）；獨立開關，不聯動吸頂燈
-    cameraFolder.add({ cloudLight: true }, 'cloudLight').name('Cloud 燈條 (4支)').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uCloudLightEnabled) {
-            pathTracingUniforms.uCloudLightEnabled.value = value ? 1.0 : 0.0;
-        }
-        wakeRender();
-    });
+    // R2-18 fix22：Cloud 吸音板+燈條已整合為 Acoustic Panels Config 3，camera folder 不再重複出現
 
     cameraFolder.open();
 
@@ -887,12 +963,13 @@ function setupGUI() {
     gui.domElement.addEventListener('click', function (e) { e.stopPropagation(); }, false);
 
     const lightFolder = gui.addFolder('Light Settings');
+    lightFolder.close();
 
-    const brightnessCtrl = lightFolder.add({ brightness: 1050 }, 'brightness', 0, 4000, 1).onChange(function (value) {
+    const brightnessCtrl = lightFolder.add({ brightness: 900 }, 'brightness', 0, 4000, 1).onChange(function (value) {
         basicBrightness = value;
         wakeRender();
     });
-    attachMetaClickReset(brightnessCtrl, 1050);
+    attachMetaClickReset(brightnessCtrl, 900);
 
     const colorTempCtrl = lightFolder.add({ colorTemp: 4000 }, 'colorTemp', 2700, 6500, 100).onChange(function (value) {
         colorTemperature = value;
@@ -900,39 +977,34 @@ function setupGUI() {
     });
     attachMetaClickReset(colorTempCtrl, 4000);
 
-    lightFolder.open();
-
-    const matFolder = gui.addFolder('Material Settings');
-
-    const wallAlbedoCtrl = matFolder.add({ wallAlbedo: 0.9 }, 'wallAlbedo', 0.1, 1.0, 0.05).onChange(function (value) {
-        wallAlbedo = value;
-        if (pathTracingUniforms.uWallAlbedo) {
-            pathTracingUniforms.uWallAlbedo.value = value;
+    // R2-UI：最大反彈次數（1~14，預設 4），shader 內動態 break 控制實際 bounce 數
+    const bouncesObject = { max_bounces: 4 };
+    const bouncesCtrl = lightFolder.add(bouncesObject, 'max_bounces', 1, 14, 1).onChange(function (value) {
+        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) {
+            pathTracingUniforms.uMaxBounces.value = value;
         }
         wakeRender();
     });
-    attachMetaClickReset(wallAlbedoCtrl, 0.9);
+    attachMetaClickReset(bouncesCtrl, 4);
 
-    const panelFolder = matFolder.addFolder('Acoustic Panels');
-    var panelActions = {
-        config1: function () { applyPanelConfig(1); },
-        config2: function () { applyPanelConfig(2); }
-    };
-    panelFolder.add(panelActions, 'config1').name('Config 1 (3片)');
-    panelFolder.add(panelActions, 'config2').name('Config 2 (9片)');
-    panelFolder.open();
+    // R2-18 fix19：間接光倍率（>1 提亮陰影區，僅影響 indirect bounce）；fix21 預設 1.7 肉眼校準
+    const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('indirectMul').onChange(function (v) {
+        pathTracingUniforms.uIndirectMultiplier.value = v; wakeRender();
+    });
+    attachMetaClickReset(indirectCtrl, 1.7);
 
-    matFolder.open();
+    // R2-18 fix23：Material Settings UI 移除，所有 roughness/metalness/albedo 預設值已定案寫死於 uniform 初值
 
     const bloomFolder = gui.addFolder('Bloom');
+    bloomFolder.close();
 
-    const bloomIntensityCtrl = bloomFolder.add({ intensity: 0.03 }, 'intensity', 0.0, 1.0, 0.001).onChange(function (value) {
+    const bloomIntensityCtrl = bloomFolder.add({ intensity: 0.025 }, 'intensity', 0.0, 1.0, 0.001).onChange(function (value) {
         bloomIntensity = value;
         if (screenOutputUniforms && screenOutputUniforms.uBloomIntensity) {
             screenOutputUniforms.uBloomIntensity.value = bloomIntensity;
         }
     });
-    attachMetaClickReset(bloomIntensityCtrl, 0.03);
+    attachMetaClickReset(bloomIntensityCtrl, 0.025);
 
     // R2-UI: Bloom pyramid 層數（3~7）
     //   3 層：halo 集中，約 full-res ±32 px；7 層：halo 廣域，約 full-res ±512 px
@@ -950,9 +1022,10 @@ function setupGUI() {
         }
     });
 
-    bloomFolder.open();
+    // R2-18 fix23：Light / Bloom / Snapshot 三者預設折疊
 
     const snapshotFolder = gui.addFolder('Snapshot');
+    snapshotFolder.close();
 
     snapshotFolder.add({ capture: 'Capture' }, 'capture').onChange(function () {
         const dataURL = captureSnapshot();
@@ -969,7 +1042,6 @@ function setupGUI() {
         downloadAllSnapshots();
     });
 
-    snapshotFolder.open();
 }
 
 function updateVariablesAndUniforms() {

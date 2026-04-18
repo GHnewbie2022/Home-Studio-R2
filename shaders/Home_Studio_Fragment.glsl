@@ -53,6 +53,24 @@ uniform float uCloudPanelEnabled; // 0.0 = off, 1.0 = on
 // R2-17 Cloud 漫射燈條（fixtureGroup=4）開關；4 支矩形長柱 emission=0 視覺幾何，真光源留 R3
 uniform float uCloudLightEnabled; // 0.0 = off, 1.0 = on
 
+// R2-18 Step 6 per-class roughness / metalness scale（三類金屬分離調控；非金屬不受影響）
+uniform float uIronDoorRoughnessScale;
+uniform float uIronDoorMetalnessScale;
+uniform float uStandRoughnessScale;
+uniform float uStandMetalnessScale;
+uniform float uStandPillarRoughnessScale;
+uniform float uStandPillarMetalnessScale;
+
+// R2-18 Phase 2：軌道+燈具本體束包（TRACK 軌道、LAMP_SHELL 吸頂燈殼、CLOUD_LIGHT 燈條、投射/廣角燈頭）
+uniform float uFixtureRoughness;
+uniform float uFixtureMetalness;
+
+// R2-18 fix17：地板磁磚（霧面磁磚，dielectric Fresnel + roughness blur）
+uniform float uFloorRoughness;
+
+// R2-18 fix19：間接光倍率（僅作用於 diffuseBounceMask 檢索路徑，不影響 direct NEE）
+uniform float uIndirectMultiplier;
+
 // R2-14 投射燈頭（4 盞傾斜圓柱；pivot 位於支架底，半徑 3cm、長 13.5cm；與 uTrackLightEnabled 共開關）
 uniform vec3 uTrackLampPos[4];
 uniform vec3 uTrackLampDir[4];
@@ -107,6 +125,27 @@ const vec3 rotColor[N_ROTATED] = vec3[N_ROTATED](
     vec3(0.80, 0.82, 0.85),       // C_STAND_PILLAR
     vec3(0.08, 0.08, 0.08)        // C_STAND
 );
+// R2-18 旋轉物件材質（SPEAKER 走 type 分支不依此；C_STAND / C_STAND_PILLAR 為金屬）
+const float rotRoughness[N_ROTATED] = float[N_ROTATED](
+    0.4,  // 左喇叭 SPEAKER
+    0.2,  // 左底座 C_STAND（金屬亮黑漆）
+    0.55, // 左支柱 C_STAND_PILLAR（霧面鋁）
+    0.2,  // 左頂板 C_STAND
+    0.4,  // 右喇叭 SPEAKER
+    0.2,  // 右底座 C_STAND
+    0.55, // 右支柱 C_STAND_PILLAR
+    0.2   // 右頂板 C_STAND
+);
+const float rotMetalness[N_ROTATED] = float[N_ROTATED](
+    0.0,  // 喇叭非金屬
+    1.0,  // C_STAND 金屬
+    1.0,  // C_STAND_PILLAR 金屬
+    1.0,
+    0.0,
+    1.0,
+    1.0,
+    1.0
+);
 
 vec3 rayOrigin, rayDirection;
 vec3 hitNormal, hitEmission, hitColor;
@@ -118,6 +157,9 @@ vec2 hitUV;
 float hitObjectID;
 int hitType = -100;
 float hitMeta;
+// R2-18 命中材質
+float hitRoughness;
+float hitMetalness;
 
 struct Quad { vec3 normal; vec3 v0; vec3 v1; vec3 v2; vec3 v3; vec3 emission; vec3 color; int type; };
 
@@ -318,18 +360,20 @@ void fetchBVHNode(int idx, out float idPrimitive, out vec3 minC, out float idRig
 	maxC         = p1.yzw;
 }
 
-// Box data: 4 pixels per box in tBoxDataTexture
-// pixel 4i:   [emission.rgb, type]
-// pixel 4i+1: [color.rgb, meta]
-// pixel 4i+2: [min.xyz, cullable]
-// pixel 4i+3: [max.xyz, fixtureGroup]  R2-14：新增 fixtureGroup 於末位（原保留）
+// Box data: 5 pixels per box in tBoxDataTexture (R2-18 起由 4 擴為 5)
+// pixel 5i:   [emission.rgb, type]
+// pixel 5i+1: [color.rgb, meta]
+// pixel 5i+2: [min.xyz, cullable]
+// pixel 5i+3: [max.xyz, fixtureGroup]  R2-14：新增 fixtureGroup 於末位
+// pixel 5i+4: [roughness, metalness, 0, 0]  R2-18：scalar roughness mix + metalness
 
-void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out float meta, out vec3 bMin, out vec3 bMax, out float cullable, out float fixtureGroup) {
-	int base = idx * 4;
+void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out float meta, out vec3 bMin, out vec3 bMax, out float cullable, out float fixtureGroup, out float roughness, out float metalness) {
+	int base = idx * 5;
 	vec4 p0 = texelFetch(tBoxDataTexture, ivec2(base, 0), 0);
 	vec4 p1 = texelFetch(tBoxDataTexture, ivec2(base + 1, 0), 0);
 	vec4 p2 = texelFetch(tBoxDataTexture, ivec2(base + 2, 0), 0);
 	vec4 p3 = texelFetch(tBoxDataTexture, ivec2(base + 3, 0), 0);
+	vec4 p4 = texelFetch(tBoxDataTexture, ivec2(base + 4, 0), 0);
 	emission = p0.xyz;
 	type     = int(p0.w);
 	color    = p1.xyz;
@@ -338,6 +382,8 @@ void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out 
 	bMax     = p3.xyz;
 	cullable = p2.w;
 	fixtureGroup = p3.w;
+	roughness    = p4.x;
+	metalness    = p4.y;
 }
 
 // R2-14：裝置開關 gating。關閉時 primary 與 secondary ray 皆跳過該 box，自動無陰影
@@ -359,9 +405,11 @@ bool isFixtureDisabled(float fixtureGroup)
 bool isBoxCulled(vec3 bmin, vec3 bmax, float cullable)
 {
 	if (uXrayEnabled < 0.5) return false;
-	// fix12：移除 primaryRay==0 提前 return，使 secondary ray 亦視剝離 box 為透明，
-	//        消除陰影殘跡。室內相機 uCamPos 在房內，下方四向判式之 cam 條件皆失敗，
-	//        isBoxCulled 仍返 false，室內打光表現不受影響。
+	// R2-18 fix20：解耦 X-ray 透視與間接光。secondary ray（NEE shadow + indirect bounce）不做 culling，
+	// 令被剝離之牆面對 secondary 仍為實體，indirect 反彈光正常回饋，避免陰影過暗。
+	// fix12 舊策略（secondary 亦透）已廢棄：其所欲消除之「陰影殘跡」於室內相機場景不會發生
+	// （uCamPos 在房內時下方四向判式本就全 false），只有室外觀察時 fix12 副作用才顯現為間接光流失。
+	if (primaryRay == 0) return false;
 	if (cullable < 0.5) return false;
 
 	float T = uCullThreshold;
@@ -398,6 +446,10 @@ float SceneIntersect( )
 
 	hitObjectID = -INFINITY;
 
+	// R2-18 防漏寫預設：hitRoughness/hitMetalness 若某 hit site 未明確寫入，不得 leak 自前一個更遠的 hit
+	hitRoughness = 1.0;
+	hitMetalness = 0.0;
+
 	// R2-11 光源幾何由圓柱承載（見下方區塊 5），ceilingLampQuad 僅作為 importance sampling PDF 目標
 
 	// 2) BVH traversal for boxes
@@ -425,8 +477,8 @@ float SceneIntersect( )
 			int boxIdx = int(idPrimitive);
 			vec3 boxEmission, boxColor, boxMin, boxMax;
 			int boxType;
-			float boxMeta, boxCullable, boxFixtureGroup;
-			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax, boxCullable, boxFixtureGroup);
+			float boxMeta, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness;
+			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness);
 
 			// R2-14：裝置關閉時 primary/secondary ray 皆跳過（自動無陰影）；R2-13 X-ray 剝離沿用
 			if (!isFixtureDisabled(boxFixtureGroup) && !isBoxCulled(boxMin, boxMax, boxCullable))
@@ -443,6 +495,8 @@ float SceneIntersect( )
 					if (boxIdx <= 31) hitColor *= uWallAlbedo;
 					hitType = boxType;
 					hitMeta = boxMeta;
+					hitRoughness = boxRoughness;
+					hitMetalness = boxMetalness;
 					hitBoxMin = boxMin;
 					hitBoxMax = boxMax;
 					// fix20：結構性 box（索引 0..31：地板/天花板/牆/樑/柱）統一 objectID=1，使邊界間 fwidth(objectID)=0，
@@ -463,7 +517,7 @@ float SceneIntersect( )
 	// 3) R2-6 旋轉物件
 	vec3 rObjOrigin, rObjDirection;
 
-	// helper macro: 標準 box 測試（底座、頂板）
+	// helper macro: 標準 box 測試（底座、頂板）— R2-18 Step 6：C_STAND 類 per-class scale
 	#define TEST_BOX(INV_MAT, IDX) { \
 		rObjOrigin = vec3(INV_MAT * vec4(rayOrigin, 1.0)); \
 		rObjDirection = vec3(INV_MAT * vec4(rayDirection, 0.0)); \
@@ -474,6 +528,8 @@ float SceneIntersect( )
 			hitEmission = vec3(0); \
 			hitColor = rotColor[IDX]; \
 			hitType = DIFF; \
+			hitRoughness = clamp(rotRoughness[IDX] * uStandRoughnessScale, 0.0, 1.0); \
+			hitMetalness = clamp(rotMetalness[IDX] * uStandMetalnessScale, 0.0, 1.0); \
 			hitObjectID = float(objectCount + 100 + IDX); \
 		} \
 	}
@@ -492,11 +548,13 @@ float SceneIntersect( )
 			hitEmission = vec3(0); \
 			hitColor = rotColor[IDX]; \
 			hitType = SPEAKER; \
+			hitRoughness = rotRoughness[IDX]; \
+			hitMetalness = rotMetalness[IDX]; \
 			hitObjectID = float(objectCount + 100 + IDX); \
 		} \
 	}
 
-	// helper macro: stadium 支柱測試
+	// helper macro: stadium 支柱測試 — R2-18 Step 6：C_STAND_PILLAR 類 per-class scale
 	#define TEST_PILLAR(INV_MAT, IDX) { \
 		rObjOrigin = vec3(INV_MAT * vec4(rayOrigin, 1.0)); \
 		rObjDirection = vec3(INV_MAT * vec4(rayDirection, 0.0)); \
@@ -507,6 +565,8 @@ float SceneIntersect( )
 			hitEmission = vec3(0); \
 			hitColor = rotColor[IDX]; \
 			hitType = DIFF; \
+			hitRoughness = clamp(rotRoughness[IDX] * uStandPillarRoughnessScale, 0.0, 1.0); \
+			hitMetalness = clamp(rotMetalness[IDX] * uStandPillarMetalnessScale, 0.0, 1.0); \
 			hitObjectID = float(objectCount + 100 + IDX); \
 		} \
 	}
@@ -531,6 +591,7 @@ float SceneIntersect( )
 			hitEmission = vec3(0);
 			hitColor = vec3(0.05, 0.05, 0.05); // 黑色橡膠
 			hitType = DIFF;
+			hitRoughness = 1.0; hitMetalness = 0.0; // R2-18：黑橡膠全粗糙非金屬，防 metalness leak
 			hitObjectID = float(objectCount + 200 + pi);
 		}
 	}
@@ -557,6 +618,7 @@ float SceneIntersect( )
 			hitColor = vec3(0.9, 0.9, 0.9);
 			hitType = LAMP_SHELL;
 		}
+		hitRoughness = 1.0; hitMetalness = 0.0; // R2-18：光源/燈殼非金屬
 		hitObjectID = float(objectCount + 300);
 	}
 
@@ -575,6 +637,7 @@ float SceneIntersect( )
 				hitEmission = vec3(0);
 				hitColor = vec3(0.85, 0.85, 0.85);
 				hitType = DIFF;
+				hitRoughness = uFixtureRoughness; hitMetalness = uFixtureMetalness; // R2-18 Phase 2：軌道+燈具束包
 				hitObjectID = float(objectCount + 400 + li);
 			}
 		}
@@ -595,6 +658,7 @@ float SceneIntersect( )
 				hitEmission = vec3(0);
 				hitColor = vec3(0.85, 0.85, 0.85);
 				hitType = DIFF;
+				hitRoughness = uFixtureRoughness; hitMetalness = uFixtureMetalness; // R2-18 Phase 2：軌道+燈具束包
 				hitObjectID = float(objectCount + 500 + li);
 			}
 		}
@@ -643,7 +707,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
-				mask = diffuseBounceMask;
+				mask = diffuseBounceMask * uIndirectMultiplier;
 				rayOrigin = diffuseBounceRayOrigin;
 				rayDirection = diffuseBounceRayDirection;
 
@@ -687,7 +751,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
-				mask = diffuseBounceMask;
+				mask = diffuseBounceMask * uIndirectMultiplier;
 				rayOrigin = diffuseBounceRayOrigin;
 				rayDirection = diffuseBounceRayDirection;
 
@@ -705,7 +769,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		{
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
-				mask = diffuseBounceMask;
+				mask = diffuseBounceMask * uIndirectMultiplier;
 				rayOrigin = diffuseBounceRayOrigin;
 				rayDirection = diffuseBounceRayDirection;
 
@@ -747,6 +811,15 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					hitColor = pow(texture(u150F, uv).rgb, vec3(2.2));
 				else
 					hitColor = pow(texture(u150B, uv).rgb, vec3(2.2));
+			}
+			// R2-18 Step 5：per-box hitMetalness 切金屬路徑（Step 6 GUI multiplier 可調）
+			if (rand() < hitMetalness) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
 			}
 			// 其他面保持 C_SPEAKER 顏色，以 DIFF 方式繼續
 			diffuseCount++;
@@ -810,12 +883,31 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				vec2 uv = vec2(-lp.z / hs.z * 0.5 + 0.5, lp.y / hs.y * 0.5 + 0.5);
 				hitColor = pow(texture(uIronDoorTex, uv).rgb, vec3(2.2));
 			}
-			// metalness=1.0：貼圖色調作為反射色，roughness=0.3 擾動反射方向
+			// R2-18 fix10：改為機率分支（rand() < ironM），消除 0.5 硬閾值，金屬度呈平滑漸變
+			float ironM = clamp(hitMetalness * uIronDoorMetalnessScale, 0.0, 1.0);
+			float ironR = clamp(hitRoughness * uIronDoorRoughnessScale, 0.0, 1.0);
+			if (rand() < ironM) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, ironR * ironR));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
+			}
+			// 漫射 fallback（uIronDoorMetalnessScale 拉低時）
+			diffuseCount++;
 			mask *= hitColor;
-			vec3 reflDir = reflect(rayDirection, nl);
-			vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
-			rayDirection = normalize(mix(reflDir, diffDir, 0.09)); // 0.3² = 0.09
+			bounceIsSpecular = FALSE;
 			rayOrigin = x + nl * uEPS_intersect;
+			if (diffuseCount == 1) {
+				diffuseBounceMask = mask;
+				diffuseBounceRayOrigin = rayOrigin;
+				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				willNeedDiffuseBounceRay = TRUE;
+			}
+			rayDirection = sampleQuadLight(x, nl, light, weight);
+			mask *= weight * 1.5;
+			sampleLight = TRUE;
 			continue;
 		}
 
@@ -837,7 +929,16 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				else
 					hitColor = pow(texture(u750B, uv).rgb, vec3(2.2));
 			}
-			// roughness 0.4, metalness 0.0：純漫反射
+			// R2-18 Step 5：per-box hitMetalness 切金屬路徑（Step 6 GUI multiplier 可調）
+			if (rand() < hitMetalness) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
+			}
+			// 預設 roughness 0.4, metalness 0.0：純漫反射
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
@@ -887,9 +988,11 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			else if (aN.y > 0.5)
 			{
 				// 法向沿 Y：uv.x 對應 X 軸，uv.y 對應 Z 軸（反向）
+				// R2-18 fix17：天花板 Cloud（hitNormal.y < 0）時 X 翻轉，令 LOGO 落右上角
 				float uxDen = thinIsX ? thinDenom : (2.0 * hs.x);
 				float uyDen = thinIsZ ? thinDenom : (2.0 * hs.z);
-				uv.x = 0.5 + lp.x / uxDen;
+				float uxSign = (hitNormal.y < 0.0) ? -1.0 : 1.0;
+				uv.x = 0.5 + uxSign * lp.x / uxDen;
 				uv.y = 0.5 + (-lp.z) / uyDen;
 			}
 			else
@@ -956,6 +1059,17 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 		if (hitType == TRACK)
 		{
+			// R2-18 Phase 2：軌道+燈具束包覆寫 + metal gate
+			hitRoughness = uFixtureRoughness;
+			hitMetalness = uFixtureMetalness;
+			if (rand() < hitMetalness) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
+			}
 			// R2-14 真修：軌道純白漫射，無孔、無貼圖、吃降噪
 			// 邏輯等同 DIFF，獨立分支避免未來再與插座材質糾纏
 			diffuseCount++;
@@ -1036,6 +1150,17 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				accumCol = mask * hitEmission;
 				break;
 			}
+			// R2-18 Phase 2：軌道+燈具束包覆寫 + metal gate
+			hitRoughness = uFixtureRoughness;
+			hitMetalness = uFixtureMetalness;
+			if (rand() < hitMetalness) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
+			}
 			// 以下與標準 DIFF 分支相同
 			diffuseCount++;
 			mask *= hitColor;
@@ -1057,6 +1182,17 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
     if (hitType == CLOUD_LIGHT)
     {
 			// R2-17 Cloud 漫射燈條：emission=0 視覺幾何，行為同純 DIFF；真光源（lumens / lightNormal / MIS）留 R3
+			// R2-18 Phase 2：軌道+燈具束包覆寫 + metal gate
+			hitRoughness = uFixtureRoughness;
+			hitMetalness = uFixtureMetalness;
+			if (rand() < hitMetalness) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
+			}
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
@@ -1076,6 +1212,29 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
     if (hitType == DIFF)
     {
+			// R2-18 fix17：地板磁磚 dielectric Fresnel 分支（hitObjectID=1 結構組 + 頂面 + bmax.y≈0）
+			// Schlick F0=0.04，rand()<F 走鏡面（roughness² blur），否則走下方漫射
+			bool isFloor = (hitObjectID < 1.5 && hitNormal.y > 0.5 && hitBoxMax.y < 0.1);
+			if (isFloor) {
+				float cosI = max(0.0, dot(-rayDirection, nl));
+				float F = 0.04 + 0.96 * pow(1.0 - cosI, 5.0);
+				if (rand() < F) {
+					vec3 reflDir = reflect(rayDirection, nl);
+					vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+					rayDirection = normalize(mix(reflDir, diffDir, uFloorRoughness * uFloorRoughness));
+					rayOrigin = x + nl * uEPS_intersect;
+					continue;
+				}
+			}
+			// R2-18 Step 4 金屬路徑切分：per-box hitMetalness 驅動，mix 權重 = roughness²
+			if (rand() < hitMetalness) {
+				mask *= hitColor;
+				vec3 reflDir = reflect(rayDirection, nl);
+				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+				rayOrigin = x + nl * uEPS_intersect;
+				continue;
+			}
 			diffuseCount++;
 
 			mask *= hitColor;
