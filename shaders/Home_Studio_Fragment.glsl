@@ -47,6 +47,9 @@ uniform float uTrackLightEnabled; // 0.0 = off, 1.0 = on
 // R2-15 南北廣角燈軌道（fixtureGroup=2）開關
 uniform float uWideTrackLightEnabled; // 0.0 = off, 1.0 = on
 
+// R2-16 Cloud 吸音板（fixtureGroup=3）開關；關閉時 6 片 box 於 shader 層整體跳過，吸頂燈位置 JS 端聯動
+uniform float uCloudPanelEnabled; // 0.0 = off, 1.0 = on
+
 // R2-14 投射燈頭（4 盞傾斜圓柱；pivot 位於支架底，半徑 3cm、長 13.5cm；與 uTrackLightEnabled 共開關）
 uniform vec3 uTrackLampPos[4];
 uniform vec3 uTrackLampDir[4];
@@ -339,6 +342,7 @@ bool isFixtureDisabled(float fixtureGroup)
 	if (fixtureGroup < 0.5) return false; // 基底幾何恆顯
 	if (fixtureGroup < 1.5) return uTrackLightEnabled < 0.5; // R2-14 群組 1
 	if (fixtureGroup < 2.5) return uWideTrackLightEnabled < 0.5; // R2-15 群組 2
+	if (fixtureGroup < 3.5) return uCloudPanelEnabled < 0.5; // R2-16 群組 3 Cloud 吸音板
 	return false;
 }
 
@@ -901,6 +905,33 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			hitColor = pow(rawTexCol, vec3(2.2)) * 0.7;
 
+			// R2-16 Cloud 吸音板 DASH 拼縫虛線（天花板向下面）
+			// 觸發：Box 中心 y > 2.7m（排除牆面吸音板）且命中面法線朝下
+			// Z 向縫 4 條（x = ±0.9 外邊界、±0.3 內縫）；X 向縫 3 條（z = -0.702, +0.498, +1.698）
+			// 週期 6cm：4cm 實 + 2cm 空；命中時 hitColor=vec3(1.0) 覆寫為純白
+			if (ctr.y > 2.7 && hitNormal.y < -0.5)
+			{
+				bool isLine = false;
+				if (hp.z > -0.702 && hp.z < 1.698)
+				{
+					if (abs(hp.x + 0.9) < 0.001 || abs(hp.x + 0.3) < 0.001 ||
+					    abs(hp.x - 0.3) < 0.001 || abs(hp.x - 0.9) < 0.001)
+					{
+						if (mod(hp.z + 10.0, 0.06) < 0.04) isLine = true;
+					}
+				}
+				if (hp.x > -0.9 && hp.x < 0.9)
+				{
+					if (abs(hp.z + 0.702) < 0.001 ||
+					    abs(hp.z - 0.498) < 0.001 ||
+					    abs(hp.z - 1.698) < 0.001)
+					{
+						if (mod(hp.x + 10.0, 0.06) < 0.04) isLine = true;
+					}
+				}
+				if (isLine) hitColor = vec3(1.0);
+			}
+
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
@@ -1067,12 +1098,17 @@ void SetupScene(void)
 
 	// R2-11 中央吸頂燈 — 向下的矩形 PDF 目標（僅作為 importance sampling 用，不在 SceneIntersect 中）
 	// 可見幾何由圓柱承載，圓柱底面為 LIGHT、頂/側為 DIFF 白色外殼
-	// 矩形外接圓柱底面圓（47×47cm at y=2.835，朝下）
+	// 矩形外接圓柱底面圓（47×47cm at y=uCeilingLampPos.y - uCeilingLampHalfH，朝下）
+	// R2-16：座標改由 uCeilingLampPos 動態計算，隨 uCloudPanelEnabled 聯動南北移動
+	float _rq = uCeilingLampRadius;
+	float _yq = uCeilingLampPos.y - uCeilingLampHalfH;
+	float _xc = uCeilingLampPos.x;
+	float _zc = uCeilingLampPos.z;
 	ceilingLampQuad = Quad( vec3(0.0, -1.0, 0.0),
-	                        vec3(-0.235, 2.835, 0.356),
-	                        vec3( 0.235, 2.835, 0.356),
-	                        vec3( 0.235, 2.835, 0.826),
-	                        vec3(-0.235, 2.835, 0.826),
+	                        vec3(_xc - _rq, _yq, _zc - _rq),
+	                        vec3(_xc + _rq, _yq, _zc - _rq),
+	                        vec3(_xc + _rq, _yq, _zc + _rq),
+	                        vec3(_xc - _rq, _yq, _zc + _rq),
 	                        L1, z, LIGHT);
 }
 

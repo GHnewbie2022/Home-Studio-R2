@@ -130,8 +130,19 @@ addBox([-1.000, 2.885, -1.1175], [1.000, 2.905, -1.0825], z3, C_WHITE, 13, 0, 0,
 addBox([-0.010, 2.845,  2.0900], [0.010, 2.885,  2.1100], z3, C_WHITE, 13, 0, 0, 2);  // 47 南支架
 addBox([-0.010, 2.845, -1.1100], [0.010, 2.885, -1.0900], z3, C_WHITE, 13, 0, 0, 2);  // 48 北支架
 
+// R2-16 Cloud 吸音板（6 片白色 GIK，3×2 矩陣 180×240cm，頂面 y=2.787 距天花板 11.8cm 空腔拉電線用）
+// 規格來源：SOP/R2：所有幾何物件.md R2-16 節；舊專案座標 L506-511；type=10 ACOUSTIC_PANEL；meta=1 白貼圖；cullable=1 頂向剝離
+// 單板 s=(0.6, 0.118, 1.2)：60cm(E-W) × 11.8cm(厚) × 120cm(N-S)
+// fixtureGroup=3 受 uCloudPanelEnabled 切換顯隱；關閉時吸頂燈回房間中央，開啟時北移至 z=-1.5 避開 Cloud 與 R2-15 北軌道
+addBox([-0.9, 2.669, -0.702], [-0.3, 2.787, 0.498], z3, C_GIK, 10, 1, 1, 3);  // 49 Cloud C1 北西
+addBox([-0.3, 2.669, -0.702], [ 0.3, 2.787, 0.498], z3, C_GIK, 10, 1, 1, 3);  // 50 Cloud C2 北中
+addBox([ 0.3, 2.669, -0.702], [ 0.9, 2.787, 0.498], z3, C_GIK, 10, 1, 1, 3);  // 51 Cloud C3 北東
+addBox([-0.9, 2.669,  0.498], [-0.3, 2.787, 1.698], z3, C_GIK, 10, 1, 1, 3);  // 52 Cloud C4 南西
+addBox([-0.3, 2.669,  0.498], [ 0.3, 2.787, 1.698], z3, C_GIK, 10, 1, 1, 3);  // 53 Cloud C5 南中
+addBox([ 0.3, 2.669,  0.498], [ 0.9, 2.787, 1.698], z3, C_GIK, 10, 1, 1, 3);  // 54 Cloud C6 南東
+
 // R2-8 吸音板
-const BASE_BOX_COUNT = 65; // R2-14 八 + R2-15 四：base 53 + 12 = 65
+const BASE_BOX_COUNT = 71; // R2-14 八 + R2-15 四 + R2-16 六：base 53 + 12 + 6 = 71
 
 // Config 1：3 片灰色（第一反射點）
 const panelConfig1 = [
@@ -659,8 +670,10 @@ function initSceneData() {
     pathTracingUniforms.uPuckRadius = { value: puckRadius };
     pathTracingUniforms.uPuckHalfH = { value: puckHalfH };
 
-    // R2-11 中央吸頂燈（圓柱燈體 + 底面發光 quad）
-    pathTracingUniforms.uCeilingLampPos = { value: new THREE.Vector3(0, 2.855, 0.591) };
+    // R2-11 中央吸頂燈（圓柱燈體 + 底面發光 quad）；R2-16 起位置隨 uCloudPanelEnabled 聯動
+    // Cloud ON → z=-1.5（跨過 R2-15 北軌道 z≈-1.1 之更北側，距北軌道 14.8cm、距北牆 13.9cm；非真實安裝位置，純示意有燈亮）
+    // Cloud OFF → z=0.591（原房間中央）
+    pathTracingUniforms.uCeilingLampPos = { value: new THREE.Vector3(0, 2.855, -1.5) };
     pathTracingUniforms.uCeilingLampRadius = { value: 0.235 };
     pathTracingUniforms.uCeilingLampHalfH = { value: 0.02 };
     // uLightEmission 初始值（4000K × 800 × 0.05764），每幀由 updateVariablesAndUniforms 更新
@@ -679,6 +692,9 @@ function initSceneData() {
 
     // R2-15 南北廣角燈軌道（fixtureGroup=2）開關；預設開
     pathTracingUniforms.uWideTrackLightEnabled = { value: 1.0 };
+
+    // R2-16 Cloud 吸音板（fixtureGroup=3）開關；預設開，吸頂燈同步北移避開 Cloud 遮擋
+    pathTracingUniforms.uCloudPanelEnabled = { value: 1.0 };
 
     // R2-14 fix02：4 盞圓柱燈頭靜態 uniforms（R3/R4 階段改為 UI 動態更新）
     // pivot = 支架底（y_pivot = trackBaseY - 0.076 = 2.819）；tilt=45° 由軌道中心朝外傾
@@ -826,6 +842,18 @@ function setupGUI() {
     cameraFolder.add({ wideTrackLight: true }, 'wideTrackLight').name('廣角燈軌道 (南北)').onChange(function (value) {
         if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
             pathTracingUniforms.uWideTrackLightEnabled.value = value ? 1.0 : 0.0;
+        }
+        wakeRender();
+    });
+
+    // R2-16 Cloud 吸音板 toggle（fixtureGroup=3）；吸頂燈位置隨之聯動避開遮擋
+    cameraFolder.add({ cloudPanel: true }, 'cloudPanel').name('Cloud 吸音板 (6片)').onChange(function (value) {
+        if (pathTracingUniforms && pathTracingUniforms.uCloudPanelEnabled) {
+            pathTracingUniforms.uCloudPanelEnabled.value = value ? 1.0 : 0.0;
+        }
+        // 吸頂燈聯動：ON → 北移 z=-1.5（越過 R2-15 北軌道，避開 Cloud 與軌道卡位）；OFF → 回房間中央 z=0.591
+        if (pathTracingUniforms && pathTracingUniforms.uCeilingLampPos) {
+            pathTracingUniforms.uCeilingLampPos.value.z = value ? -1.5 : 0.591;
         }
         wakeRender();
     });
