@@ -799,6 +799,9 @@ function initSceneData() {
     // R2-18 fix19：間接光倍率（1.0=原值，>1 提亮陰影區）；fix21 預設 1.7
     pathTracingUniforms.uIndirectMultiplier = { value: 1.7 };
 
+    // R3-0：legacy gain（shader 10 處 weight × magic 魔數抽離為 uniform，預設 1.5 維持 R2-18 亮度）
+    pathTracingUniforms.uLegacyGain = { value: 1.5 };
+
     // R2-14 fix02：4 盞圓柱燈頭靜態 uniforms（R3/R4 階段改為 UI 動態更新）
     // pivot = 支架底（y_pivot = trackBaseY - 0.076 = 2.819）；tilt=45° 由軌道中心朝外傾
     // 順序 NW, NE, SW, SE；NW/NE 對正北側牆吸音板 E1/W1，SW/SE 對正南側 E3/W3

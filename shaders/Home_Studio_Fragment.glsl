@@ -71,6 +71,9 @@ uniform float uFloorRoughness;
 // R2-18 fix19：間接光倍率（僅作用於 diffuseBounceMask 檢索路徑，不影響 direct NEE）
 uniform float uIndirectMultiplier;
 
+// R3-0：legacy gain（10 處 mask *= weight × magic 魔數集中管理；預設 1.5 維持 R2-18 亮度，為 R3-5 MIS 歸一做準備）
+uniform float uLegacyGain;
+
 // R2-14 投射燈頭（4 盞傾斜圓柱；pivot 位於支架底，半徑 3cm、長 13.5cm；與 uTrackLightEnabled 共開關）
 uniform vec3 uTrackLampPos[4];
 uniform vec3 uTrackLampDir[4];
@@ -834,7 +837,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -865,7 +868,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -906,7 +909,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -951,7 +954,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -1052,7 +1055,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -1084,7 +1087,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -1136,7 +1139,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 		}
@@ -1174,7 +1177,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
     }
@@ -1205,7 +1208,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
     }
@@ -1252,7 +1255,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			}
 
 			rayDirection = sampleQuadLight(x, nl, light, weight);
-			mask *= weight * 1.5;
+			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
 
