@@ -29,8 +29,8 @@ const C_DARK_VENT = [0.0, 0.0, 0.0];
 // === Scene Box Data (single source of truth) ===
 const sceneBoxes = [];
 const z3 = [0, 0, 0]; // zero emission shorthand
-// R2-14：第八參數 fixtureGroup 為「可切換裝置」分群標識（0 = 恆顯，1 = R2-14 東西投射燈軌道）
-// 預留為 R2-15/16/17 各階段之開關鎖鍊；值對應 shader 中 uTrackLightEnabled 等 uniform 的 gating
+// R2-14：第八參數 fixtureGroup 為「可切換裝置」分群標識（0 = 恆顯，1 = R2-14 東西投射燈軌道，2 = R2-15 南北廣角燈軌道）
+// 預留為 R2-16/17 各階段之開關鎖鍊；值對應 shader 中 uTrackLightEnabled / uWideTrackLightEnabled 等 uniform 的 gating
 function addBox(min, max, emission, color, type, meta, cullable, fixtureGroup) {
     sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0, cullable: cullable || 0, fixtureGroup: fixtureGroup || 0 });
 }
@@ -122,8 +122,16 @@ addBox([ 0.94, 2.819, -0.262], [ 0.96, 2.884, -0.242], z3, C_WHITE, 13, 0, 0, 1)
 addBox([-0.96, 2.819,  1.238], [-0.94, 2.884,  1.258], z3, C_WHITE, 13, 0, 0, 1);  // 43 SW 支架
 addBox([ 0.94, 2.819,  1.238], [ 0.96, 2.884,  1.258], z3, C_WHITE, 13, 0, 0, 1);  // 44 SE 支架
 
+// R2-15 南北側廣角燈軌道（type 13 = TRACK；fixtureGroup=2 受 uWideTrackLightEnabled 切換顯隱；陣列索引 45..48）
+// 規格來源：SOP/R2：所有幾何物件.md R2-15 節；s 為 FULL size
+// 軌道：c=(0, 2.895, ±|Z|), s=(2.0, 0.02, 0.035)；支架：c=(0, 2.865, ±|Z|), s=(0.02, 0.04, 0.02)
+addBox([-1.000, 2.885,  2.0825], [1.000, 2.905,  2.1175], z3, C_WHITE, 13, 0, 0, 2);  // 45 南軌（東西向 2m）
+addBox([-1.000, 2.885, -1.1175], [1.000, 2.905, -1.0825], z3, C_WHITE, 13, 0, 0, 2);  // 46 北軌
+addBox([-0.010, 2.845,  2.0900], [0.010, 2.885,  2.1100], z3, C_WHITE, 13, 0, 0, 2);  // 47 南支架
+addBox([-0.010, 2.845, -1.1100], [0.010, 2.885, -1.0900], z3, C_WHITE, 13, 0, 0, 2);  // 48 北支架
+
 // R2-8 吸音板
-const BASE_BOX_COUNT = 61; // R2-14：base 53 + 8 個投射燈軌道/支架 = 61
+const BASE_BOX_COUNT = 65; // R2-14 八 + R2-15 四：base 53 + 12 = 65
 
 // Config 1：3 片灰色（第一反射點）
 const panelConfig1 = [
@@ -669,6 +677,9 @@ function initSceneData() {
     // R2-14 東西投射燈軌道（fixtureGroup=1）開關；預設開
     pathTracingUniforms.uTrackLightEnabled = { value: 1.0 };
 
+    // R2-15 南北廣角燈軌道（fixtureGroup=2）開關；預設開
+    pathTracingUniforms.uWideTrackLightEnabled = { value: 1.0 };
+
     // R2-14 fix02：4 盞圓柱燈頭靜態 uniforms（R3/R4 階段改為 UI 動態更新）
     // pivot = 支架底（y_pivot = trackBaseY - 0.076 = 2.819）；tilt=45° 由軌道中心朝外傾
     // 順序 NW, NE, SW, SE；NW/NE 對正北側牆吸音板 E1/W1，SW/SE 對正南側 E3/W3
@@ -686,6 +697,20 @@ function initSceneData() {
         new THREE.Vector3( _lampSin, -_lampCos, 0), // NE: 向東外傾
         new THREE.Vector3(-_lampSin, -_lampCos, 0), // SW
         new THREE.Vector3( _lampSin, -_lampCos, 0)  // SE
+    ] };
+
+    // R2-15 廣角燈頭（2 盞矮胖圓柱，半徑 5cm、長 7.2cm）
+    // pivot = 支架底 y=2.845；tilt 20° 朝房間中心方向傾
+    // 形狀撈自舊專案 Path Tracking 260412a 5.4 Clarity.html
+    var _wideSin = Math.sin(20 * Math.PI / 180);
+    var _wideCos = Math.cos(20 * Math.PI / 180);
+    pathTracingUniforms.uTrackWideLampPos = { value: [
+        new THREE.Vector3(0.0, 2.845,  2.100), // 南 (z=2.1)
+        new THREE.Vector3(0.0, 2.845, -1.100)  // 北 (z=-1.1)
+    ] };
+    pathTracingUniforms.uTrackWideLampDir = { value: [
+        new THREE.Vector3(0, -_wideCos, -_wideSin), // 南燈向北（房中）傾
+        new THREE.Vector3(0, -_wideCos,  _wideSin)  // 北燈向南（房中）傾
     ] };
 
     if (mouseControl) {
@@ -794,6 +819,14 @@ function setupGUI() {
             pathTracingUniforms.uTrackLightEnabled.value = value ? 1.0 : 0.0;
         }
         console.log('[TrackLight] onChange fired, value =', value, '→ uTrackLightEnabled =', value ? 1.0 : 0.0);
+        wakeRender();
+    });
+
+    // R2-15 南北廣角燈軌道 toggle（fixtureGroup=2）
+    cameraFolder.add({ wideTrackLight: true }, 'wideTrackLight').name('廣角燈軌道 (南北)').onChange(function (value) {
+        if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
+            pathTracingUniforms.uWideTrackLightEnabled.value = value ? 1.0 : 0.0;
+        }
         wakeRender();
     });
 

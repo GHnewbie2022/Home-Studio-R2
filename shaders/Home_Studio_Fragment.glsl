@@ -44,9 +44,17 @@ uniform float uXrayEnabled; // 0.0 = off, 1.0 = on
 // R2-14 東西投射燈軌道（fixtureGroup=1）開關；關閉時 primary 與 secondary ray 皆跳過，自動無陰影
 uniform float uTrackLightEnabled; // 0.0 = off, 1.0 = on
 
+// R2-15 南北廣角燈軌道（fixtureGroup=2）開關
+uniform float uWideTrackLightEnabled; // 0.0 = off, 1.0 = on
+
 // R2-14 投射燈頭（4 盞傾斜圓柱；pivot 位於支架底，半徑 3cm、長 13.5cm；與 uTrackLightEnabled 共開關）
 uniform vec3 uTrackLampPos[4];
 uniform vec3 uTrackLampDir[4];
+
+// R2-15 廣角燈頭（2 盞矮胖圓柱；pivot 位於支架底 y=2.845，半徑 5cm、長 7.2cm；與 uWideTrackLightEnabled 共開關）
+// 形狀撈自舊專案 Path Tracking 260412a 5.4 Clarity.html：半徑 0.05m、長度 0.072m，比 R2-14 投射燈矮胖
+uniform vec3 uTrackWideLampPos[2];
+uniform vec3 uTrackWideLampDir[2];
 
 int primaryRay = 1; // 僅 bounces==0 為 1，其餘為 0
 
@@ -329,7 +337,8 @@ void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out 
 bool isFixtureDisabled(float fixtureGroup)
 {
 	if (fixtureGroup < 0.5) return false; // 基底幾何恆顯
-	if (fixtureGroup < 1.5 && uTrackLightEnabled < 0.5) return true; // R2-14
+	if (fixtureGroup < 1.5) return uTrackLightEnabled < 0.5; // R2-14 群組 1
+	if (fixtureGroup < 2.5) return uWideTrackLightEnabled < 0.5; // R2-15 群組 2
 	return false;
 }
 
@@ -558,6 +567,26 @@ float SceneIntersect( )
 				hitColor = vec3(0.85, 0.85, 0.85);
 				hitType = DIFF;
 				hitObjectID = float(objectCount + 400 + li);
+			}
+		}
+	}
+
+	// 7) R2-15 南北廣角燈頭（2 盞矮胖圓柱；關閉時 primary/secondary ray 皆跳過）
+	if (uWideTrackLightEnabled > 0.5)
+	{
+		for (int li = 0; li < 2; li++)
+		{
+			vec3 pa = uTrackWideLampPos[li];
+			vec3 pb = pa + uTrackWideLampDir[li] * 0.072;
+			d = CylinderSegmentIntersect(pa, pb, 0.05, rayOrigin, rayDirection, n);
+			if (d < t)
+			{
+				t = d;
+				hitNormal = n;
+				hitEmission = vec3(0);
+				hitColor = vec3(0.85, 0.85, 0.85);
+				hitType = DIFF;
+				hitObjectID = float(objectCount + 500 + li);
 			}
 		}
 	}
