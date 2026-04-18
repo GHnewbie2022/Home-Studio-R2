@@ -23,11 +23,11 @@
 ## 本地開發環境
 
 ```
-專案目錄：/Users/eajrockmacmini/Documents/VS Code/My Project/Home-Studio-3D/
+專案目錄：/Users/eajrockmacmini/Documents/VS Code/My Project/Home_Studio_3D/
 啟動 server：cd 上列目錄 && python3 -m http.server 9001
 驗證 URL：http://localhost:9001/Home_Studio.html
-          （勿加 Home-Studio-3D/ 前綴，server cwd 已在專案內）
-GitHub Pages：https://ghnewbie2022.github.io/Home-Studio-3D/Home_Studio.html
+          （勿加 Home_Studio_3D/ 前綴，server cwd 已在專案內）
+GitHub Pages：https://ghnewbie2022.github.io/Home_Studio_3D/Home_Studio.html
 當前 cache-buster：見 Home_Studio.html inline script tag，勿憑記憶複製
 ```
 
