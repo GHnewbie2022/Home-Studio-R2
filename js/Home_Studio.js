@@ -370,6 +370,14 @@ let trackLightState = null, trackLightCtrl = null;
 let wideTrackLightState = null, wideTrackLightCtrl = null;
 let colorTemperature = 4000;
 
+// ---------------- R3-2 Per-light-group Color Temperature State ----------------
+// R3-2 階段以 JS 狀態儲存每光源群組色溫（CPU 端 kelvinToRGB 後寫入 uCloudEmission 等 uniform）；
+// R3-5 Many-Light MIS 若需 per-sample 色溫調變，屆時再升為 uniform（escape hatch）。
+const R3_DEFAULT_K = 4000;
+let cloudKelvin = R3_DEFAULT_K;
+let trackKelvin = [R3_DEFAULT_K, R3_DEFAULT_K, R3_DEFAULT_K, R3_DEFAULT_K];
+let trackWideKelvin = [R3_DEFAULT_K, R3_DEFAULT_K];
+
 // ---------------- R3-1 Photometry Pipeline ----------------
 /**
  * Luminous flux (lm) + FULL beam angle (deg, 邊到邊全錐角) → peak axial candela.
@@ -529,39 +537,68 @@ function downloadAllSnapshots() {
     });
 }
 
-function kelvinToRGB(kelvin) {
-    const temp = kelvin / 100;
-    let r, g, b;
+// ==================== R3-2: 色溫→RGB 換算 ====================
+// PCHIP (Fritsch-Carlson 1980) monotonic cubic Hermite 插值。
+// 錨點：Mitchell Charity blackbody sRGB table
+//   來源 URL：http://www.vendian.org/mncharity/dir3/blackbody/UnstableURLs/bbr_color.html
+// 回傳 sRGB 域 [0,1] 的 {r, g, b} 物件（保 L1154 R2-11 吸頂燈 ABI 相容）。
+// 消費端若進 path tracer radiance 需自行 pow(x, 2.2) 轉 linear（延後到 R3-3 接入時處理）。
+// R3-2 unit test：docs/tests/r3-2-kelvin.test.js；改動本函式須同步更新該 test 檔函式本體副本。
+const KELVIN_ANCHORS = [2000, 3000, 4000, 6500, 10000];
+const KELVIN_RGB_TABLE = [
+    { r: 1.00, g: 0.54, b: 0.17 },  // 2000K
+    { r: 1.00, g: 0.75, b: 0.42 },  // 3000K
+    { r: 1.00, g: 0.89, b: 0.76 },  // 4000K
+    { r: 1.00, g: 0.99, b: 1.00 },  // 6500K (D65)
+    { r: 0.79, g: 0.87, b: 1.00 },  // 10000K
+];
 
-    if (temp <= 66) {
-        r = 255;
-    } else {
-        r = temp - 60;
-        r = 329.698727446 * Math.pow(r, -0.1332047592);
-        r = Math.max(0, Math.min(255, r));
+function _pchipTangents(xs, ys) {
+    const n = xs.length;
+    const dk = new Array(n - 1);
+    for (let k = 0; k < n - 1; k++) {
+        dk[k] = (ys[k + 1] - ys[k]) / (xs[k + 1] - xs[k]);
     }
-
-    if (temp <= 66) {
-        g = temp;
-        g = 99.4708025861 * Math.log(g) - 161.1195681661;
-        g = Math.max(0, Math.min(255, g));
-    } else {
-        g = temp - 60;
-        g = 288.1221695283 * Math.pow(g, -0.0755148492);
-        g = Math.max(0, Math.min(255, g));
+    const m = new Array(n);
+    m[0] = dk[0];
+    m[n - 1] = dk[n - 2];
+    for (let k = 1; k < n - 1; k++) {
+        if (dk[k - 1] * dk[k] <= 0) m[k] = 0;
+        else m[k] = (dk[k - 1] + dk[k]) / 2;
     }
+    return m;
+}
 
-    if (temp >= 66) {
-        b = 255;
-    } else if (temp <= 19) {
-        b = 0;
-    } else {
-        b = temp - 10;
-        b = 138.5177312231 * Math.log(b) - 305.0447927307;
-        b = Math.max(0, Math.min(255, b));
+const _KELVIN_TAN_R = _pchipTangents(KELVIN_ANCHORS, KELVIN_RGB_TABLE.map(c => c.r));
+const _KELVIN_TAN_G = _pchipTangents(KELVIN_ANCHORS, KELVIN_RGB_TABLE.map(c => c.g));
+const _KELVIN_TAN_B = _pchipTangents(KELVIN_ANCHORS, KELVIN_RGB_TABLE.map(c => c.b));
+
+function _pchipEval(K, channel, tangents) {
+    if (K <= KELVIN_ANCHORS[0]) return KELVIN_RGB_TABLE[0][channel];
+    if (K >= KELVIN_ANCHORS[KELVIN_ANCHORS.length - 1]) {
+        return KELVIN_RGB_TABLE[KELVIN_ANCHORS.length - 1][channel];
     }
+    let k = 0;
+    while (k < KELVIN_ANCHORS.length - 1 && K > KELVIN_ANCHORS[k + 1]) k++;
+    const x0 = KELVIN_ANCHORS[k], x1 = KELVIN_ANCHORS[k + 1];
+    const y0 = KELVIN_RGB_TABLE[k][channel], y1 = KELVIN_RGB_TABLE[k + 1][channel];
+    const m0 = tangents[k], m1 = tangents[k + 1];
+    const h = x1 - x0;
+    const t = (K - x0) / h;
+    const t2 = t * t, t3 = t2 * t;
+    const h00 = 2 * t3 - 3 * t2 + 1;
+    const h10 = t3 - 2 * t2 + t;
+    const h01 = -2 * t3 + 3 * t2;
+    const h11 = t3 - t2;
+    return h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1;
+}
 
-    return { r: r / 255, g: g / 255, b: b / 255 };
+function kelvinToRGB(K) {
+    return {
+        r: _pchipEval(K, 'r', _KELVIN_TAN_R),
+        g: _pchipEval(K, 'g', _KELVIN_TAN_G),
+        b: _pchipEval(K, 'b', _KELVIN_TAN_B),
+    };
 }
 
 let lockedPreset = null;
@@ -904,7 +941,16 @@ function initSceneData() {
 }
 
 function computeLightEmissions() {
-    // R3-1: pipeline only — R3-3/4/5 will fill real values.
+    // R3-2: 色溫狀態已建立（cloudKelvin / trackKelvin[] / trackWideKelvin[]），
+    //       但 shader 光路尚未接，emission 值保持 0（R3-1 uR3EmissionGate=0 凍結）。
+    //
+    // R3-3 將改為（範例，勿在 R3-2 啟用）：
+    //   const rgb = kelvinToRGB(cloudKelvin);
+    //   const mag = cloudRadiance;  // R3-1 管線輸出（lumens→watts→radiance）
+    //   pathTracingUniforms.uCloudEmission.value[i].set(
+    //       mag * rgb.r, mag * rgb.g, mag * rgb.b
+    //   );
+    //   注意：rgb 為 sRGB 域，進 path tracer radiance 需 pow(.,2.2) 轉 linear
     for (let i = 0; i < 4; i++) {
         pathTracingUniforms.uCloudEmission.value[i].set(0, 0, 0);
         pathTracingUniforms.uTrackEmission.value[i].set(0, 0, 0);
@@ -1057,6 +1103,37 @@ function setupGUI() {
     colorTempCtrl.disable();
     colorTempCtrl.name('colorTemp (R3-6 校準)');
     attachMetaClickReset(colorTempCtrl, 4000);
+
+    // R3-2: R3 Color Temperature 子資料夾（per-light-group kelvin slider）
+    const r3KelvinFolder = lightFolder.addFolder('R3 Color Temperature');
+    r3KelvinFolder.open();
+
+    const cloudKelvinCtrl = r3KelvinFolder.add({ cloudK: R3_DEFAULT_K }, 'cloudK', 2700, 6500, 100)
+        .name('Cloud 色溫 (K)')
+        .onChange(function (v) {
+            cloudKelvin = v;
+            computeLightEmissions();
+            wakeRender();
+        });
+    attachMetaClickReset(cloudKelvinCtrl, R3_DEFAULT_K);
+
+    const trackKelvinCtrl = r3KelvinFolder.add({ trackK: R3_DEFAULT_K }, 'trackK', 2700, 6500, 100)
+        .name('Track 色溫 (4 盞共用)')
+        .onChange(function (v) {
+            for (let i = 0; i < trackKelvin.length; i++) trackKelvin[i] = v;
+            computeLightEmissions();
+            wakeRender();
+        });
+    attachMetaClickReset(trackKelvinCtrl, R3_DEFAULT_K);
+
+    const trackWideKelvinCtrl = r3KelvinFolder.add({ trackWideK: R3_DEFAULT_K }, 'trackWideK', 2700, 6500, 100)
+        .name('TrackWide 色溫 (2 盞共用)')
+        .onChange(function (v) {
+            for (let i = 0; i < trackWideKelvin.length; i++) trackWideKelvin[i] = v;
+            computeLightEmissions();
+            wakeRender();
+        });
+    attachMetaClickReset(trackWideKelvinCtrl, R3_DEFAULT_K);
 
     // R2-UI：最大反彈次數（1~14，預設 4），shader 內動態 break 控制實際 bounce 數
     const bouncesObject = { max_bounces: 4 };
