@@ -336,6 +336,24 @@ function applyPanelConfig(config) {
     // 呼叫會拋 TypeError 中斷初始化 → GUI 消失、canvas 全黑。
     // 故 R3-1 只保留 initSceneData L894 uniform 宣告後的單次呼叫，
     // R3-3 接手時再於此處重建 Config 切換 dirty-flag 鉤點。
+
+    // R3-2-fix01：Config 切換 → 吸頂燈滑桿 + R3 4 dropdown 的 enable/disable 同步。
+    syncR3ColorUIEnable();
+}
+
+// R3-2-fix01：依 currentPanelConfig 同步吸頂燈滑桿與 R3 4 dropdown 的 enable/disable。
+// Config 1/2 = 吸頂燈撐場景 → 滑桿 enable、R3 dropdown disable。
+// Config 3   = 物理上吸頂燈應移除（本階段暫保留發光，UI 鎖）→ 滑桿 disable、R3 dropdown enable。
+function syncR3ColorUIEnable() {
+    const isConfig3 = (currentPanelConfig === 3);
+    if (colorTempCtrl && colorTempCtrl.enable) {
+        if (isConfig3) colorTempCtrl.disable(); else colorTempCtrl.enable();
+    }
+    const r3Ctrls = [cloudColorCtrl, trackColorCtrl, trackWideColorSouthCtrl, trackWideColorNorthCtrl];
+    r3Ctrls.forEach(function (c) {
+        if (!c || !c.enable) return;
+        if (isConfig3) c.enable(); else c.disable();
+    });
 }
 
 // R2-6 旋轉物件定義（center, halfSize, rotY, color）
@@ -370,13 +388,26 @@ let trackLightState = null, trackLightCtrl = null;
 let wideTrackLightState = null, wideTrackLightCtrl = null;
 let colorTemperature = 4000;
 
-// ---------------- R3-2 Per-light-group Color Temperature State ----------------
-// R3-2 階段以 JS 狀態儲存每光源群組色溫（CPU 端 kelvinToRGB 後寫入 uCloudEmission 等 uniform）；
-// R3-5 Many-Light MIS 若需 per-sample 色溫調變，屆時再升為 uniform（escape hatch）。
-const R3_DEFAULT_K = 4000;
-let cloudKelvin = R3_DEFAULT_K;
-let trackKelvin = [R3_DEFAULT_K, R3_DEFAULT_K, R3_DEFAULT_K, R3_DEFAULT_K];
-let trackWideKelvin = [R3_DEFAULT_K, R3_DEFAULT_K];
+// ---------------- R3-2-fix01 色溫 mode state（三檔 preset + 商品規格映射）----------------
+// mode 值依商品規格離散化（docs/R3_燈具產品規格.md）；三方對照（舊專案 HTML / 商品規格 / 本專案）一致。
+// trackKelvin[0..3] 對應 NW / NE / SW / SE（見 L909-914 uTrackLampPos 順序）。
+// trackWideKelvin[0]=南（z=2.1）、[1]=北（z=-1.1）（見 L927-930 uTrackWideLampPos 順序）。
+const CLOUD_MODE_K = { WARM: 3000, NEUTRAL: 4000, COLD: 6500 };  // LED 軟條燈（4 款取 3）
+const TRACK_MODE_K = { WARM: 3000, NEUTRAL: 4000, COLD: 6000 };  // 22W COB 軌道燈
+const WIDE_MODE_K  = { WARM: 3000, NEUTRAL: 4000, COLD: 6000 };  // 25W 廣角燈
+let cloudColorMode      = 'NEUTRAL';
+let trackColorMode      = 'ALL_NATURAL';
+let trackWideColorSouth = 'NEUTRAL';
+let trackWideColorNorth = 'NEUTRAL';
+let cloudKelvin     = CLOUD_MODE_K.NEUTRAL;
+let trackKelvin     = [TRACK_MODE_K.NEUTRAL, TRACK_MODE_K.NEUTRAL, TRACK_MODE_K.NEUTRAL, TRACK_MODE_K.NEUTRAL];
+let trackWideKelvin = [WIDE_MODE_K.NEUTRAL, WIDE_MODE_K.NEUTRAL];
+// GUI controller refs（供 applyPanelConfig → syncR3ColorUIEnable 聯動 enable/disable）
+let colorTempCtrl            = null;
+let cloudColorCtrl           = null;
+let trackColorCtrl           = null;
+let trackWideColorSouthCtrl  = null;
+let trackWideColorNorthCtrl  = null;
 
 // ---------------- R3-1 Photometry Pipeline ----------------
 /**
@@ -1096,44 +1127,81 @@ function setupGUI() {
     brightnessCtrl.name('brightness (R3-6 校準)');
     attachMetaClickReset(brightnessCtrl, 900);
 
-    const colorTempCtrl = lightFolder.add({ colorTemp: 4000 }, 'colorTemp', 2700, 6500, 100).onChange(function (value) {
-        colorTemperature = value;
-        wakeRender();
-    });
-    colorTempCtrl.disable();
-    colorTempCtrl.name('colorTemp (R3-6 校準)');
+    // R3-2-fix01：吸頂燈色溫滑桿（R2-11 中央吸頂燈 consumer at L1231）。
+    // Config 1/2 可拉動、Config 3 鎖住（由 applyPanelConfig → syncR3ColorUIEnable 切換）。
+    colorTempCtrl = lightFolder.add({ colorTemp: 4000 }, 'colorTemp', 2700, 6500, 100)
+        .name('吸頂燈色溫 (K)')
+        .onChange(function (value) {
+            colorTemperature = value;
+            wakeRender();
+        });
     attachMetaClickReset(colorTempCtrl, 4000);
 
-    // R3-2: R3 Color Temperature 子資料夾（per-light-group kelvin slider）
-    const r3KelvinFolder = lightFolder.addFolder('R3 Color Temperature');
-    r3KelvinFolder.open();
+    // R3-2-fix01：R3 Color Temperature 子資料夾 — 4 個 dropdown preset。
+    // 商品規格映射見上方 CLOUD_MODE_K / TRACK_MODE_K / WIDE_MODE_K。
+    // Config 1/2 disable、Config 3 enable（與吸頂燈滑桿反向聯動）。
+    const r3ColorFolder = lightFolder.addFolder('R3 Color Temperature');
+    r3ColorFolder.open();
 
-    const cloudKelvinCtrl = r3KelvinFolder.add({ cloudK: R3_DEFAULT_K }, 'cloudK', 2700, 6500, 100)
-        .name('Cloud 色溫 (K)')
-        .onChange(function (v) {
-            cloudKelvin = v;
-            computeLightEmissions();
+    const CLOUD_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
+    const CLOUD_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
+    cloudColorCtrl = r3ColorFolder
+        .add({ c: CLOUD_MODE_TO_LABEL[cloudColorMode] }, 'c', ['暖', '自然', '冷'])
+        .name('Cloud漫射燈')
+        .onChange(function (label) {
+            cloudColorMode = CLOUD_LABEL_TO_MODE[label];
+            cloudKelvin = CLOUD_MODE_K[cloudColorMode];
             wakeRender();
         });
-    attachMetaClickReset(cloudKelvinCtrl, R3_DEFAULT_K);
 
-    const trackKelvinCtrl = r3KelvinFolder.add({ trackK: R3_DEFAULT_K }, 'trackK', 2700, 6500, 100)
-        .name('Track 色溫 (4 盞共用)')
-        .onChange(function (v) {
-            for (let i = 0; i < trackKelvin.length; i++) trackKelvin[i] = v;
-            computeLightEmissions();
+    const TRACK_LABEL_TO_MODE = {
+        '全暖': 'ALL_WARM', '全自然': 'ALL_NATURAL', '全冷': 'ALL_COLD',
+        '北暖南冷': 'WARM_COLD', '北冷南暖': 'COLD_WARM'
+    };
+    const TRACK_MODE_TO_LABEL = {
+        'ALL_WARM': '全暖', 'ALL_NATURAL': '全自然', 'ALL_COLD': '全冷',
+        'WARM_COLD': '北暖南冷', 'COLD_WARM': '北冷南暖'
+    };
+    trackColorCtrl = r3ColorFolder
+        .add({ t: TRACK_MODE_TO_LABEL[trackColorMode] }, 't',
+             ['全暖', '全自然', '全冷', '北暖南冷', '北冷南暖'])
+        .name('東西軌道燈')
+        .onChange(function (label) {
+            trackColorMode = TRACK_LABEL_TO_MODE[label];
+            const W = TRACK_MODE_K.WARM, N = TRACK_MODE_K.NEUTRAL, C = TRACK_MODE_K.COLD;
+            // trackKelvin[0..3] 對應 NW / NE / SW / SE；北=0,1、南=2,3。
+            switch (trackColorMode) {
+                case 'ALL_WARM':    trackKelvin[0]=W; trackKelvin[1]=W; trackKelvin[2]=W; trackKelvin[3]=W; break;
+                case 'ALL_NATURAL': trackKelvin[0]=N; trackKelvin[1]=N; trackKelvin[2]=N; trackKelvin[3]=N; break;
+                case 'ALL_COLD':    trackKelvin[0]=C; trackKelvin[1]=C; trackKelvin[2]=C; trackKelvin[3]=C; break;
+                case 'WARM_COLD':   trackKelvin[0]=W; trackKelvin[1]=W; trackKelvin[2]=C; trackKelvin[3]=C; break;
+                case 'COLD_WARM':   trackKelvin[0]=C; trackKelvin[1]=C; trackKelvin[2]=W; trackKelvin[3]=W; break;
+            }
             wakeRender();
         });
-    attachMetaClickReset(trackKelvinCtrl, R3_DEFAULT_K);
 
-    const trackWideKelvinCtrl = r3KelvinFolder.add({ trackWideK: R3_DEFAULT_K }, 'trackWideK', 2700, 6500, 100)
-        .name('TrackWide 色溫 (2 盞共用)')
-        .onChange(function (v) {
-            for (let i = 0; i < trackWideKelvin.length; i++) trackWideKelvin[i] = v;
-            computeLightEmissions();
+    const WIDE_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
+    const WIDE_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
+    trackWideColorSouthCtrl = r3ColorFolder
+        .add({ s: WIDE_MODE_TO_LABEL[trackWideColorSouth] }, 's', ['暖', '自然', '冷'])
+        .name('南北廣角燈 南')
+        .onChange(function (label) {
+            trackWideColorSouth = WIDE_LABEL_TO_MODE[label];
+            trackWideKelvin[0] = WIDE_MODE_K[trackWideColorSouth];  // [0]=南
             wakeRender();
         });
-    attachMetaClickReset(trackWideKelvinCtrl, R3_DEFAULT_K);
+
+    trackWideColorNorthCtrl = r3ColorFolder
+        .add({ n: WIDE_MODE_TO_LABEL[trackWideColorNorth] }, 'n', ['暖', '自然', '冷'])
+        .name('南北廣角燈 北')
+        .onChange(function (label) {
+            trackWideColorNorth = WIDE_LABEL_TO_MODE[label];
+            trackWideKelvin[1] = WIDE_MODE_K[trackWideColorNorth];  // [1]=北
+            wakeRender();
+        });
+
+    // 4 dropdown 建構完後立即依 currentPanelConfig 同步 enable/disable 初始狀態。
+    syncR3ColorUIEnable();
 
     // R2-UI：最大反彈次數（1~14，預設 4），shader 內動態 break 控制實際 bounce 數
     const bouncesObject = { max_bounces: 4 };
