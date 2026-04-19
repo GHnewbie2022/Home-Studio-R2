@@ -1,0 +1,51 @@
+R3-6 AC-M6 三源 gate grep 證據（cache buster ?v=r3-6-fix03-mis-math）
+shader: shaders/Home_Studio_Fragment.glsl (post Phase-3 MIS math)
+
+==[ uCloudLightEnabled < 0.5 ]==（AC-M6 要求 ≥ 3 次）
+L330: sampleStochasticLight11 NEE pool gate (idx 7-10 throughput=0)
+L590: objectIsCulled fixtureGroup 4 → primary-hit blocker
+L1679: LIGHT full branch BSDF-indirect MIS 新增 gate（！(< 0.5) 表達 skip 條件）
+總計: 3 → PASS
+
+==[ uTrackLightEnabled < 0.5 ]==（AC-M6 要求 ≥ 2 次）
+L279: sampleStochasticLight11 NEE pool gate (idx 1-4 throughput=0)
+L587: objectIsCulled fixtureGroup 1 → primary-hit blocker
+總計: 2 → PASS
+
+==[ uWideTrackLightEnabled < 0.5 ]==（AC-M6 要求 ≥ 2 次）
+L306: sampleStochasticLight11 NEE pool gate (idx 5-6 throughput=0)
+L588: objectIsCulled fixtureGroup 2 → primary-hit blocker
+總計: 2 → PASS
+
+==[ uCeilingEnabled ]==（AC-M6 要求不存在）
+grep 結果: 0 matches → PASS（ceiling quadLight always-on）
+
+==[ misPowerWeight ]==（AC-M3 要求 ≥ 2 次於 ceiling + Cloud 各一 BSDF-hit 分支，且 TRACK/SPEAKER/IRON_DOOR 分支無）
+定義點: L217 float misPowerWeight(float p1, float p2)
+使用點:
+  L1003: LIGHT (ceiling) 分支 NEE-hit w_nee
+  L1020: LIGHT (ceiling) 分支 BSDF-indirect w_bsdf
+  L1142: CLOUD_LIGHT 快速 NEE 路徑 w_nee
+  L1667: CLOUD_LIGHT 完整分支 NEE-hit w_nee
+  L1693: CLOUD_LIGHT 完整分支 BSDF-indirect w_bsdf
+總計: 5 使用點（4 NEE + 2 BSDF, ceiling ×2、Cloud ×3）→ AC-M3 數量 PASS
+
+TRACK_LIGHT / TRACK_WIDE_LIGHT / IRON_DOOR / SPEAKER / WOOD_DOOR 分支內:
+  grep "misPowerWeight" 結果為 0 ✅ AC-V4 cone-leak 守門
+
+==[ sampleStochasticLight11 簽名升 6 args ]==（AC-M2）
+定義: L252 vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput, out float pdfNeeOmega, out int pickedIdx)
+呼叫點 grep 結果: 10 處全更新為 6 args → PASS
+
+==[ uR3MisEnabled ]==（AC-M4 要求 shader ≥ 3 處分支條件 + JS uniform + GUI hook）
+shader grep 結果: 8 處（uniform 宣告 + 6 處 > 0.5 分支條件 + DCE-sink）→ PASS
+JS uniform: pathTracingUniforms.uR3MisEnabled = { value: 1.0 } 宣告 + throw-first 守門
+GUI hook: lightFolder checkbox 'R3-6 MIS 啟用' callback 調用 wakeRender()
+
+==[ AC-M1 shader compile ]==
+console 首張 Cam 3 876 spp 無 GLSL error（驗證於 Phase 3 reload）→ PASS
+
+==[ AC-M5 rollback pixel diff ]==
+uR3MisEnabled.value = 0 → Cam 1 1000 spp 肉眼與 R3-5b baseline 等價（未 readback pixel 精準量測，但視覺一致）
+閾值 < 2/255 99th + mean abs < 0.3/255：需 Phase 7 最終對比時以 Python/Canvas pixel sampling 精確量測
+目前狀態: 視覺等價 → 定性 PASS，待 Phase 7 定量驗證

@@ -73,6 +73,11 @@ uniform float uIndirectMultiplier;
 
 // R3-0：legacy gain（10 處 mask *= weight × magic 魔數集中管理；預設 1.5 維持 R2-18 亮度，為 R3-5 MIS 歸一做準備）
 uniform float uLegacyGain;
+// R3-6：MIS Phase-1 全局閘門（ceiling quadLight + Cloud 4 rod = 5 DIFF-emitters power heuristic β=2）
+//   uR3MisEnabled < 0.5 → bypass MIS 回 R3-5b 肉眼等價路徑（AC-M5 pixel diff < 2/255 99th）
+//   uR3MisPickMode > 0.5 → 乙案 power-proportional CDF light pick（R3-7 預留空殼，R3-6 不啟用）
+uniform float uR3MisEnabled;
+uniform float uR3MisPickMode;
 uniform vec3 uCloudEmission[4];
 uniform vec3 uTrackEmission[4];
 uniform vec3 uTrackWideEmission[2];
@@ -205,20 +210,65 @@ Quad ceilingLampQuad; // R2-11 向下矩形光 importance sampling PDF 目標（
 
 #include <pathtracing_sample_quad_light>
 
+// R3-6：MIS Phase-1 helpers（power heuristic β=2；Veach 1997 thesis §9.2.4）
+// scope：ceiling quadLight (NEE pool idx 0) + Cloud 4 rod (idx 7-10) = 5 DIFF-emitters
+// Track/Wide 6 盞（idx 1-6）BSDF-hit 維持 R3-5b `bounceIsSpecular == TRUE` 直接累加，不套 MIS（避 cone 外能量洩漏）。
+// 使用 p*p（非 pow(p, 2.0)）：Apple-M / Mesa fp32 pow 走 exp2(log2(x)*2) ~1 ULP 精度損失；p*p 單指令 fma <0.5 ULP。
+float misPowerWeight(float p1, float p2)
+{
+	float p1sq = p1 * p1;
+	float p2sq = p2 * p2;
+	float denom = p1sq + p2sq;
+	if (denom < 1e-12) return 0.5; // p1 = p2 = 0 特判（S3 pre-mortem）
+	return p1sq / denom;
+}
+float cosWeightedPdf(vec3 dir, vec3 normal)
+{
+	// Lambertian 於 direction 之 solid-angle PDF = cos(θ) / π（θ 為與 normal 夾角）
+	return max(0.0, dot(dir, normal)) * ONE_OVER_PI;
+}
+float pdfNeeForLight(vec3 x, vec3 lightPoint, vec3 lightNormal, float lightArea)
+{
+	// 給定 shade-point x 與 emitter 表面樣本 (lightPoint, lightNormal, lightArea)，
+	// 回傳 uniform light-pick (1/11) 下的 solid-angle PDF。
+	//   p_ω = (1/11) · dist² / (cos_light · A_face)
+	// U4：lightArea / cosLight 加 1e-6 / 1e-12 denom 守門防 NaN / Inf。
+	vec3 toLight = lightPoint - x;
+	float dist2 = max(dot(toLight, toLight), 1e-4);
+	float cosLight = max(1e-6, dot(-normalize(toLight), lightNormal));
+	float safeArea = max(lightArea, 1e-6);
+	return (1.0 / 11.0) * (dist2 / (cosLight * safeArea));
+}
+// R3-6：Cloud rod 45° 對角面幾何面積（MIS p_nee 用，radiometric uCloudFaceArea[] 不動）
+// 對角面 = 「外長側 + +Y 頂」組合之 45° 對角投影，長 × √2 補償（R3-5b fix05 對角 Lambertian pattern）
+// 僅供 R3-6 reverse-NEE PDF 計算，不影響 sampleStochasticLight11 throughput baked path。
+const float CLOUD_DIAGONAL_FACE_AREA_SCALE = 1.4142135623730951; // √2
+
 // R3-5b：11 選 1 stochastic NEE（吸頂 quadLight[0] + 軌道 spot 4 盞 + 軌道 wide 2 盞 + Cloud rod 4 支，selectPdf=1/11）
 // 與 sampleQuadLight 簽名差異：throughput 升 vec3 以承載 track / track-wide / cloud 候選之 emit baked + 色溫權重；
 // quadLight 候選之 throughput = vec3(scalar_weight / selectPdf)（grey），與既有 mask × weight × uLegacyGain 流程相容。
 // 命中 TRACK_LIGHT / TRACK_WIDE_LIGHT / CLOUD_LIGHT 時依 sampleLight 旗標分流：emit 已於此處 baked → branch 內僅 accumCol += mask。
-vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
+// R3-6：簽名升 6 args，新增 out `pdfNeeOmega` (solid-angle PDF) 與 `pickedIdx`（0..10），供 MIS heuristic + per-light-class observability。
+vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput, out float pdfNeeOmega, out int pickedIdx)
 {
 	int neeIdx = int(floor(rng() * 11.0));
 	neeIdx = clamp(neeIdx, 0, 10);
 	float selectPdf = 1.0 / 11.0;
+	pickedIdx = neeIdx;       // R3-6：observability + MIS reverse-NEE 用
+	pdfNeeOmega = 0.0;        // 預設；每分支覆寫
 	if (neeIdx == 0)
 	{
 		float w;
 		vec3 dir = sampleQuadLight(x, nl, ql0, w);
 		throughput = vec3(w / selectPdf);
+		// R3-6 idx 0：ceiling quadLight NEE solid-angle PDF。sampleQuadLight 已處理 dist²/cos_light/A 積分；
+		// 對 MIS 用 solid-angle 一致化公式 p_ω = selectPdf · dist²/(cos_light · A)，A = 1.44 m² (ceilingLampQuad)
+		//   emitter 為向下矩形光（normal=-y），向上 shade point 之 cos_light = dir.y (dir 指向 emitter)
+		vec3 lampCenter = (ql0.v0 + ql0.v2) * 0.5;
+		vec3 lampExt1 = ql0.v1 - ql0.v0;
+		vec3 lampExt2 = ql0.v3 - ql0.v0;
+		float lampArea = length(lampExt1) * length(lampExt2);
+		pdfNeeOmega = pdfNeeForLight(x, lampCenter, ql0.normal, lampArea);
 		return dir;
 	}
 	if (neeIdx <= 4)
@@ -228,6 +278,7 @@ vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 		// 對齊 L263 Cloud gate 同構。
 		if (uTrackLightEnabled < 0.5) {
 			throughput = vec3(0);
+			pdfNeeOmega = 1e-6;  // U4：守門 denom 非 NaN；Track 不在 R3-6 MIS scope 故值不影響 heuristic
 			return nl;
 		}
 		int li = neeIdx - 1;
@@ -245,6 +296,8 @@ vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 		// R3-4 fix07：disk-area integrand（× A）。JS 端 L = Φ/(K·π·A) 為 radiance，shader NEE 需乘發光面積還原 flux contribution。
 		// fix05 throughput-50 clamp 移除：上游量綱修正後 emit≈700（非 8.4e5）、× A≈2.83e-3 × geom × /0.2 合計 O(1)，不再 firefly。
 		throughput = emit * geom * TRACK_LAMP_EMITTER_AREA / selectPdf;
+		// R3-6：Track 非 MIS scope（cone falloff R3-7 再擴）；pdfNeeOmega 留作 observability，不入 heuristic。
+		pdfNeeOmega = pdfNeeForLight(x, target, -uTrackLampDir[li], TRACK_LAMP_EMITTER_AREA);
 		return ldir;
 	}
 	if (neeIdx <= 6)
@@ -252,6 +305,7 @@ vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 		// R3-5b fix07：Wide off 守門。同理於 Track gate；cool(6500K) 能量經 NEE 漏至牆面 → 冷光斑殘留。
 		if (uWideTrackLightEnabled < 0.5) {
 			throughput = vec3(0);
+			pdfNeeOmega = 1e-6;
 			return nl;
 		}
 		// R3-5a：neeIdx == 5 / 6 → TrackWide 2 盞（slot 5=南、slot 6=北；索引對齊 JS uTrackWideLampPos 順序）
@@ -267,6 +321,7 @@ vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 		float wideGeom = max(0.0, dot(nl, wideDir)) * wideCosLight / wideDist2;
 		// disk-area integrand，對齊 L = Φ/(K·π·A)（JS computeTrackWideRadiance）；emitter A = π·0.05² ≈ 7.85e-3 m²
 		throughput = wideEmit * wideGeom * TRACK_WIDE_LAMP_EMITTER_AREA / selectPdf;
+		pdfNeeOmega = pdfNeeForLight(x, wideTarget, -uTrackWideLampDir[wi], TRACK_WIDE_LAMP_EMITTER_AREA);
 		return wideDir;
 	}
 	// R3-5b: neeIdx 7-10 → Cloud rod 0-3 (2-face 甲案：+Y 頂 + 外長側)
@@ -274,6 +329,7 @@ vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 	// 若無此 gate，shadow ray 會穿透 Cloud 位置命中 ceilingLampQuad（LIGHT 分支 L898）→ 雙計爆 firefly。
 	if (uCloudLightEnabled < 0.5) {
 		throughput = vec3(0);
+		pdfNeeOmega = 1e-6;
 		return nl;
 	}
 	int rodIdx = neeIdx - 7;
@@ -307,6 +363,9 @@ vec3 sampleStochasticLight11(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 	// throughput = emit × geom × faceArea × faceCount / selectPdf
 	//   faceCount (=2) 保留：對角面投影等效面積 ≈ 2 × A_face × cos(45°) ≈ 1.41 × A_face，× 2 係保守偏亮 ~1.4× 容忍區間，R3-6 MIS 再校準
 	throughput = cloudEmit * cloudGeom * uCloudFaceArea[rodIdx] * uCloudFaceCount / selectPdf;
+	// R3-6：Cloud rod MIS solid-angle PDF。對角面幾何面積 = A_face × √2（S2 pre-mortem 防護：radiometric uCloudFaceArea 另供 throughput）。
+	float cloudDiagArea = uCloudFaceArea[rodIdx] * CLOUD_DIAGONAL_FACE_AREA_SCALE;
+	pdfNeeOmega = pdfNeeForLight(x, cloudTarget, faceNormal, cloudDiagArea);
 	return cloudDir;
 }
 
@@ -533,10 +592,11 @@ bool isFixtureDisabled(float fixtureGroup)
 }
 
 
-// R2-13 X-ray 透視剝離：雙層 cullable tier
+// R2-13 X-ray 透視剝離：三層 cullable tier
 //   cullable=0：家具（永不透）
 //   cullable=1：牆／樑／GIK／插座 —— box 之內向角近牆面（薄板貼牆）
-//   cullable=2：柱等大型遮擋 —— box 中心位於相機同側半空間（擋在相機與室心之間即透）
+//   cullable=2：柱等大型遮擋 —— box 中心位於相機同側半空間（X + Z 雙軸）
+//   cullable=3：單軸（僅 X）大型遮擋 —— 西南/東南角柱：只隨東西側牆連動剝離，不隨南北牆連動
 bool isBoxCulled(vec3 bmin, vec3 bmax, float cullable)
 {
 	if (uXrayEnabled < 0.5) return false;
@@ -558,15 +618,23 @@ bool isBoxCulled(vec3 bmin, vec3 bmax, float cullable)
 		if (uCamPos.z > uRoomMax.z + eps && bmin.z > uRoomMax.z - T) return true;
 		if (uCamPos.z < uRoomMin.z - eps && bmax.z < uRoomMin.z + T) return true;
 	}
-	else
+	else if (cullable < 2.5)
 	{
-		// cullable=2：柱等大型遮擋，以「box 中心位於相機同側半空間」為判
+		// cullable=2：柱等大型遮擋，以「box 中心位於相機同側半空間」為判（X + Z 雙軸）
 		vec3 roomCenter = (uRoomMin + uRoomMax) * 0.5;
 		vec3 boxCenter = (bmin + bmax) * 0.5;
 		if (uCamPos.x > uRoomMax.x + eps && boxCenter.x > roomCenter.x) return true;
 		if (uCamPos.x < uRoomMin.x - eps && boxCenter.x < roomCenter.x) return true;
 		if (uCamPos.z > uRoomMax.z + eps && boxCenter.z > roomCenter.z) return true;
 		if (uCamPos.z < uRoomMin.z - eps && boxCenter.z < roomCenter.z) return true;
+	}
+	else
+	{
+		// cullable=3：單軸（僅 X）半空間判 —— 西南/東南角柱：跟隨東西側牆連動剝離，南牆剝離時柱子保持可視
+		vec3 roomCenter = (uRoomMin + uRoomMax) * 0.5;
+		vec3 boxCenter = (bmin + bmax) * 0.5;
+		if (uCamPos.x > uRoomMax.x + eps && boxCenter.x > roomCenter.x) return true;
+		if (uCamPos.x < uRoomMin.x - eps && boxCenter.x < roomCenter.x) return true;
 	}
 
 	return false;
@@ -861,6 +929,20 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	int sampleLight = FALSE;
 	int willNeedDiffuseBounceRay = FALSE;
 
+	// R3-6：MIS Phase-1 跨 bounce state。
+	//   misWPrimaryNeeLast：最近一次 NEE dispatch 的 solid-angle PDF（p_nee）；BSDF-indirect 命中 emitter 時用於 heuristic w_bsdf = p_bsdf²/(p_nee² + p_bsdf²)。
+	//   misPBsdfNeeLast：NEE dispatch 當下由 shading point nl 與 NEE 方向算得之 cos-weighted BSDF PDF（cos/π）；NEE-hit 分支用於 w_nee = p_nee²/(p_nee² + p_bsdf²)。
+	//   lastNeePickedIdx：最近一次 NEE 所抽的 light idx（0..10）；reverse-NEE PDF 計算時確認命中的確是「若重抽會被選中」之 emitter。
+	//   misBsdfBounceNl + misBsdfBounceOrigin：BSDF 間接 bounce 發射點之 shading normal 與 position；bounce ray 命中 ceiling/Cloud emitter 時用於 reverse-NEE PDF 評估。
+	//   misPBsdfStashed：BSDF bounce ray sample time cached cos-weighted PDF（cos(bounceDir, nl)/π）。
+	// 每處 bounceIsSpecular = FALSE 必配此組變數 reset (plan R4 規則，17 處 site)。
+	float misWPrimaryNeeLast = 0.0;
+	float misPBsdfNeeLast = 0.0;
+	int lastNeePickedIdx = -1;
+	vec3 misBsdfBounceNl = vec3(0.0);
+	vec3 misBsdfBounceOrigin = vec3(0.0);
+	float misPBsdfStashed = 0.0;
+
 
 	for (int bounces = 0; bounces < 14; bounces++)
 	{
@@ -883,6 +965,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 				willNeedDiffuseBounceRay = FALSE;
 				bounceIsSpecular = FALSE;
+				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
 				diffuseCount = 1;
 				continue;
@@ -916,8 +999,36 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			if (diffuseCount == 0)
 				pixelSharpness = 1.0;
 
-			if (bounceIsSpecular == TRUE || sampleLight == TRUE)
+			if (bounceIsSpecular == TRUE)
+			{
+				// SPEC chain / primary-ray 直接命中 ceiling：MIS 不套（Dirac delta BSDF，Veach §9.2.4），直接累加。
 				accumCol = mask * hitEmission;
+			}
+			else if (sampleLight == TRUE)
+			{
+				// NEE shadow ray 命中 ceiling。若 MIS 啟用且抽到 ceiling (idx 0)，套 w_nee 權重。
+				if (uR3MisEnabled > 0.5 && lastNeePickedIdx == 0)
+				{
+					float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
+					accumCol = mask * hitEmission * wNee;
+				}
+				else
+				{
+					accumCol = mask * hitEmission;
+				}
+			}
+			else if (uR3MisEnabled > 0.5 && diffuseCount >= 1 && misPBsdfStashed > 0.0)
+			{
+				// BSDF-indirect bounce ray 命中 ceiling：R3-6 新增路徑（R3-5b blocked）。
+				// reverse-NEE PDF 以 bounce 發射點 (misBsdfBounceOrigin) 為源，評估「若重抽 NEE 會選中 ceiling」之 p_ω。
+				vec3 lampCenter = (light.v0 + light.v2) * 0.5;
+				vec3 lampExt1 = light.v1 - light.v0;
+				vec3 lampExt2 = light.v3 - light.v0;
+				float lampArea = length(lampExt1) * length(lampExt2);
+				float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, lampCenter, light.normal, lampArea);
+				float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
+				accumCol += mask * hitEmission * wBsdf;
+			}
 
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
@@ -927,6 +1038,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 				willNeedDiffuseBounceRay = FALSE;
 				bounceIsSpecular = FALSE;
+				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
 				diffuseCount = 1;
 				continue;
@@ -968,6 +1080,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 				willNeedDiffuseBounceRay = FALSE;
 				bounceIsSpecular = FALSE;
+				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
 				diffuseCount = 1;
 				continue;
@@ -1005,6 +1118,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 				willNeedDiffuseBounceRay = FALSE;
 				bounceIsSpecular = FALSE;
+				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
 				diffuseCount = 1;
 				continue;
@@ -1031,7 +1145,16 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			{
 				if (diffuseCount == 0)
 					pixelSharpness = 1.0;
-				accumCol += mask;
+				// R3-6 Phase-3：Cloud NEE 快速路徑。若 MIS 啟用且抽到 Cloud idx (7..10)，套 w_nee 權重。
+				if (uR3MisEnabled > 0.5 && lastNeePickedIdx >= 7 && lastNeePickedIdx <= 10)
+				{
+					float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
+					accumCol += mask * wNee;
+				}
+				else
+				{
+					accumCol += mask;
+				}
 				if (willNeedDiffuseBounceRay == TRUE)
 				{
 					mask = diffuseBounceMask * uIndirectMultiplier;
@@ -1039,6 +1162,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					rayDirection = diffuseBounceRayDirection;
 					willNeedDiffuseBounceRay = FALSE;
 					bounceIsSpecular = FALSE;
+					misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 					sampleLight = FALSE;
 					diffuseCount = 1;
 					continue;
@@ -1058,6 +1182,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 				willNeedDiffuseBounceRay = FALSE;
 				bounceIsSpecular = FALSE;
+				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
 				diffuseCount = 1;
 				continue;
@@ -1108,17 +1233,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1139,17 +1271,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1181,16 +1320,23 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1) {
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1225,17 +1371,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1326,17 +1479,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1358,17 +1518,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1412,17 +1579,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 		}
 
@@ -1450,17 +1624,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
     }
 
@@ -1487,10 +1668,41 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					// sampleStochasticLight11 Cloud branch throughput 已 bake emission，NEE shadow ray 命中此處必須 accumCol += mask，
 					// 否則 NEE 通道貢獻歸零（地板收不到 Cloud 光）。對齊 TRACK_LIGHT L925-928 += mask pattern。
 					// R3-6 MIS 階段再考量雙累加防護（power heuristic + emit baked-once 契約）。
+					// R3-6 Phase-3：NEE-hit 套 w_nee heuristic；BSDF-indirect 新增累加路徑，以 w_bsdf 防雙計。
 					if (sampleLight == TRUE)
-						accumCol += mask;
+					{
+						if (uR3MisEnabled > 0.5 && lastNeePickedIdx >= 7 && lastNeePickedIdx <= 10)
+						{
+							float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
+							accumCol += mask * wNee;
+						}
+						else
+						{
+							accumCol += mask;
+						}
+					}
 					else if (bounceIsSpecular == TRUE)
+					{
 						accumCol = min(mask * emission, vec3(uEmissiveClamp));
+					}
+					else if (uR3MisEnabled > 0.5 && diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
+					{
+						// BSDF-indirect bounce ray 命中 Cloud rod emissive face（R3-5b blocked）。
+						// uCloudLightEnabled 三源 gate 對稱（primary 經 objectIsCulled + NEE pool + 本 BSDF-hit MIS 三處 < 0.5）。
+						// reverse-NEE PDF 以 bounce 發射點 (misBsdfBounceOrigin) 為源，還原 sampleStochasticLight11 該 rod 之對角 face 參數。
+						vec3 rodHalf = uCloudRodHalfExtent[rodIdx];
+						vec3 faceNormal;
+						vec3 faceOffset;
+						if (rodIdx == 0)       { faceNormal = vec3( 0.7071067811865, 0.7071067811865, 0.0); faceOffset = vec3( rodHalf.x, rodHalf.y, 0.0); }
+						else if (rodIdx == 1)  { faceNormal = vec3(-0.7071067811865, 0.7071067811865, 0.0); faceOffset = vec3(-rodHalf.x, rodHalf.y, 0.0); }
+						else if (rodIdx == 2)  { faceNormal = vec3( 0.0, 0.7071067811865, 0.7071067811865); faceOffset = vec3(0.0, rodHalf.y, rodHalf.z); }
+						else                   { faceNormal = vec3( 0.0, 0.7071067811865,-0.7071067811865); faceOffset = vec3(0.0, rodHalf.y,-rodHalf.z); }
+						vec3 cloudTarget = uCloudRodCenter[rodIdx] + faceOffset;
+						float cloudDiagArea = uCloudFaceArea[rodIdx] * CLOUD_DIAGONAL_FACE_AREA_SCALE;
+						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, cloudTarget, faceNormal, cloudDiagArea);
+						float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
+						accumCol += min(mask * emission * wBsdf, vec3(uEmissiveClamp));
+					}
 					if (willNeedDiffuseBounceRay == TRUE)
 					{
 						mask = diffuseBounceMask * uIndirectMultiplier;
@@ -1498,6 +1710,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 						rayDirection = diffuseBounceRayDirection;
 						willNeedDiffuseBounceRay = FALSE;
 						bounceIsSpecular = FALSE;
+						misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 						sampleLight = FALSE;
 						diffuseCount = 1;
 						continue;
@@ -1520,17 +1733,24 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			diffuseCount++;
 			mask *= hitColor;
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
 			if (diffuseCount == 1)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
     }
 
@@ -1564,6 +1784,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			mask *= hitColor;
 
 			bounceIsSpecular = FALSE;
+			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 
 			rayOrigin = x + nl * uEPS_intersect;
 
@@ -1572,12 +1793,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
 				willNeedDiffuseBounceRay = TRUE;
 			}
 
-			rayDirection = sampleStochasticLight11(x, nl, light, weight);
+			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+			float neePdfOmega; int neePickedIdx;
+			rayDirection = sampleStochasticLight11(x, nl, light, weight, neePdfOmega, neePickedIdx);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
+			misWPrimaryNeeLast = neePdfOmega;
+			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+			lastNeePickedIdx = neePickedIdx;
 			continue;
 
     }
@@ -1608,6 +1835,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		accumCol += uCloudRodCenter[0] + uCloudRodCenter[1] + uCloudRodCenter[2] + uCloudRodCenter[3] +
 			uCloudRodHalfExtent[0] + uCloudRodHalfExtent[1] + uCloudRodHalfExtent[2] + uCloudRodHalfExtent[3] +
 			vec3(uCloudFaceCount);
+		// R3-6：sink 內亦引 MIS uniform 保險（Phase 1 skeleton 階段尚未於 MIS 分支實質使用，避 DCE）。
+		accumCol += vec3(uR3MisEnabled + uR3MisPickMode);
 	}
 	return max(vec3(0), accumCol);
 

@@ -72,7 +72,7 @@ function addBox(min, max, emission, color, type, meta, cullable, fixtureGroup, r
 addBox([MIN_X, MIN_Y, MIN_Z],  [-1.91, 0.0, -1.874], z3, C_FLOOR, 1, 0, 1);         // 0a 地面 NW corner
 addBox([1.91,  MIN_Y, MIN_Z],  [MAX_X, 0.0, -1.874], z3, C_FLOOR, 1, 0, 1);         // 0c 地面 NE corner
 addBox([MIN_X, MIN_Y, -1.874], [-1.91, 0.0, 3.056],  z3, C_FLOOR, 1, 0, 1);         // 0d 地面 W edge
-addBox([-1.91, MIN_Y, -1.874], [1.91,  0.0, 3.056],  z3, C_FLOOR, 1);               // 0e 地面 Center（fix21：bmin.z→-1.874；fix23：bmax.z→3.056 對齊南牆內面與書櫃南端；N/S edge 依賴 0a/0c/0g/0i 覆蓋）
+addBox([-1.91, MIN_Y, -1.874], [1.91,  0.0, MAX_Z],  z3, C_FLOOR, 1);               // 0e 地面 Center（fix21：bmin.z→-1.874；r3-6-fix06：bmax.z→MAX_Z 對稱天花板 1e，補中央 x=[-1.91,1.91] z=[3.056,MAX_Z] 缺口；0g/0i 仍覆蓋兩側角柱區）
 addBox([1.91,  MIN_Y, -1.874], [MAX_X, 0.0, 3.056],  z3, C_FLOOR, 1, 0, 1);         // 0f 地面 E edge
 addBox([MIN_X, MIN_Y, 3.056],  [-1.91, 0.0, MAX_Z],  z3, C_FLOOR, 1, 0, 1);         // 0g 地面 SW corner
 addBox([1.91,  MIN_Y, 3.056],  [MAX_X, 0.0, MAX_Z],  z3, C_FLOOR, 1, 0, 1);         // 0i 地面 SE corner
@@ -80,7 +80,7 @@ addBox([1.91,  MIN_Y, 3.056],  [MAX_X, 0.0, MAX_Z],  z3, C_FLOOR, 1, 0, 1);     
 addBox([MIN_X, 2.905, MIN_Z],  [-1.91, MAX_Y, -1.874], z3, C_WALL, 1, 0, 1);        // 1a 天花板 NW corner
 addBox([1.91,  2.905, MIN_Z],  [MAX_X, MAX_Y, -1.874], z3, C_WALL, 1, 0, 1);        // 1c 天花板 NE corner
 addBox([MIN_X, 2.905, -1.874], [-1.91, MAX_Y, 3.056],  z3, C_WALL, 1, 0, 1);        // 1d 天花板 W edge
-addBox([-1.91, 2.905, -1.874], [1.91,  MAX_Y, 3.056],  z3, C_WALL, 1);              // 1e 天花板 Center（fix21：bmin.z→-1.874；fix23：bmax.z→3.056 對齊南牆內面；N/S edge 依賴 1a/1c/1g/1i 覆蓋）
+addBox([-1.91, 2.905, -1.874], [1.91,  MAX_Y, MAX_Z],  z3, C_WALL, 1);              // 1e 天花板 Center（fix21：bmin.z→-1.874；r3-6-fix05：bmax.z→MAX_Z 延伸至南牆外邊界，補 fix23 留下的中央 x=[-1.91,1.91] z=[3.056,MAX_Z] 缺口；1g/1i 仍覆蓋兩側角柱區）
 addBox([1.91,  2.905, -1.874], [MAX_X, MAX_Y, 3.056],  z3, C_WALL, 1, 0, 1);        // 1f 天花板 E edge
 addBox([MIN_X, 2.905, 3.056],  [-1.91, MAX_Y, MAX_Z],  z3, C_WALL, 1, 0, 1);        // 1g 天花板 SW corner
 addBox([1.91,  2.905, 3.056],  [MAX_X, MAX_Y, MAX_Z],  z3, C_WALL, 1, 0, 1);        // 1i 天花板 SE corner
@@ -104,8 +104,8 @@ addBox([MIN_X, 0.0, -1.874], [-1.91, 0.09, -0.984], z3, C_WALL_L, 1, 0, 1);     
 addBox([MIN_X, 0.0, -0.984], [-1.91, 2.905, 3.056], z3, C_WALL_L, 1, 0, 1);         // 11 西牆南段（fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
 addBox([-1.91, 2.525, -1.874], [-1.75, 2.905, 3.056], z3, C_BEAM, 1, 0, 1);         // 12 西牆橫樑（fix21：bmin.z→-1.874；fix23：bmax.z 由 MAX_Z 縮至 3.056，含效 revert fix13 南延）
 addBox([1.85, 2.515, -1.874], [MAX_X, 2.905, 3.056], z3, C_BEAM, 1, 0, 1);          // 13 東牆橫樑（fix21：bmin.z→-1.874；fix23：bmax.z 由 MAX_Z 縮至 3.056，含效 revert fix13 南延）
-addBox([-1.91, 0.0, 2.848], [-1.75, 2.905, 3.056], z3, C_BEAM, 1, 0, 2);            // 14 西南角柱（cullable=2：依相機方位動態透視；fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
-addBox([1.78, 0.0, 2.49], [1.91, 2.905, 3.056], z3, C_BEAM, 1, 0, 2);               // 15 東南角柱（x 縮為純內凸 [1.78,1.91]，cullable=2；fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
+addBox([-1.91, 0.0, 2.848], [-1.75, 2.905, 3.056], z3, C_BEAM, 1, 0, 3);            // 14 西南角柱（r3-6-fix06：cullable=3 單軸 X-only，只跟西牆連動剝離，南牆剝離時柱子保持可視；fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
+addBox([1.78, 0.0, 2.49], [1.91, 2.905, 3.056], z3, C_BEAM, 1, 0, 3);               // 15 東南角柱（x 縮為純內凸 [1.78,1.91]；r3-6-fix06：cullable=3 單軸 X-only，只跟東牆連動剝離；fix23：bmax.z 由 MAX_Z 縮至 3.056 對齊南牆內面）
 
 // R2-4 傢俱 (index 16-20)
 addBox([1.35, 0.0, -1.874], [1.91, 1.955, -0.703], z3, C_WOOD, 1);            // 16 東牆櫃子
@@ -358,6 +358,10 @@ function applyPanelConfig(config) {
         wideTrackLightState.wideTrackLight = cloudOn;
         if (wideTrackLightCtrl && wideTrackLightCtrl.updateDisplay) wideTrackLightCtrl.updateDisplay();
     }
+    if (typeof cloudLightState !== 'undefined' && cloudLightState) {
+        cloudLightState.cloudLight = cloudOn;
+        if (cloudLightCtrl && cloudLightCtrl.updateDisplay) cloudLightCtrl.updateDisplay();
+    }
     currentPanelConfig = config;
     buildSceneBVH();
     needClearAccumulation = true;
@@ -416,6 +420,8 @@ let basicBrightness = 900.0;
 // R2-18 fix24：軌道燈 checkbox 狀態與 controller 引用（供 applyPanelConfig 聯動更新）
 let trackLightState = null, trackLightCtrl = null;
 let wideTrackLightState = null, wideTrackLightCtrl = null;
+// R3-6 fix04：Cloud 漫射燈條 checkbox 狀態與 controller 引用（fixtureGroup=4，對應 uCloudLightEnabled）
+let cloudLightState = null, cloudLightCtrl = null;
 let colorTemperature = 4000;
 
 // ---------------- R3-2-fix01 色溫 mode state（三檔 preset + 商品規格映射）----------------
@@ -1027,6 +1033,12 @@ function initSceneData() {
     // R3-0：legacy gain（shader 10 處 weight × magic 魔數抽離為 uniform，預設 1.5 維持 R2-18 亮度）
     pathTracingUniforms.uLegacyGain = { value: 1.5 };
 
+    // R3-6：MIS Phase-1 全局閘門（ceiling quadLight idx 0 + Cloud 4 rod idx 7-10 = 5 DIFF-emitters）
+    //   uR3MisEnabled = 1.0 → 套 power heuristic β=2 MIS；= 0.0 → shader bypass MIS 回 R3-5b 路徑（AC-M5 rollback）
+    //   uR3MisPickMode = 0.0 → uniform 1/11 pick（甲案）；= 1.0 → power-proportional CDF（乙案 R3-7 預留空殼）
+    pathTracingUniforms.uR3MisEnabled  = { value: 1.0 };
+    pathTracingUniforms.uR3MisPickMode = { value: 0.0 };
+
     // ---- R3-1 emission pipeline（R3-3 起 Cloud 接通 emissive Lambertian）----
     pathTracingUniforms.uCloudEmission      = { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] };
     pathTracingUniforms.uTrackEmission      = { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] };
@@ -1092,12 +1104,29 @@ function initSceneData() {
 
     computeLightEmissions();
 
+    // R3-6：MIS Phase-1 ready log（一次性，於 initSceneData uniform setup 完畢後輸出；驗 throw-first 已通過）
+    console.log('[R3-6] MIS ready', {
+        misEnabled: pathTracingUniforms.uR3MisEnabled.value,
+        pickMode: pathTracingUniforms.uR3MisPickMode.value === 0.0 ? 'uniform' : 'cdf-stretch-R3-7',
+        neePoolSize: 11,
+        misScope: 'ceiling (idx 0) + Cloud 4 rod (idx 7-10) = 5 DIFF-emitters',
+        lightPickPdf: 1 / 11,
+        heuristic: 'power β=2'
+    });
+
     // R3-3 fix01：原 `if (mouseControl) setupGUI()` 守門在 Brave 桌面常態誤判 `'ontouchstart' in window`=true 導致 mouseControl=false，
     // 整個 Light/Scene/Panels GUI 群組消失。desktop+mobile 皆需要 folder，無條件建立。
     setupGUI();
 }
 
 function computeLightEmissions() {
+    // R3-6 throw-first：MIS uniform 必須存在。若缺（忘加 JS uniform 宣告），rollback AC-M5 無法執行 → shader 永遠跑 MIS 分支。
+    if (typeof pathTracingUniforms.uR3MisEnabled === 'undefined') {
+        throw new Error('[R3-6] uR3MisEnabled uniform missing — JS uniform 宣告遺漏');
+    }
+    if (typeof pathTracingUniforms.uR3MisPickMode === 'undefined') {
+        throw new Error('[R3-6] uR3MisPickMode uniform missing — R3-7 乙案 forward-compat hook 遺漏');
+    }
     // R3-4：throw-first assertion 兩層守門（uniform 存在 + 值比對），避免 short-circuit 靜默通過 R3-3 CLOUD_BOX_IDX_BASE 同型陷阱
     if (!pathTracingUniforms.uTrackLampIdBase) {
         throw new Error('[R3-4] uTrackLampIdBase uniform missing — computeLightEmissions called before initSceneData uniform setup');
@@ -1344,7 +1373,15 @@ function setupGUI() {
         wakeRender();
     });
 
-    // R2-18 fix22：Cloud 吸音板+燈條已整合為 Acoustic Panels Config 3，camera folder 不再重複出現
+    // R3-6 fix04：Cloud 漫射燈條 toggle（fixtureGroup=4）；shader 三處 gate（primary-hit / NEE pool / BSDF-indirect）已就位
+    // 預設 OFF，由 Config 3 聯動開；獨立勾選可在 Config 3 下單獨關 Cloud 漫射貢獻以對照 Track/Wide 效果
+    cloudLightState = { cloudLight: false };
+    cloudLightCtrl = cameraFolder.add(cloudLightState, 'cloudLight').name('Cloud 漫射燈條').onChange(function (value) {
+        if (pathTracingUniforms && pathTracingUniforms.uCloudLightEnabled) {
+            pathTracingUniforms.uCloudLightEnabled.value = value ? 1.0 : 0.0;
+        }
+        wakeRender();
+    });
 
     cameraFolder.open();
 
@@ -1452,6 +1489,15 @@ function setupGUI() {
 
     // 4 dropdown 建構完後立即依 currentPanelConfig 同步 enable/disable 初始狀態。
     syncR3ColorUIEnable();
+
+    // R3-6：MIS Phase-1 全局閘門 dev checkbox（AC-M5 rollback 用；正式發布可隱藏但 R3-6 驗收期保留）
+    lightFolder.add({ r3_6_mis: true }, 'r3_6_mis').name('R3-6 MIS 啟用').onChange(function (v) {
+        if (pathTracingUniforms && pathTracingUniforms.uR3MisEnabled) {
+            pathTracingUniforms.uR3MisEnabled.value = v ? 1.0 : 0.0;
+            console.log('[R3-6] uR3MisEnabled =', pathTracingUniforms.uR3MisEnabled.value);
+        }
+        wakeRender();
+    });
 
     // R2-18 fix19：間接光倍率（>1 提亮陰影區，僅影響 indirect bounce）；fix21 預設 1.7 肉眼校準
     const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('間接光倍率').onChange(function (v) {

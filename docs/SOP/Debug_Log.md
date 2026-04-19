@@ -912,3 +912,76 @@ sampleStochasticLight11 原 Cloud idx 7-10 分支（L263）有 `if (uCloudLightE
 3. **線型 emitter 不可只取中心點**：rod、燈管、線燈的 NEE target 須沿長軸 uniform jitter，單點 target 會讓 N 根 rod 塌陷成 N 個離散光斑，完全沒有「燈條」視覺。長軸 jitter 為線型 emitter 的必要條件，非優化項。
 4. **face-pick 硬邊 ≠ face-pick 錯誤**：2-face 甲案能量守恆算式正確（face-area integrand + face-pick 1/2 補償）仍產生硬邊，根因是**軸對齊 normal 的 cos(θ) 分佈離散**，非量綱錯。解法是換 normal 拓撲（對角、球冠分散），不是改 PDF 係數。
 5. **Phase 1 grep 所有 `uXxxEnabled` 使用點**：下次再加光源時，第一步搜 `grep -n "uCloudLightEnabled"` 找出全部出現位置（通常 3~4 處：primary-hit、NEE pool branch、isFixtureDisabled、indirect-emission），同批加 gate 才不會 fix04→fix07 一路追打補丁。
+
+---
+
+## R3-6｜Many-Light + MIS 整合收尾補丁（fix04 ~ fix06）
+
+### 背景
+R3-6 Many-Light Sampling + Multiple Importance Sampling（多重要性採樣，power heuristic β=2）由背景 executor 依 ralplan deliberate APPROVE iter 2 甲案落地（cache-buster `r3-6-fix03-mis-math`）。使用者 2026-04-20 肉眼驗收四條（金屬反射、無螢火蟲/漏光、MIS rollback 等價、checkbox 牆面無殘光）全過。但驗收過程發現三項非 MIS 本身的缺漏，以 fix04~fix06 連續補丁收尾。
+
+### fix04｜Cloud 漫射燈條 GUI checkbox 補齊
+
+**症狀**
+GUI camera folder 內只有「投射燈軌道 (東西)」、「廣角燈軌道 (南北)」兩個 checkbox，無 Cloud 漫射燈條獨立 checkbox。Config 3 進場時 Cloud 開、Config 1/2 自動關，但使用者無法在 Config 3 下單獨關 Cloud 比對 Track/Wide 效果。
+
+**根因**
+shader `uCloudLightEnabled` uniform 三處 gate（primary-hit L330、NEE pool L330、BSDF-hit MIS L1679）早在 R3-5b 就位；JS uniform 宣告 `uCloudLightEnabled = { value: 0.0 }`（L1006）與 applyPanelConfig Config 切換同步（L337-339）也到位。**只差 lil-gui camera folder 的 checkbox 實體與 state 同步區塊**——R2-18 fix22 決定「Cloud 吸音板+燈條已整合為 Acoustic Panels Config 3，camera folder 不再重複出現」，此決策在 R3 升級真光源後不再適用（shader 已能單獨關 Cloud 貢獻，UI 層應對稱開放）。
+
+**修法**
+1. `js/Home_Studio.js` L420 區新增 `let cloudLightState = null, cloudLightCtrl = null;` 全域變數
+2. `applyPanelConfig` Config 切換尾端（L361）加 cloudLightState.cloudLight sync 區塊（mirror trackLightState / wideTrackLightState pattern）
+3. cameraFolder 廣角燈 checkbox 後（L1371）新增 `cameraFolder.add(cloudLightState, 'cloudLight').name('Cloud 漫射燈條').onChange(...)` 寫 uCloudLightEnabled + wakeRender
+
+**教訓**
+完整 feature 收尾必 grep `uXxxEnabled` 全部使用點（shader gate × N + JS uniform 宣告 + Config 聯動 + **GUI checkbox 實體** + state sync）。R3-5b fix07 已立下「gate 對稱原則」，fix04 延伸為「UI 對稱原則」：shader 層 gate 就位 ≠ feature 完整，GUI 沒 checkbox 等同使用者看不到 feature 存在。
+
+---
+
+### fix05｜天花板 1e Center 南側延伸
+
+**症狀**
+使用者 Cam（pos ≈ (-1.79, 1.90, 2.17), pitch=0.53, yaw=-0.965）仰視 + 向西南看，畫面右上露出**黑色楔形缺口**：天花板延伸到某 Z 位置突然斷邊，斷邊與南牆之間漏出外景（窗外建築）。
+
+**根因**
+R2 fix23 把 1e 天花板 Center box 的 bmax.z 從 MAX_Z（3.256）縮到 3.056 對齊南牆內面，並宣告「N/S edge 依賴 1a/1c/1g/1i 覆蓋」。但 1g SW corner = `x∈[MIN_X,-1.91]`、1i SE corner = `x∈[1.91, MAX_X]`，中央 `x∈[-1.91, 1.91]` 的 `z∈[3.056, MAX_Z]` 區段**無 box 覆蓋**——1a/1c 是北角，1g/1i 是南角但只補兩側。這是 fix23 遺留的**幾何缺口**，相機在南向仰視時看穿該空隙。
+
+**修法**
+`addBox([-1.91, 2.905, -1.874], [1.91, MAX_Y, MAX_Z], ...)` — 1e Center 的 bmax.z 從 3.056 回推到 MAX_Z，把中央南段補滿。cullable 保持 0（延長段不隨 X-ray 剝離，符合「使用者想看到這塊」意圖）。
+
+**教訓**
+「corner 覆蓋依賴」策略（center 縮短 + 四角補齊）須驗證**三軸 9 宮格全覆蓋**：N/S/E/W 四 edge + NW/NE/SW/SE 四 corner + Center，共 9 塊。fix23 只補了 4 個 corner，漏了**南/北中央 edge 條帶**。下次收 center/corner 架構務必對照 9 宮格 checklist。
+
+---
+
+### fix06｜地板 0e 對稱補長 + 西南/東南柱 cullable=3 X-only tier
+
+**症狀 1（地板對稱）**
+fix05 修完天花板後，地板 0e Center 同構的 bmax.z=3.056 缺口也存在。使用者主動要求對稱補長（地板視角不常見但為保一致性）。
+
+**症狀 2（柱剝離綁定錯）**
+X-ray 透視原 cullable=2 邏輯「box 中心位於相機同側半空間（X + Z 雙軸）即剝離」——使用者發現相機在**南側房外**時，南牆 + 西南柱 + 東南柱一起隱形；期望：南牆隱形時兩根柱子仍可見，且西南柱只跟西牆、東南柱只跟東牆連動剝離（使用者原話：「不要綁在南牆連動」）。
+
+**根因（症狀 2）**
+現有 cullable tier：
+- 0 = 不剝
+- 1 = 薄板貼牆內向角（牆板/GIK/插座）
+- 2 = 大型遮擋雙軸半空間（柱）
+
+西南/東南柱為 cullable=2，其 boxCenter.z > roomCenter.z（南半），uCamPos.z > uRoomMax.z（相機南房外）時判式成立 → 柱被剝離。這是雙軸語義的必然結果，不符使用者「只跟側牆綁」的單軸意圖。
+
+**修法**
+1. `js/Home_Studio.js` L75 地板 0e Center：bmax.z `3.056 → MAX_Z`（對稱 fix05）
+2. `shaders/Home_Studio_Fragment.glsl` L594-634 `isBoxCulled` 新增 **cullable=3 tier**（單軸 X-only 半空間判）：僅 X 軸雙向判式，Z 軸條件移除
+3. `js/Home_Studio.js` L107/108 西南柱 14 + 東南柱 15 的 cullable 參數 `2 → 3`
+
+cullable tier 更新後定義：
+```
+0 = 家具（永不透）
+1 = 牆/樑/GIK/插座（薄板貼牆內向角）
+2 = 柱等大型遮擋 X + Z 雙軸（目前場景無使用，保留語義）
+3 = 大型遮擋僅 X 軸（西南/東南角柱專用；南牆 X-ray 時柱保持可視）
+```
+
+**教訓**
+cullable 機制原「雙層 tier」擴充為「三層 tier」的正確方式：**新增分支而非改現有語義**。若直接把 cullable=2 的 Z 軸拿掉會破壞未來可能的「雙軸柱」需求（例如房間正中心的獨立大柱）。保留 cullable=2 語義 + 新增 cullable=3 = 可讀性與擴充性雙贏。JS 端 box 資料不需 schema 遷移（cullable 本為 float，值 3 直接可用）。
