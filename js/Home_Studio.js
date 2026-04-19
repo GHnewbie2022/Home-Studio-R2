@@ -1127,7 +1127,7 @@ function setupGUI() {
     brightnessCtrl.name('brightness (R3-6 校準)');
     attachMetaClickReset(brightnessCtrl, 900);
 
-    // R3-2-fix01：吸頂燈色溫滑桿（R2-11 中央吸頂燈 consumer at L1231）。
+    // R3-2-fix01：吸頂燈色溫滑桿（R2-11 中央吸頂燈 kelvinToRGB 消費者下游）。
     // Config 1/2 可拉動、Config 3 鎖住（由 applyPanelConfig → syncR3ColorUIEnable 切換）。
     colorTempCtrl = lightFolder.add({ colorTemp: 4000 }, 'colorTemp', 2700, 6500, 100)
         .name('吸頂燈色溫 (K)')
@@ -1143,13 +1143,16 @@ function setupGUI() {
     const r3ColorFolder = lightFolder.addFolder('R3 Color Temperature');
     r3ColorFolder.open();
 
-    const CLOUD_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
-    const CLOUD_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
+    // 3-選單共用 label↔mode 映射（Cloud + 南北廣角南 + 南北廣角北 同綱要）
+    const WARM3_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
+    const WARM3_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
+    const WARM3_OPTIONS = ['暖', '自然', '冷'];
+
     cloudColorCtrl = r3ColorFolder
-        .add({ c: CLOUD_MODE_TO_LABEL[cloudColorMode] }, 'c', ['暖', '自然', '冷'])
+        .add({ c: WARM3_MODE_TO_LABEL[cloudColorMode] }, 'c', WARM3_OPTIONS)
         .name('Cloud漫射燈')
         .onChange(function (label) {
-            cloudColorMode = CLOUD_LABEL_TO_MODE[label];
+            cloudColorMode = WARM3_LABEL_TO_MODE[label];
             cloudKelvin = CLOUD_MODE_K[cloudColorMode];
             wakeRender();
         });
@@ -1180,22 +1183,20 @@ function setupGUI() {
             wakeRender();
         });
 
-    const WIDE_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
-    const WIDE_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
     trackWideColorSouthCtrl = r3ColorFolder
-        .add({ s: WIDE_MODE_TO_LABEL[trackWideColorSouth] }, 's', ['暖', '自然', '冷'])
+        .add({ s: WARM3_MODE_TO_LABEL[trackWideColorSouth] }, 's', WARM3_OPTIONS)
         .name('南北廣角燈 南')
         .onChange(function (label) {
-            trackWideColorSouth = WIDE_LABEL_TO_MODE[label];
+            trackWideColorSouth = WARM3_LABEL_TO_MODE[label];
             trackWideKelvin[0] = WIDE_MODE_K[trackWideColorSouth];  // [0]=南
             wakeRender();
         });
 
     trackWideColorNorthCtrl = r3ColorFolder
-        .add({ n: WIDE_MODE_TO_LABEL[trackWideColorNorth] }, 'n', ['暖', '自然', '冷'])
+        .add({ n: WARM3_MODE_TO_LABEL[trackWideColorNorth] }, 'n', WARM3_OPTIONS)
         .name('南北廣角燈 北')
         .onChange(function (label) {
-            trackWideColorNorth = WIDE_LABEL_TO_MODE[label];
+            trackWideColorNorth = WARM3_LABEL_TO_MODE[label];
             trackWideKelvin[1] = WIDE_MODE_K[trackWideColorNorth];  // [1]=北
             wakeRender();
         });
