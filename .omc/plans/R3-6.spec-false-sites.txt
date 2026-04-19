@@ -1,0 +1,29 @@
+R3-6 Phase 0 preflight：shader bounceIsSpecular = FALSE 全站清查
+source: shaders/Home_Studio_Fragment.glsl (commit 4f335c5 R3-5b baseline)
+grep 命中 17 處（plan L112 僅列 7 處，Critic m1 已警告此漏列）
+
+每一處皆須於其後緊接：
+    misWPrimaryNeeLast = 0.0;
+    lastNeePickedIdx = -1;
+
+實際行號（以 R3-5b baseline 為基準；在 Phase 2 加入 state-clear 時 shader 將重編行號，以相對位置判斷）：
+
+ L885  - TRACK_HOUSING / OUTLET-類 primary-hit DIFF 首段
+ L929  - LIGHT (ceiling quad) 分支 end（primary emit 後）
+ L970  - TRACK_LIGHT primary-hit end
+ L1007 - TRACK_WIDE_LIGHT primary-hit end
+ L1041 - CLOUD_LIGHT sub-branch（inner diff？）
+ L1060 - CLOUD_LIGHT primary-hit end
+ L1110 - main loop DIFF material branch（SPEAKER? WOOD_DOOR?）
+ L1141 - main loop DIFF material branch（continued）
+ L1183 - IRON_DOOR fallback DIFF
+ L1227 - BACKDROP DIFF
+ L1328 - ACOUSTIC_PANEL 類 (1)
+ L1360 - ACOUSTIC_PANEL 類 (2)
+ L1414 - ACOUSTIC_PANEL 類 (3)
+ L1452 - ACOUSTIC_PANEL 類 (4)
+ L1500 - CLOUD DIFF sub-branch
+ L1522 - CLOUD DIFF sub-branch (alt)
+ L1566 - OUTLET / 末段 fallback DIFF
+
+每處於 Phase 2 補 state-clear 時，直接在 `bounceIsSpecular = FALSE;` 下一行加兩行 reset。
