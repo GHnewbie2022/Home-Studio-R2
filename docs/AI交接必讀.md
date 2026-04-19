@@ -68,17 +68,23 @@ Debug：先走 /systematic-debugging，找到根因才提修復方案
 Debug 完成：症狀、根因、修法寫入 docs/SOP/Debug_Log.md
 ```
 
-### 三、「R 幾 DONE」三步驟
+### 三、「R 幾 DONE」四步驟（任一步未完不得回報 DONE）
 
 使用者宣告「R 幾 DONE」時依序執行：
 
 ```
 1. docs/SOP/R?：...md 更新
-   - outline 表格與內文 ### 小標雙處同步加 ✅（雙標規則）
+   outline 表格與內文 ### 小標雙處同步加 ✅（雙標規則）
 2. docs/SOP/（先讀大綱.md 更新階段狀態
-3. CC 專屬：同步更新 memory 的 handover
-4. git commit + push（目前分支，R3 時為 r3-light）
+3. CC 專屬：同步更新 handover memory
+   路徑 ~/.claude/projects/-Users-eajrockmacmini-Documents-Claude-Code/memory/project_home_studio_r2_13_handover.md
+4. git commit + push 至當前分支（R3 時為 r3-light）
+   commit 標題格式：R3-N DONE：<標題>（<關鍵技術點>）
 ```
+
+四步執行中若被系統訊號（UserPromptSubmit hook、skill ARGUMENTS、日期變更 reminder、
+新任務指派）中途插入，必須先回報「R?-? DONE 尚差第 N 步未收尾」，徵得使用者指示再切換，
+不得靜默跳任務導致 DONE 懸空。
 
 ### 四、SOP 打勾雙標規則
 
@@ -98,7 +104,9 @@ query 未變：附「Cmd+Shift+R 硬重載」於次行（分行，勿串句）
 
 ### 六、R3 階段 × OMC 工具對照
 
-動手前依階段性質選用對應工具，勿全程套同一 skill：
+動手前依階段性質選用對應工具，勿全程套同一 skill。
+
+**R3-5 拆分緣由**：R3-3 時 Cloud 僅做 emissive 幾何與 radiometric 量綱，area sampling NEE 刻意延後，致「燈管自發光但不照亮場景」之已知缺陷。原 R3-5 併包廣角燈 + Cloud NEE 補漏 + Many-Light + MIS 四件於單階段，風險過度集中。依工程難度拆為 R3-5a（廣角，複用 R3-4 pattern，★★）→ R3-5b（Cloud NEE area sampling，★★★★，R3 最硬）→ R3-6（MIS 整合，★★★）→ R3-7（indirectMul 歸一）→ R3-8（採購驗收）。
 
 ```
 R3-0  抽離魔數 weight * 1.5
@@ -111,23 +119,33 @@ R3-2  色溫 K → RGB 換算
       → /oh-my-claudecode:ralplan 事前取共識
          （Planner+Architect+Critic 三角互審）
 
-R3-3  Cloud 漫射燈條接真光源
+R3-3  Cloud 漫射燈條接真光源（emissive + 量綱，NEE 漏補留 R3-5b）
 R3-4  軌道投射燈 spot cone NEE
-R3-5  Many-Light Sampling + MIS（最高難度）
-      shader+JS 雙線改、erichlof 框架踩雷多
       → /ralplan 先出計畫 → /ultrawork 執行
-         R3-5 若反覆翻車可改 /ralph 持續循環
 
-R3-6  indirectMul 校準歸一
+R3-5a 軌道廣角燈真光源（slot 5-6，複用 R3-4 pattern）
+      disk emitter + spot cone，pattern 成熟，風險低
+      → Claude Code 直接動手，ralplan overkill
+
+R3-5b Cloud 漫射燈條 NEE 補漏（area sampling 原創）
+      3-face PDF + face-area integrand，R3 最硬一塊
+      → /ralplan 先出計畫（Critic 必審：雙計論、PDF 正規化、inner-face）
+         → /ultrawork 執行；反覆翻車改 /ralph
+
+R3-6  Many-Light Sampling + MIS 整合（power heuristic β=2，11 盞）
+      MIS 數學敏感、BSDF sample 新路徑
+      → /ralplan 先出計畫 → /ultrawork 執行；翻車改 /ralph
+
+R3-7  indirectMul 校準歸一
       數值調參、肉眼驗收
       → Claude Code 直接動手、每次給對照圖
 
-R3-7  採購評估驗收（4 情境切換）
+R3-8  採購評估驗收（4 情境切換）
       非編碼、使用者親自測
       → Claude Code 僅負責修 bug
 ```
 
-注意：`/team` 不適用 R3。各階段有依賴鏈（單位換算 → 光源 → MIS），併行不安全。`/team` 適合大量獨立檔案重構。
+注意：`/team` 不適用 R3。各階段有依賴鏈（單位換算 → 光源 → NEE → MIS），併行不安全。`/team` 適合大量獨立檔案重構。
 
 通用任務選用規則另見全域 CLAUDE.md「任務 × OMC 工具選用提醒」。
 
