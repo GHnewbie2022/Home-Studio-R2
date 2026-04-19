@@ -189,10 +189,27 @@ addBox([-0.884, 2.787,  1.682], [ 0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0
 addBox([-0.884, 2.787, -0.702], [ 0.884, 2.803, -0.686], z3, C_CLOUD_LIGHT, 14, 0, 1, 4); // 58 北燈條
 
 // R3-3：商品規格 D-35NA12V4DR1 軟條燈 480 lm/m。
-// Φ_rod = 480 × L；faceArea = 0.016 × L（頂 +Y 與兩側 long-axis 面等面積；bottom −Y 被 Cloud 板擋）。
+// R3-5b (2-face 甲案): Φ_rod = 480 × L；faceArea = 0.016 × L（+Y 頂 + 外長側 2 面；−Y 被 Cloud 板擋、內長面 + 兩短端本階段不發光 ≈ 0.66% 能量損失登錄 ADR）。
 // 順序 [0]=E [1]=W [2]=S [3]=N 對齊 uCloudEmission / uCloudFaceArea。
 const CLOUD_ROD_LUMENS    = [480 * 2.4, 480 * 2.4, 480 * 1.768, 480 * 1.768];
 const CLOUD_ROD_FACE_AREA = [0.016 * 2.4, 0.016 * 2.4, 0.016 * 1.768, 0.016 * 1.768];
+
+// R3-5b: Cloud 2-face stochastic NEE (甲案)
+// sceneBoxes 55(E)/56(W)/57(S)/58(N)；中心與半邊由 addBox min/max 推導
+// E/W 沿 z 長 2.4m；S/N 沿 x 長 1.768m；四向厚度皆 16mm
+const CLOUD_FACE_COUNT = 2;
+const CLOUD_ROD_CENTER = [
+    new THREE.Vector3( 0.892, 2.795,  0.498),  // rod 0 E
+    new THREE.Vector3(-0.892, 2.795,  0.498),  // rod 1 W
+    new THREE.Vector3( 0.000, 2.795,  1.690),  // rod 2 S
+    new THREE.Vector3( 0.000, 2.795, -0.694),  // rod 3 N
+];
+const CLOUD_ROD_HALF_EXTENT = [
+    new THREE.Vector3(0.008, 0.008, 1.200),    // rod 0 E
+    new THREE.Vector3(0.008, 0.008, 1.200),    // rod 1 W
+    new THREE.Vector3(0.884, 0.008, 0.008),    // rod 2 S
+    new THREE.Vector3(0.884, 0.008, 0.008),    // rod 3 N
+];
 
 // R2-8 吸音板
 const BASE_BOX_COUNT = 75; // base 53 + R2-14 八 + R2-15 四 + R2-16 六 + R2-17 四 = 75
@@ -472,14 +489,17 @@ function kelvinToLuminousEfficacy(kelvin) {
 }
 
 /**
- * R3-3：Cloud rod Lambertian 3-face emitter 單面 radiance W/(sr·m²)。
- * Φ_rod 均分 3 個等面積發光面（+Y 頂 + 兩側 long-axis），各面 Lambertian Φ = π·A·L。
- * → L = (Φ_rod / 3) / (K(T) · π · A)。
+ * R3-5b：Cloud rod Lambertian 2-face emitter 單面 radiance W/(sr·m²)。
+ * Φ_rod 均分 2 個等面積發光面（+Y 頂 + 外長側），各面 Lambertian Φ = π·A·L。
+ * → L = (Φ_rod / 2) / (K(T) · π · A)。
  * 單位推導：Φ_rod [lm] → /K(T) [W]，再/(π·A) 得 W/(sr·m²)。
  */
 function computeCloudRadiance(lm_total, kelvin, faceArea) {
+    if (!Number.isFinite(lm_total) || lm_total <= 0) return 0;
     const K = kelvinToLuminousEfficacy(kelvin);
-    return (lm_total / 3) / (K * Math.PI * faceArea);
+    const A = Math.max(faceArea, 1e-8);
+    // R3-5b (2-face 甲案): Φ 平分 2 面（+Y top + outer long），同 Φ/(K·π·A) radiometric
+    return (lm_total / 2) / (K * Math.PI * A);
 }
 
 // ---------------- R3-4 Track spot lamp constants & radiance ----------------
@@ -1016,6 +1036,10 @@ function initSceneData() {
     pathTracingUniforms.uCloudObjIdBase     = { value: CLOUD_BOX_IDX_BASE + 1 };
     // R3-3：4 rod 單面面積 [0]=E [1]=W [2]=S [3]=N，供 R3-5 MIS area sampling 承接
     pathTracingUniforms.uCloudFaceArea      = { value: CLOUD_ROD_FACE_AREA.slice() };
+    // R3-5b: Cloud NEE 2-face (甲案)
+    pathTracingUniforms.uCloudRodCenter     = { value: CLOUD_ROD_CENTER.map(v => v.clone()) };
+    pathTracingUniforms.uCloudRodHalfExtent = { value: CLOUD_ROD_HALF_EXTENT.map(v => v.clone()) };
+    pathTracingUniforms.uCloudFaceCount     = { value: CLOUD_FACE_COUNT };
     // R3-3 clamp: 預設 50（median×30 的保守估算；curtain-center 量測值落地後請重校）
     pathTracingUniforms.uEmissiveClamp      = { value: 50.0 };
     // R3-4：軌道投射燈 emitter meta（4 盞 hitType=TRACK_LIGHT 共用 uniform 索引）
@@ -1094,8 +1118,21 @@ function computeLightEmissions() {
             pathTracingUniforms.uTrackWideLampIdBase.value + ' vs ' + TRACK_WIDE_LAMP_ID_BASE
         );
     }
+    // R3-5b throw-first: CLOUD_FACE_COUNT 三源契約（shader L1387 / NEE / JS 分母同值=2）
+    if (!pathTracingUniforms.uCloudFaceCount) {
+        throw new Error('[R3-5b] uCloudFaceCount uniform missing');
+    }
+    if (pathTracingUniforms.uCloudFaceCount.value !== CLOUD_FACE_COUNT) {
+        throw new Error('[R3-5b] uCloudFaceCount mismatch: expected ' + CLOUD_FACE_COUNT + ', got ' + pathTracingUniforms.uCloudFaceCount.value);
+    }
+    if (!Array.isArray(pathTracingUniforms.uCloudRodCenter.value) || pathTracingUniforms.uCloudRodCenter.value.length !== 4) {
+        throw new Error('[R3-5b] uCloudRodCenter must be 4-element Vector3 array');
+    }
+    if (!Array.isArray(pathTracingUniforms.uCloudRodHalfExtent.value) || pathTracingUniforms.uCloudRodHalfExtent.value.length !== 4) {
+        throw new Error('[R3-5b] uCloudRodHalfExtent must be 4-element Vector3 array');
+    }
 
-    // R3-3：Cloud rod Lambertian 3-face emitter。kelvinToRGB 回傳 sRGB，pow(,2.2) 轉 linear 給 path tracer。
+    // R3-5b：Cloud rod Lambertian 2-face emitter。kelvinToRGB 回傳 sRGB，pow(,2.2) 轉 linear 給 path tracer。
     const cloudSrgb = kelvinToRGB(cloudKelvin);
     const cloudRLin = Math.pow(cloudSrgb.r, 2.2);
     const cloudGLin = Math.pow(cloudSrgb.g, 2.2);
@@ -1165,11 +1202,16 @@ function computeLightEmissions() {
         }
     }
 
-    console.log('[R3-5a]', {
+    console.log('[R3-5b]', {
         cloudMode: cloudColorMode,
         cloudKelvin: cloudKelvin,
         cloudRadiance: pathTracingUniforms.uCloudEmission.value.map(v => ({ r: +v.x.toFixed(4), g: +v.y.toFixed(4), b: +v.z.toFixed(4) })),
         cloudObjIdBase: pathTracingUniforms.uCloudObjIdBase.value,
+        cloudFaceCount: CLOUD_FACE_COUNT,
+        neePoolSize: 11,
+        selectPdf: (1/11).toFixed(4),
+        cloudRodCenter: CLOUD_ROD_CENTER.map(v => ({ x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3) })),
+        cloudRodHalfExtent: CLOUD_ROD_HALF_EXTENT.map(v => ({ x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3) })),
         trackMode: trackColorMode,
         trackKelvin: trackKelvin.slice(),
         trackLumens: trackLumens,
