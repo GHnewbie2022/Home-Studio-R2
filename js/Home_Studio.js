@@ -341,14 +341,11 @@ function applyPanelConfig(config) {
     syncR3ColorUIEnable();
 }
 
-// R3-2-fix01：依 currentPanelConfig 同步吸頂燈滑桿與 R3 4 dropdown 的 enable/disable。
-// Config 1/2 = 吸頂燈撐場景 → 滑桿 enable、R3 dropdown disable。
-// Config 3   = 物理上吸頂燈應移除（本階段暫保留發光，UI 鎖）→ 滑桿 disable、R3 dropdown enable。
+// R3-2-fix01b：依 currentPanelConfig 同步 R3 4 dropdown 的 enable/disable。
+// Config 1/2 = 吸頂燈撐場景 → R3 dropdown disable（R3 燈關，吸頂燈固定 4000K 內部自然光）。
+// Config 3   = 吸頂燈撤場（UI 已無滑桿）→ R3 dropdown enable。
 function syncR3ColorUIEnable() {
     const isConfig3 = (currentPanelConfig === 3);
-    if (colorTempCtrl && colorTempCtrl.enable) {
-        if (isConfig3) colorTempCtrl.disable(); else colorTempCtrl.enable();
-    }
     const r3Ctrls = [cloudColorCtrl, trackColorCtrl, trackWideColorSouthCtrl, trackWideColorNorthCtrl];
     r3Ctrls.forEach(function (c) {
         if (!c || !c.enable) return;
@@ -403,7 +400,6 @@ let cloudKelvin     = CLOUD_MODE_K.NEUTRAL;
 let trackKelvin     = [TRACK_MODE_K.NEUTRAL, TRACK_MODE_K.NEUTRAL, TRACK_MODE_K.NEUTRAL, TRACK_MODE_K.NEUTRAL];
 let trackWideKelvin = [WIDE_MODE_K.NEUTRAL, WIDE_MODE_K.NEUTRAL];
 // GUI controller refs（供 applyPanelConfig → syncR3ColorUIEnable 聯動 enable/disable）
-let colorTempCtrl            = null;
 let cloudColorCtrl           = null;
 let trackColorCtrl           = null;
 let trackWideColorSouthCtrl  = null;
@@ -1127,28 +1123,17 @@ function setupGUI() {
     brightnessCtrl.name('brightness (R3-6 校準)');
     attachMetaClickReset(brightnessCtrl, 900);
 
-    // R3-2-fix01：吸頂燈色溫滑桿（R2-11 中央吸頂燈 kelvinToRGB 消費者下游）。
-    // Config 1/2 可拉動、Config 3 鎖住（由 applyPanelConfig → syncR3ColorUIEnable 切換）。
-    colorTempCtrl = lightFolder.add({ colorTemp: 4000 }, 'colorTemp', 2700, 6500, 100)
-        .name('吸頂燈色溫 (K)')
-        .onChange(function (value) {
-            colorTemperature = value;
-            wakeRender();
-        });
-    attachMetaClickReset(colorTempCtrl, 4000);
-
-    // R3-2-fix01：R3 Color Temperature 子資料夾 — 4 個 dropdown preset。
+    // R3-2-fix01b：吸頂燈色溫 UI 移除（房間現況固定 4000K 自然光，內部 colorTemperature=4000 常數維持）。
+    // R3 4 dropdown 直掛 lightFolder，與 brightness 同級（不再作為 subfolder）。
     // 商品規格映射見上方 CLOUD_MODE_K / TRACK_MODE_K / WIDE_MODE_K。
-    // Config 1/2 disable、Config 3 enable（與吸頂燈滑桿反向聯動）。
-    const r3ColorFolder = lightFolder.addFolder('R3 Color Temperature');
-    r3ColorFolder.open();
+    // Config 1/2 disable、Config 3 enable（applyPanelConfig → syncR3ColorUIEnable）。
 
     // 3-選單共用 label↔mode 映射（Cloud + 南北廣角南 + 南北廣角北 同綱要）
     const WARM3_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
     const WARM3_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
     const WARM3_OPTIONS = ['暖', '自然', '冷'];
 
-    cloudColorCtrl = r3ColorFolder
+    cloudColorCtrl = lightFolder
         .add({ c: WARM3_MODE_TO_LABEL[cloudColorMode] }, 'c', WARM3_OPTIONS)
         .name('Cloud漫射燈')
         .onChange(function (label) {
@@ -1165,7 +1150,7 @@ function setupGUI() {
         'ALL_WARM': '全暖', 'ALL_NATURAL': '全自然', 'ALL_COLD': '全冷',
         'WARM_COLD': '北暖南冷', 'COLD_WARM': '北冷南暖'
     };
-    trackColorCtrl = r3ColorFolder
+    trackColorCtrl = lightFolder
         .add({ t: TRACK_MODE_TO_LABEL[trackColorMode] }, 't',
              ['全暖', '全自然', '全冷', '北暖南冷', '北冷南暖'])
         .name('東西軌道燈')
@@ -1183,7 +1168,7 @@ function setupGUI() {
             wakeRender();
         });
 
-    trackWideColorSouthCtrl = r3ColorFolder
+    trackWideColorSouthCtrl = lightFolder
         .add({ s: WARM3_MODE_TO_LABEL[trackWideColorSouth] }, 's', WARM3_OPTIONS)
         .name('南北廣角燈 南')
         .onChange(function (label) {
@@ -1192,7 +1177,7 @@ function setupGUI() {
             wakeRender();
         });
 
-    trackWideColorNorthCtrl = r3ColorFolder
+    trackWideColorNorthCtrl = lightFolder
         .add({ n: WARM3_MODE_TO_LABEL[trackWideColorNorth] }, 'n', WARM3_OPTIONS)
         .name('南北廣角燈 北')
         .onChange(function (label) {
