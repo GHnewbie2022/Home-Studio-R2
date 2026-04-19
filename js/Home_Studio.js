@@ -1119,8 +1119,7 @@ function setupGUI() {
         basicBrightness = value;
         wakeRender();
     });
-    brightnessCtrl.disable();
-    brightnessCtrl.name('brightness (R3-6 校準)');
+    brightnessCtrl.name('吸頂主燈');
     attachMetaClickReset(brightnessCtrl, 900);
 
     // R3-2-fix01b：吸頂燈色溫 UI 移除（房間現況固定 4000K 自然光，內部 colorTemperature=4000 常數維持）。
@@ -1168,42 +1167,42 @@ function setupGUI() {
             wakeRender();
         });
 
-    trackWideColorSouthCtrl = lightFolder
-        .add({ s: WARM3_MODE_TO_LABEL[trackWideColorSouth] }, 's', WARM3_OPTIONS)
-        .name('南北廣角燈 南')
-        .onChange(function (label) {
-            trackWideColorSouth = WARM3_LABEL_TO_MODE[label];
-            trackWideKelvin[0] = WIDE_MODE_K[trackWideColorSouth];  // [0]=南
-            wakeRender();
-        });
-
     trackWideColorNorthCtrl = lightFolder
         .add({ n: WARM3_MODE_TO_LABEL[trackWideColorNorth] }, 'n', WARM3_OPTIONS)
-        .name('南北廣角燈 北')
+        .name('北廣角燈')
         .onChange(function (label) {
             trackWideColorNorth = WARM3_LABEL_TO_MODE[label];
             trackWideKelvin[1] = WIDE_MODE_K[trackWideColorNorth];  // [1]=北
             wakeRender();
         });
 
+    trackWideColorSouthCtrl = lightFolder
+        .add({ s: WARM3_MODE_TO_LABEL[trackWideColorSouth] }, 's', WARM3_OPTIONS)
+        .name('南廣角燈')
+        .onChange(function (label) {
+            trackWideColorSouth = WARM3_LABEL_TO_MODE[label];
+            trackWideKelvin[0] = WIDE_MODE_K[trackWideColorSouth];  // [0]=南
+            wakeRender();
+        });
+
     // 4 dropdown 建構完後立即依 currentPanelConfig 同步 enable/disable 初始狀態。
     syncR3ColorUIEnable();
 
+    // R2-18 fix19：間接光倍率（>1 提亮陰影區，僅影響 indirect bounce）；fix21 預設 1.7 肉眼校準
+    const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('間接光倍率').onChange(function (v) {
+        pathTracingUniforms.uIndirectMultiplier.value = v; wakeRender();
+    });
+    attachMetaClickReset(indirectCtrl, 1.7);
+
     // R2-UI：最大反彈次數（1~14，預設 4），shader 內動態 break 控制實際 bounce 數
     const bouncesObject = { max_bounces: 4 };
-    const bouncesCtrl = lightFolder.add(bouncesObject, 'max_bounces', 1, 14, 1).onChange(function (value) {
+    const bouncesCtrl = lightFolder.add(bouncesObject, 'max_bounces', 1, 14, 1).name('最大彈跳數').onChange(function (value) {
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) {
             pathTracingUniforms.uMaxBounces.value = value;
         }
         wakeRender();
     });
     attachMetaClickReset(bouncesCtrl, 4);
-
-    // R2-18 fix19：間接光倍率（>1 提亮陰影區，僅影響 indirect bounce）；fix21 預設 1.7 肉眼校準
-    const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('indirectMul').onChange(function (v) {
-        pathTracingUniforms.uIndirectMultiplier.value = v; wakeRender();
-    });
-    attachMetaClickReset(indirectCtrl, 1.7);
 
     // R2-18 fix23：Material Settings UI 移除，所有 roughness/metalness/albedo 預設值已定案寫死於 uniform 初值
 
