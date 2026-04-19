@@ -84,6 +84,9 @@ uniform float uEmissiveClamp;    // R3-3 firefly clamp（median×30 估算；預
 // R3-4：Track spot lamp emitter meta（4 盞，hitType=TRACK_LIGHT）
 uniform vec2 uTrackBeamCos[4];   // .x = cos(inner_half) ≈ 0.9659（15°）；.y = cos(outer_half) ≈ 0.8660（30°）；smoothstep 邊界 edge0=.y、edge1=.x
 uniform float uTrackLampIdBase;  // R3-4 fix01：= objectCount(0) + 400 = 400（pre-bake objectCount，仿 R3-3 uCloudObjIdBase pattern；CalculateRadiance 無 objectCount 區域變數可見）；JS 端 TRACK_LAMP_ID_BASE 同步契約，throw-first assertion 守門
+// R3-5a：TrackWide 廣角燈 emitter meta（2 盞，hitType=TRACK_WIDE_LIGHT；複用 R3-4 Option A' pattern）
+uniform vec2 uTrackWideBeamCos[2];   // .x = cos(inner_half) ≈ 0.5736（55°）；.y = cos(outer_half) = 0.5（60°）；smoothstep 邊緣軟於 spot（全角 120°）
+uniform float uTrackWideLampIdBase;  // = 700（pre-bake，避開 400 spot / 500 wide housing / 600 spot housing）；JS 端 TRACK_WIDE_LAMP_ID_BASE 同步契約
 
 // R2-14 投射燈頭（4 盞傾斜圓柱；pivot 位於支架底，半徑 3cm、長 13.5cm；與 uTrackLightEnabled 共開關）
 uniform vec3 uTrackLampPos[4];
@@ -107,9 +110,12 @@ int primaryRay = 1; // 僅 bounces==0 為 1，其餘為 0
 #define TRACK 13
 #define CLOUD_LIGHT 14 // R2-17 Cloud 漫射燈條（emission=0 視覺幾何，behavior 同 DIFF）
 #define TRACK_LIGHT 15 // R3-4 軌道投射燈 emitter 圓柱（hitType-only branch，emissive primary/specular accumulation；與 TRACK=13 軌道鋁槽 box 分家）
+#define TRACK_WIDE_LIGHT 16 // R3-5a 軌道廣角燈 emitter 圓盤（pattern 同 TRACK_LIGHT，全角 120° 軟邊 smoothstep gate；與 TRACK=13/TRACK_LIGHT=15 分家）
 // R3-4 fix07：發光圓盤面積（disk-area NEE integrand 需乘此常數，對齊 L = Φ/(K·π·A) radiance 量綱契約）
 // 雙源同步契約：與 js/Home_Studio.js TRACK_LAMP_EMITTER_AREA = Math.PI * 0.03² 值一致（≈ 2.8274e-3 m²）
 const float TRACK_LAMP_EMITTER_AREA = PI * 0.03 * 0.03;
+// R3-5a：廣角燈發光圓盤面積（r=5cm）；雙源同步契約與 js/Home_Studio.js TRACK_WIDE_LAMP_EMITTER_AREA = Math.PI * 0.05² 值一致（≈ 7.8540e-3 m²）
+const float TRACK_WIDE_LAMP_EMITTER_AREA = PI * 0.05 * 0.05;
 
 // R2-6 旋轉物件逆矩陣
 uniform mat4 uLeftSpeakerInvMatrix;
@@ -193,15 +199,15 @@ Quad ceilingLampQuad; // R2-11 向下矩形光 importance sampling PDF 目標（
 
 #include <pathtracing_sample_quad_light>
 
-// R3-4 Option A'：5 選 1 stochastic NEE（吸頂 quadLight[0] + 軌道 4 盞 emitter，selectPdf=1/5）
-// 與 sampleQuadLight 簽名差異：throughput 升 vec3 以承載 track 候選之 emit baked + 色溫權重；
+// R3-5a：7 選 1 stochastic NEE（吸頂 quadLight[0] + 軌道 spot 4 盞 + 軌道 wide 2 盞，selectPdf=1/7）
+// 與 sampleQuadLight 簽名差異：throughput 升 vec3 以承載 track / track-wide 候選之 emit baked + 色溫權重；
 // quadLight 候選之 throughput = vec3(scalar_weight / selectPdf)（grey），與既有 mask × weight × uLegacyGain 流程相容。
-// 命中 TRACK_LIGHT 時依 sampleLight 旗標分流：emit 已於此處 baked → branch 內僅 accumCol += mask。
-vec3 sampleStochasticLight5(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
+// 命中 TRACK_LIGHT / TRACK_WIDE_LIGHT 時依 sampleLight 旗標分流：emit 已於此處 baked → branch 內僅 accumCol += mask。
+vec3 sampleStochasticLight7(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 {
-	int neeIdx = int(floor(rng() * 5.0));
-	neeIdx = clamp(neeIdx, 0, 4);
-	float selectPdf = 0.2; // 1/5
+	int neeIdx = int(floor(rng() * 7.0));
+	neeIdx = clamp(neeIdx, 0, 6);
+	float selectPdf = 1.0 / 7.0;
 	if (neeIdx == 0)
 	{
 		float w;
@@ -209,22 +215,39 @@ vec3 sampleStochasticLight5(vec3 x, vec3 nl, Quad ql0, out vec3 throughput)
 		throughput = vec3(w / selectPdf);
 		return dir;
 	}
-	int li = neeIdx - 1;
-	// R3-4 fix04：uTrackLampPos 為支架底（pivot），非發光面中心。
-	// 發光底圓面在 pa + lampDir * 0.135（與 SceneIntersect 圓柱長度一致）。
-	// 原誤射 pivot → shadow ray grazing 或命中 housing 頂蓋（faceAlign=-1）→ NEE 必 miss → 4 盞軌道燈貢獻實質歸零。
-	vec3 target = uTrackLampPos[li] + uTrackLampDir[li] * 0.135;
-	vec3 toLight = target - x;
-	float dist2 = max(dot(toLight, toLight), 1e-4);     // firefly clamp（近距離 distance²→0 防呆）
-	vec3 ldir = toLight * inversesqrt(dist2);
-	float cos_light = max(0.0, dot(-ldir, uTrackLampDir[li]));
-	float falloff = smoothstep(uTrackBeamCos[li].y, uTrackBeamCos[li].x, cos_light);
-	vec3 emit = uTrackEmission[li] * falloff;           // emit 於此 baked → TRACK_LIGHT branch sampleLight 路徑直接 accumCol += mask
-	float geom = max(0.0, dot(nl, ldir)) * cos_light / dist2;
-	// R3-4 fix07：disk-area integrand（× A）。JS 端 L = Φ/(K·π·A) 為 radiance，shader NEE 需乘發光面積還原 flux contribution。
-	// fix05 throughput-50 clamp 移除：上游量綱修正後 emit≈700（非 8.4e5）、× A≈2.83e-3 × geom × /0.2 合計 O(1)，不再 firefly。
-	throughput = emit * geom * TRACK_LAMP_EMITTER_AREA / selectPdf;
-	return ldir;
+	if (neeIdx <= 4)
+	{
+		int li = neeIdx - 1;
+		// R3-4 fix04：uTrackLampPos 為支架底（pivot），非發光面中心。
+		// 發光底圓面在 pa + lampDir * 0.135（與 SceneIntersect 圓柱長度一致）。
+		// 原誤射 pivot → shadow ray grazing 或命中 housing 頂蓋（faceAlign=-1）→ NEE 必 miss → 4 盞軌道燈貢獻實質歸零。
+		vec3 target = uTrackLampPos[li] + uTrackLampDir[li] * 0.135;
+		vec3 toLight = target - x;
+		float dist2 = max(dot(toLight, toLight), 1e-4);     // firefly clamp（近距離 distance²→0 防呆）
+		vec3 ldir = toLight * inversesqrt(dist2);
+		float cos_light = max(0.0, dot(-ldir, uTrackLampDir[li]));
+		float falloff = smoothstep(uTrackBeamCos[li].y, uTrackBeamCos[li].x, cos_light);
+		vec3 emit = uTrackEmission[li] * falloff;           // emit 於此 baked → TRACK_LIGHT branch sampleLight 路徑直接 accumCol += mask
+		float geom = max(0.0, dot(nl, ldir)) * cos_light / dist2;
+		// R3-4 fix07：disk-area integrand（× A）。JS 端 L = Φ/(K·π·A) 為 radiance，shader NEE 需乘發光面積還原 flux contribution。
+		// fix05 throughput-50 clamp 移除：上游量綱修正後 emit≈700（非 8.4e5）、× A≈2.83e-3 × geom × /0.2 合計 O(1)，不再 firefly。
+		throughput = emit * geom * TRACK_LAMP_EMITTER_AREA / selectPdf;
+		return ldir;
+	}
+	// R3-5a：neeIdx == 5 / 6 → TrackWide 2 盞（slot 5=南、slot 6=北；索引對齊 JS uTrackWideLampPos 順序）
+	int wi = neeIdx - 5;
+	// 發光底圓面中心 = 支架底 + lampDir * 0.072（與 SceneIntersect 圓柱長度一致）
+	vec3 wideTarget = uTrackWideLampPos[wi] + uTrackWideLampDir[wi] * 0.072;
+	vec3 wideTo = wideTarget - x;
+	float wideDist2 = max(dot(wideTo, wideTo), 1e-4);
+	vec3 wideDir = wideTo * inversesqrt(wideDist2);
+	float wideCosLight = max(0.0, dot(-wideDir, uTrackWideLampDir[wi]));
+	float wideFalloff = smoothstep(uTrackWideBeamCos[wi].y, uTrackWideBeamCos[wi].x, wideCosLight);
+	vec3 wideEmit = uTrackWideEmission[wi] * wideFalloff;
+	float wideGeom = max(0.0, dot(nl, wideDir)) * wideCosLight / wideDist2;
+	// disk-area integrand，對齊 L = Φ/(K·π·A)（JS computeTrackWideRadiance）；emitter A = π·0.05² ≈ 7.85e-3 m²
+	throughput = wideEmit * wideGeom * TRACK_WIDE_LAMP_EMITTER_AREA / selectPdf;
+	return wideDir;
 }
 
 // 世界空間垂直圓柱交叉（ISO-PUCK 用）
@@ -712,7 +735,10 @@ float SceneIntersect( )
 		}
 	}
 
-	// 7) R2-15 南北廣角燈頭（2 盞矮胖圓柱；關閉時 primary/secondary ray 皆跳過）
+	// 7) R2-15 → R3-5a 南北廣角燈頭（2 盞矮胖圓柱；關閉時 primary/secondary ray 皆跳過）
+	// R3-5a：emitter 改 hitType=TRACK_WIDE_LIGHT；face-gate 對齊 R3-4 spot pattern（disk = emitter / openCylinder = housing）
+	//   - 底蓋（normal 與 lampDir 同向，faceAlign > 0.9）→ TRACK_WIDE_LIGHT emitter
+	//   - 側面 + 頂蓋 → DIFF housing（深灰殼），hitObjectID 沿用 objectCount + 500 + li 保 R2-15 既有編號
 	if (uWideTrackLightEnabled > 0.5)
 	{
 		for (int li = 0; li < 2; li++)
@@ -724,11 +750,24 @@ float SceneIntersect( )
 			{
 				t = d;
 				hitNormal = n;
-				hitEmission = vec3(0);
-				hitColor = vec3(0.85, 0.85, 0.85);
-				hitType = DIFF;
-				hitRoughness = uFixtureRoughness; hitMetalness = uFixtureMetalness; // R2-18 Phase 2：軌道+燈具束包
-				hitObjectID = float(objectCount + 500 + li);
+				float wideFaceAlign = dot(n, uTrackWideLampDir[li]);
+				if (wideFaceAlign > 0.9)
+				{
+					hitEmission = uTrackWideEmission[li];
+					hitColor = vec3(0);
+					hitType = TRACK_WIDE_LIGHT;
+					hitRoughness = 1.0; hitMetalness = 0.0; // emitter 非金屬，繞過 metal gate
+					hitObjectID = uTrackWideLampIdBase + float(li);
+				}
+				else
+				{
+					hitEmission = vec3(0);
+					hitColor = vec3(0.15, 0.15, 0.15);
+					hitType = DIFF;
+					hitRoughness = uFixtureRoughness;
+					hitMetalness = uFixtureMetalness;
+					hitObjectID = float(objectCount + 500 + li);
+				}
 			}
 		}
 	}
@@ -750,7 +789,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	vec3 diffuseBounceRayDirection = vec3(0);
 
 	float t = INFINITY;
-	// R3-4：weight 升 vec3 以承載 sampleStochasticLight5 之 emit baked + 色溫權重；既有 mask 為 vec3，相乘 component-wise
+	// R3-4 / R3-5a：weight 升 vec3 以承載 sampleStochasticLight7 之 emit baked + 色溫權重；既有 mask 為 vec3，相乘 component-wise
 	vec3 weight;
 	float p;
 
@@ -838,7 +877,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 		// R3-4 fix04：TRACK_LIGHT 分支必須前置於 NEE-miss handler 之前，
 		// 否則 L831 catch-all 會先攔截 sampleLight==TRUE 的合法 NEE 命中，
-		// 導致 sampleStochasticLight5 baked 入 mask 的 emit 被丟棄（Option A' 退化成 Option A）。
+		// 導致 sampleStochasticLight7 baked 入 mask 的 emit 被丟棄（Option A' 退化成 Option A）。
 		if (hitType == TRACK_LIGHT)
 		{
 			if (diffuseCount == 0)
@@ -860,6 +899,43 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				accumCol += mask * (rawEmit * scale);
 			}
 			// BSDF-indirect (兩者皆 false) 不累加，避與 NEE 路徑雙計
+
+			if (willNeedDiffuseBounceRay == TRUE)
+			{
+				mask = diffuseBounceMask * uIndirectMultiplier;
+				rayOrigin = diffuseBounceRayOrigin;
+				rayDirection = diffuseBounceRayDirection;
+
+				willNeedDiffuseBounceRay = FALSE;
+				bounceIsSpecular = FALSE;
+				sampleLight = FALSE;
+				diffuseCount = 1;
+				continue;
+			}
+
+			break;
+		}
+
+		// R3-5a：TRACK_WIDE_LIGHT 分支（複用 R3-4 TRACK_LIGHT pattern；clamp index 0..1 對應南/北 2 盞）
+		if (hitType == TRACK_WIDE_LIGHT)
+		{
+			if (diffuseCount == 0)
+				pixelSharpness = 1.0;
+
+			if (sampleLight == TRUE)
+			{
+				accumCol += mask;
+			}
+			else if (bounceIsSpecular == TRUE)
+			{
+				int wideIdx = int(hitObjectID - uTrackWideLampIdBase + 0.5);
+				wideIdx = clamp(wideIdx, 0, 1);
+				vec3 rawEmit = uTrackWideEmission[wideIdx];
+				float maxCh = max(max(rawEmit.r, rawEmit.g), rawEmit.b);
+				float scale = (maxCh > uEmissiveClamp) ? (uEmissiveClamp / maxCh) : 1.0;
+				accumCol += mask * (rawEmit * scale);
+			}
+			// BSDF-indirect 不累加（避 NEE 雙計，待 R3-6 MIS 權重到位才開）
 
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
@@ -945,7 +1021,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -976,7 +1052,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1017,7 +1093,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1062,7 +1138,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1163,7 +1239,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1195,7 +1271,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1249,7 +1325,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1287,7 +1363,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1357,7 +1433,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
 				willNeedDiffuseBounceRay = TRUE;
 			}
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1404,7 +1480,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 
-			rayDirection = sampleStochasticLight5(x, nl, light, weight);
+			rayDirection = sampleStochasticLight7(x, nl, light, weight);
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			continue;
@@ -1432,7 +1508,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		accumCol += uCloudEmission[0] + uCloudEmission[1] + uCloudEmission[2] + uCloudEmission[3] +
 			uTrackEmission[0] + uTrackEmission[1] + uTrackEmission[2] + uTrackEmission[3] +
 			uTrackWideEmission[0] + uTrackWideEmission[1] +
-			vec3(uCloudObjIdBase + uCloudFaceArea[0] + uCloudFaceArea[1] + uCloudFaceArea[2] + uCloudFaceArea[3] + uEmissiveClamp);
+			vec3(uCloudObjIdBase + uCloudFaceArea[0] + uCloudFaceArea[1] + uCloudFaceArea[2] + uCloudFaceArea[3] + uEmissiveClamp) +
+			vec3(uTrackWideBeamCos[0].x + uTrackWideBeamCos[0].y + uTrackWideBeamCos[1].x + uTrackWideBeamCos[1].y + uTrackWideLampIdBase);
 	}
 	return max(vec3(0), accumCol);
 

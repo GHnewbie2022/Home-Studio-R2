@@ -510,6 +510,33 @@ function computeTrackRadiance(lm, T_K, A_m2, beamFullDeg) {
     return lm / (K * Math.PI * A);
 }
 // ---------------- /R3-4 Track spot lamp constants & radiance ----------------
+
+// ---------------- R3-5a Track wide lamp constants & radiance ----------------
+// 產品規格 docs/R3_燈具產品規格.md §4 25W 廣角散光軌道燈：2500 lm 單盞、全角 120°（半角 60°）固定、r=5cm 圓盤。
+// Beam 語義（plan §R3-5a）：inner 半角 55°、outer 半角 60°、全角 = outer × 2 = 120°。
+const TRACK_WIDE_LAMP_EMITTER_AREA = Math.PI * 0.05 * 0.05;         // ≈ 7.854e-3 m²（半徑 5cm 圓盤）
+const TRACK_WIDE_LAMP_LUMENS_MAX   = 2500;                          // 單盞最大流明（商品規格上限）
+let   trackWideLumens              = TRACK_WIDE_LAMP_LUMENS_MAX;    // GUI 可變（2 盞同值）
+const TRACK_WIDE_BEAM_INNER_HALF_DEG = 55;                          // smoothstep 邊緣平滑起點 cos_inner
+const TRACK_WIDE_BEAM_OUTER_HALF_DEG = 60;                          // smoothstep 邊緣衰減終點 cos_outer
+const TRACK_WIDE_BEAM_FULL_DEG       = TRACK_WIDE_BEAM_OUTER_HALF_DEG * 2; // 全角 120°
+const TRACK_WIDE_LAMP_ID_BASE        = 700;                         // shader uTrackWideLampIdBase 雙源同步契約（避開 400 spot emitter / 500 wide housing / 600 spot housing）
+const TRACK_WIDE_BEAM_COS_INNER = Math.cos(TRACK_WIDE_BEAM_INNER_HALF_DEG * Math.PI / 180); // ≈ 0.5736
+const TRACK_WIDE_BEAM_COS_OUTER = Math.cos(TRACK_WIDE_BEAM_OUTER_HALF_DEG * Math.PI / 180); // = 0.5
+
+/**
+ * R3-5a：軌道廣角燈 emitter radiance W/(sr·m²)。
+ * 公式 L = Φ / (K · π · A)（對齊 R3-4 computeTrackRadiance / R3-3 computeCloudRadiance 量綱契約）。
+ * beam 形狀由 shader smoothstep(cos_outer, cos_inner, cos_ax) 承擔，不影響 radiance 量綱。
+ * beamFullDeg 保留簽名以相容測試與未來 MIS 升級（R3-6 可於 disk area 採樣契約時消費）。
+ */
+function computeTrackWideRadiance(lm, T_K, A_m2, beamFullDeg) {
+    if (!Number.isFinite(lm) || lm <= 0) return 0;
+    const K = kelvinToLuminousEfficacy(T_K);
+    const A = Math.max(A_m2, 1e-8);
+    return lm / (K * Math.PI * A);
+}
+// ---------------- /R3-5a Track wide lamp constants & radiance ----------------
 // ---------------- /R3-1 Photometry Pipeline ----------------
 
 let wallAlbedo = 1.0;
@@ -999,6 +1026,12 @@ function initSceneData() {
         new THREE.Vector2(TRACK_BEAM_COS_INNER, TRACK_BEAM_COS_OUTER)
     ] };
     pathTracingUniforms.uTrackLampIdBase    = { value: TRACK_LAMP_ID_BASE };
+    // R3-5a：軌道廣角燈 emitter meta（2 盞 hitType=TRACK_WIDE_LIGHT）
+    pathTracingUniforms.uTrackWideBeamCos   = { value: [
+        new THREE.Vector2(TRACK_WIDE_BEAM_COS_INNER, TRACK_WIDE_BEAM_COS_OUTER),
+        new THREE.Vector2(TRACK_WIDE_BEAM_COS_INNER, TRACK_WIDE_BEAM_COS_OUTER)
+    ] };
+    pathTracingUniforms.uTrackWideLampIdBase = { value: TRACK_WIDE_LAMP_ID_BASE };
 
     // R2-14 fix02：4 盞圓柱燈頭靜態 uniforms（R3/R4 階段改為 UI 動態更新）
     // pivot = 支架底（y_pivot = trackBaseY - 0.076 = 2.819）；tilt=45° 由軌道中心朝外傾
@@ -1051,6 +1084,16 @@ function computeLightEmissions() {
             pathTracingUniforms.uTrackLampIdBase.value + ' vs ' + TRACK_LAMP_ID_BASE
         );
     }
+    // R3-5a：同型守門
+    if (!pathTracingUniforms.uTrackWideLampIdBase) {
+        throw new Error('[R3-5a] uTrackWideLampIdBase uniform missing — computeLightEmissions called before initSceneData uniform setup');
+    }
+    if (pathTracingUniforms.uTrackWideLampIdBase.value !== TRACK_WIDE_LAMP_ID_BASE) {
+        throw new Error(
+            '[R3-5a] shader/JS TRACK_WIDE_LAMP_ID_BASE mismatch: ' +
+            pathTracingUniforms.uTrackWideLampIdBase.value + ' vs ' + TRACK_WIDE_LAMP_ID_BASE
+        );
+    }
 
     // R3-3：Cloud rod Lambertian 3-face emitter。kelvinToRGB 回傳 sRGB，pow(,2.2) 轉 linear 給 path tracer。
     const cloudSrgb = kelvinToRGB(cloudKelvin);
@@ -1085,20 +1128,44 @@ function computeLightEmissions() {
         trackRadianceDebug.push({ r: +(radiance * trackRLin).toFixed(4), g: +(radiance * trackGLin).toFixed(4), b: +(radiance * trackBLin).toFixed(4) });
     }
 
-    // TrackWide 廣角燈 R3-5 接手，此階段維持 0
+    // R3-5a：TrackWide 廣角燈 emitter radiance（per-lamp 色溫 + 共用 lumens / area）
+    // trackWideKelvin[0]=南、[1]=北；與 uTrackWideLampPos 順序一致
+    const trackWideRadianceDebug = [];
     for (let i = 0; i < 2; i++) {
-        pathTracingUniforms.uTrackWideEmission.value[i].set(0, 0, 0);
+        const wideSrgb = kelvinToRGB(trackWideKelvin[i]);
+        const wideRLin = Math.pow(wideSrgb.r, 2.2);
+        const wideGLin = Math.pow(wideSrgb.g, 2.2);
+        const wideBLin = Math.pow(wideSrgb.b, 2.2);
+        const radiance = computeTrackWideRadiance(
+            trackWideLumens,
+            trackWideKelvin[i],
+            TRACK_WIDE_LAMP_EMITTER_AREA,
+            TRACK_WIDE_BEAM_FULL_DEG
+        );
+        pathTracingUniforms.uTrackWideEmission.value[i].set(
+            radiance * wideRLin,
+            radiance * wideGLin,
+            radiance * wideBLin
+        );
+        pathTracingUniforms.uTrackWideBeamCos.value[i].set(TRACK_WIDE_BEAM_COS_INNER, TRACK_WIDE_BEAM_COS_OUTER);
+        trackWideRadianceDebug.push({ r: +(radiance * wideRLin).toFixed(4), g: +(radiance * wideGLin).toFixed(4), b: +(radiance * wideBLin).toFixed(4) });
     }
 
-    // 末段 NaN/Inf 守門（uTrackEmission 四盞）
+    // 末段 NaN/Inf 守門（uTrackEmission 四盞 + uTrackWideEmission 兩盞）
     for (let i = 0; i < 4; i++) {
         const v = pathTracingUniforms.uTrackEmission.value[i];
         if (!Number.isFinite(v.x) || !Number.isFinite(v.y) || !Number.isFinite(v.z)) {
             throw new Error('[R3-4] uTrackEmission[' + i + '] NaN/Inf: ' + v.x + ',' + v.y + ',' + v.z);
         }
     }
+    for (let i = 0; i < 2; i++) {
+        const v = pathTracingUniforms.uTrackWideEmission.value[i];
+        if (!Number.isFinite(v.x) || !Number.isFinite(v.y) || !Number.isFinite(v.z)) {
+            throw new Error('[R3-5a] uTrackWideEmission[' + i + '] NaN/Inf: ' + v.x + ',' + v.y + ',' + v.z);
+        }
+    }
 
-    console.log('[R3-4]', {
+    console.log('[R3-5a]', {
         cloudMode: cloudColorMode,
         cloudKelvin: cloudKelvin,
         cloudRadiance: pathTracingUniforms.uCloudEmission.value.map(v => ({ r: +v.x.toFixed(4), g: +v.y.toFixed(4), b: +v.z.toFixed(4) })),
@@ -1109,6 +1176,11 @@ function computeLightEmissions() {
         trackBeamFullDeg: TRACK_BEAM_FULL_DEG,
         trackRadiance: trackRadianceDebug,
         trackLampIdBase: pathTracingUniforms.uTrackLampIdBase.value,
+        trackWideKelvin: trackWideKelvin.slice(),
+        trackWideLumens: trackWideLumens,
+        trackWideBeamFullDeg: TRACK_WIDE_BEAM_FULL_DEG,
+        trackWideRadiance: trackWideRadianceDebug,
+        trackWideLampIdBase: pathTracingUniforms.uTrackWideLampIdBase.value,
     });
 }
 
@@ -1311,6 +1383,7 @@ function setupGUI() {
         .onChange(function (label) {
             trackWideColorNorth = WARM3_LABEL_TO_MODE[label];
             trackWideKelvin[1] = WIDE_MODE_K[trackWideColorNorth];  // [1]=北
+            computeLightEmissions();
             wakeRender();
         });
 
@@ -1320,8 +1393,20 @@ function setupGUI() {
         .onChange(function (label) {
             trackWideColorSouth = WARM3_LABEL_TO_MODE[label];
             trackWideKelvin[0] = WIDE_MODE_K[trackWideColorSouth];  // [0]=南
+            computeLightEmissions();
             wakeRender();
         });
+
+    // R3-5a：廣角燈光通量滑桿（2 盞同值，0 ~ 商品規格最大 2500 lm，預設最大）
+    const trackWideLumensCtrl = lightFolder
+        .add({ l: trackWideLumens }, 'l', 0, TRACK_WIDE_LAMP_LUMENS_MAX, 10)
+        .name('南北廣角燈 lm')
+        .onChange(function (v) {
+            trackWideLumens = v;
+            computeLightEmissions();
+            wakeRender();
+        });
+    attachMetaClickReset(trackWideLumensCtrl, TRACK_WIDE_LAMP_LUMENS_MAX);
 
     // 4 dropdown 建構完後立即依 currentPanelConfig 同步 enable/disable 初始狀態。
     syncR3ColorUIEnable();
