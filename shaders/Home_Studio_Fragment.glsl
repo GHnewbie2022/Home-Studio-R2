@@ -76,7 +76,11 @@ uniform float uLegacyGain;
 uniform vec3 uCloudEmission[4];
 uniform vec3 uTrackEmission[4];
 uniform vec3 uTrackWideEmission[2];
-uniform float uR3EmissionGate;   // runtime 0，防止 GLSL DCE 把 emission uniform 移除
+uniform float uR3EmissionGate;   // R3-1 起預留；R3-3 S3b 翻 1.0
+// R3-3：Cloud rod 3-face Lambertian emitter meta（供本階段 shader 分支 + R3-5 MIS area sampling 承接）
+uniform float uCloudObjIdBase;   // R3-3 fix01：= objectCount(0) + CLOUD_BOX_IDX_BASE(71) + 1 = 72（sceneBoxes 陣列 index，非註解邏輯 ID）
+uniform float uCloudFaceArea[4]; // [0]=E [1]=W [2]=S [3]=N rod 單面面積 m²
+uniform float uEmissiveClamp;    // R3-3 firefly clamp（median×30 估算；預設 50）
 
 // R2-14 投射燈頭（4 盞傾斜圓柱；pivot 位於支架底，半徑 3cm、長 13.5cm；與 uTrackLightEnabled 共開關）
 uniform vec3 uTrackLampPos[4];
@@ -1188,6 +1192,45 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
     if (hitType == CLOUD_LIGHT)
     {
+			// R3-3：gate-controlled emissive Lambertian 分支。gate=0 時 skip，落回 R2-17 DIFF-like 路徑保 ULP byte-identical。
+			if (uR3EmissionGate > 0.5)
+			{
+				int rodIdx = int(hitObjectID - uCloudObjIdBase + 0.5);
+				rodIdx = clamp(rodIdx, 0, 3);
+				// R3-3 fix03：per-rod 內側面排除。實體燈條扇形弧面朝外、90° 夾角與 GIK 板相鄰，
+				// 故「向內」（朝中央 GIK）與「向下」（-Y）皆不發光。
+				// rod 0 (E,+X slab) 內側=-X；rod 1 (W,-X) 內側=+X；rod 2 (+Z) 內側=-Z；rod 3 (-Z) 內側=+Z。
+				bool isInnerFace = false;
+				if (rodIdx == 0) isInnerFace = (hitNormal.x < -0.5);
+				else if (rodIdx == 1) isInnerFace = (hitNormal.x > 0.5);
+				else if (rodIdx == 2) isInnerFace = (hitNormal.z < -0.5);
+				else                  isInnerFace = (hitNormal.z > 0.5);
+				bool isEmissiveFace = (hitNormal.y > -0.5) && !isInnerFace;
+				if (isEmissiveFace)
+				{
+					vec3 emission = min(uCloudEmission[rodIdx], vec3(uEmissiveClamp));
+					if (diffuseCount == 0)
+						pixelSharpness = 1.0;
+					// R3-3 fix02：回退 LIGHT pattern `bounceIsSpecular || sampleLight`。
+					// 註：sampleLight==TRUE 實際不會走到此分支（先被 L779 NEE-miss 統一回退吃掉），
+					// 所以等同 `bounceIsSpecular==TRUE`──camera-direct + specular-chain 命中才累加。
+					// BSDF-indirect 到 Cloud 目前不累加（無 NEE 支援→R3-5 MIS 到位前避免 double-count）。
+					if (bounceIsSpecular == TRUE || sampleLight == TRUE)
+						accumCol = min(mask * emission, vec3(uEmissiveClamp));
+					if (willNeedDiffuseBounceRay == TRUE)
+					{
+						mask = diffuseBounceMask * uIndirectMultiplier;
+						rayOrigin = diffuseBounceRayOrigin;
+						rayDirection = diffuseBounceRayDirection;
+						willNeedDiffuseBounceRay = FALSE;
+						bounceIsSpecular = FALSE;
+						sampleLight = FALSE;
+						diffuseCount = 1;
+						continue;
+					}
+					break;
+				}
+			}
 			// R2-17 Cloud 漫射燈條：emission=0 視覺幾何，行為同純 DIFF；真光源（lumens / lightNormal / MIS）留 R3
 			// R2-18 Phase 2：軌道+燈具束包覆寫 + metal gate
 			hitRoughness = uFixtureRoughness;
@@ -1277,14 +1320,17 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 	}
 
-	// R3-1 DCE-proof sink: gate=0 時 r3Sink=vec3(0)，畫面不變；
-	// R3-3/4/5 將 uR3EmissionGate 改為 1 並填 emission 值即可點亮。
-	vec3 r3Sink = uR3EmissionGate * (
-		uCloudEmission[0] + uCloudEmission[1] + uCloudEmission[2] + uCloudEmission[3] +
-		uTrackEmission[0] + uTrackEmission[1] + uTrackEmission[2] + uTrackEmission[3] +
-		uTrackWideEmission[0] + uTrackWideEmission[1]
-	);
-	accumCol += r3Sink;
+	// R3-1 DCE-proof sink: 保留 uniform reference 但恆不貢獻 accumCol。
+	// R3-3 fix02：原以 uR3EmissionGate 作係數──R3-1/R3-2 gate=0 時碰巧=0，但 R3-3 gate 翻成 1 後
+	// sink = Σ(uCloudEmission) ≈ (40, 31, 22) 直接累加每個 pixel→全白。
+	// 改 runtime-false guard：uR3EmissionGate ∈ {0, 1}，永不會 < -0.5；compiler 無法證明 false→uniform 不被 DCE。
+	if (uR3EmissionGate < -0.5)
+	{
+		accumCol += uCloudEmission[0] + uCloudEmission[1] + uCloudEmission[2] + uCloudEmission[3] +
+			uTrackEmission[0] + uTrackEmission[1] + uTrackEmission[2] + uTrackEmission[3] +
+			uTrackWideEmission[0] + uTrackWideEmission[1] +
+			vec3(uCloudObjIdBase + uCloudFaceArea[0] + uCloudFaceArea[1] + uCloudFaceArea[2] + uCloudFaceArea[3] + uEmissiveClamp);
+	}
 	return max(vec3(0), accumCol);
 
 }

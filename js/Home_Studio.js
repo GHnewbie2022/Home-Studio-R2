@@ -173,13 +173,26 @@ addBox([-0.9, 2.669,  0.498], [-0.3, 2.787, 1.698], z3, C_GIK, 10, 1, 1, 3);  //
 addBox([-0.3, 2.669,  0.498], [ 0.3, 2.787, 1.698], z3, C_GIK, 10, 1, 1, 3);  // 53 Cloud C5 南中
 addBox([ 0.3, 2.669,  0.498], [ 0.9, 2.787, 1.698], z3, C_GIK, 10, 1, 1, 3);  // 54 Cloud C6 南東
 
-// R2-17 Cloud 漫射燈條（4 支矩形長柱，type 14 CLOUD_LIGHT，emission=0 視覺幾何；真光源留 R3）
+// R2-17 Cloud 漫射燈條（4 支矩形長柱，type 14 CLOUD_LIGHT；R3-3 接為真光源）
 // 真實可見幾何依舊專案 line 514-515 type 9：1.6cm × 1.6cm × 240cm（非 SOP 誤抄之採樣體積 15×5cm）
 // y 中心 2.795（底 2.787 貼死 Cloud 頂、頂 2.803）；fixtureGroup=4 受 uCloudLightEnabled 切換；cullable=1 隨 Cloud 板頂向剝離
+// R3-3 fix01：sceneBoxes 陣列 index 71-74 連續 = E/W/S/N，順序對應 uCloudEmission[0..3] + uCloudFaceArea[0..3]。
+// shader 端 hitObjectID = objectCount(0) + boxIdx + 1（見 Home_Studio_Fragment.glsl L516），boxIdx 即 sceneBoxes index；故 uCloudObjIdBase = 71+1 = 72。
+// 註：原 R3-3 plan 誤把註解「55 東燈條」邏輯編號當成 sceneBoxes.length，忽略複合 ID（0a/0c/2a/2b 等）每個子塊各 push 一次。
+const CLOUD_BOX_IDX_BASE = 71;
+if (sceneBoxes.length !== CLOUD_BOX_IDX_BASE) {
+    throw new Error('[R3-3] Cloud boxIdx base mismatch: expected ' + CLOUD_BOX_IDX_BASE + ', got ' + sceneBoxes.length);
+}
 addBox([ 0.884, 2.787, -0.702], [ 0.900, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 55 東燈條（沿 z 2.4m；舊專案 c=[0.892, 2.795, 0.498] s=[0.016, 0.016, 2.4]）
 addBox([-0.900, 2.787, -0.702], [-0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 56 西燈條
 addBox([-0.884, 2.787,  1.682], [ 0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 57 南燈條（沿 x 1.768m；比照東西短軸 1.6cm）
 addBox([-0.884, 2.787, -0.702], [ 0.884, 2.803, -0.686], z3, C_CLOUD_LIGHT, 14, 0, 1, 4); // 58 北燈條
+
+// R3-3：商品規格 D-35NA12V4DR1 軟條燈 480 lm/m。
+// Φ_rod = 480 × L；faceArea = 0.016 × L（頂 +Y 與兩側 long-axis 面等面積；bottom −Y 被 Cloud 板擋）。
+// 順序 [0]=E [1]=W [2]=S [3]=N 對齊 uCloudEmission / uCloudFaceArea。
+const CLOUD_ROD_LUMENS    = [480 * 2.4, 480 * 2.4, 480 * 1.768, 480 * 1.768];
+const CLOUD_ROD_FACE_AREA = [0.016 * 2.4, 0.016 * 2.4, 0.016 * 1.768, 0.016 * 1.768];
 
 // R2-8 吸音板
 const BASE_BOX_COUNT = 75; // base 53 + R2-14 八 + R2-15 四 + R2-16 六 + R2-17 四 = 75
@@ -450,6 +463,17 @@ function kelvinToLuminousEfficacy(kelvin) {
     if (kelvin <= 5000) return 330;
     if (kelvin <= 6500) return 340;
     return 350;
+}
+
+/**
+ * R3-3：Cloud rod Lambertian 3-face emitter 單面 radiance W/(sr·m²)。
+ * Φ_rod 均分 3 個等面積發光面（+Y 頂 + 兩側 long-axis），各面 Lambertian Φ = π·A·L。
+ * → L = (Φ_rod / 3) / (K(T) · π · A)。
+ * 單位推導：Φ_rod [lm] → /K(T) [W]，再/(π·A) 得 W/(sr·m²)。
+ */
+function computeCloudRadiance(lm_total, kelvin, faceArea) {
+    const K = kelvinToLuminousEfficacy(kelvin);
+    return (lm_total / 3) / (K * Math.PI * faceArea);
 }
 // ---------------- /R3-1 Photometry Pipeline ----------------
 
@@ -921,11 +945,17 @@ function initSceneData() {
     // R3-0：legacy gain（shader 10 處 weight × magic 魔數抽離為 uniform，預設 1.5 維持 R2-18 亮度）
     pathTracingUniforms.uLegacyGain = { value: 1.5 };
 
-    // ---- R3-1 emission pipeline (values stay zero this phase) ----
+    // ---- R3-1 emission pipeline（R3-3 起 Cloud 接通 emissive Lambertian）----
     pathTracingUniforms.uCloudEmission      = { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] };
     pathTracingUniforms.uTrackEmission      = { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] };
     pathTracingUniforms.uTrackWideEmission  = { value: [new THREE.Vector3(), new THREE.Vector3()] };
-    pathTracingUniforms.uR3EmissionGate     = { value: 0.0 };   // runtime 0，防 GLSL DCE
+    pathTracingUniforms.uR3EmissionGate     = { value: 1.0 };   // R3-3 S3b：Cloud emissive 開，Track / TrackWide 仍為 0 向量故不發光
+    // R3-3 fix01：Cloud hitObjectID 基準 = objectCount(0) + CLOUD_BOX_IDX_BASE(71) + 1 = 72（見 shader L516）
+    pathTracingUniforms.uCloudObjIdBase     = { value: CLOUD_BOX_IDX_BASE + 1 };
+    // R3-3：4 rod 單面面積 [0]=E [1]=W [2]=S [3]=N，供 R3-5 MIS area sampling 承接
+    pathTracingUniforms.uCloudFaceArea      = { value: CLOUD_ROD_FACE_AREA.slice() };
+    // R3-3 clamp: 預設 50（median×30 的保守估算；curtain-center 量測值落地後請重校）
+    pathTracingUniforms.uEmissiveClamp      = { value: 50.0 };
 
     // R2-14 fix02：4 盞圓柱燈頭靜態 uniforms（R3/R4 階段改為 UI 動態更新）
     // pivot = 支架底（y_pivot = trackBaseY - 0.076 = 2.819）；tilt=45° 由軌道中心朝外傾
@@ -962,29 +992,34 @@ function initSceneData() {
 
     computeLightEmissions();
 
-    if (mouseControl) {
-        setupGUI();
-    }
+    // R3-3 fix01：原 `if (mouseControl) setupGUI()` 守門在 Brave 桌面常態誤判 `'ontouchstart' in window`=true 導致 mouseControl=false，
+    // 整個 Light/Scene/Panels GUI 群組消失。desktop+mobile 皆需要 folder，無條件建立。
+    setupGUI();
 }
 
 function computeLightEmissions() {
-    // R3-2: 色溫狀態已建立（cloudKelvin / trackKelvin[] / trackWideKelvin[]），
-    //       但 shader 光路尚未接，emission 值保持 0（R3-1 uR3EmissionGate=0 凍結）。
-    //
-    // R3-3 將改為（範例，勿在 R3-2 啟用）：
-    //   const rgb = kelvinToRGB(cloudKelvin);
-    //   const mag = cloudRadiance;  // R3-1 管線輸出（lumens→watts→radiance）
-    //   pathTracingUniforms.uCloudEmission.value[i].set(
-    //       mag * rgb.r, mag * rgb.g, mag * rgb.b
-    //   );
-    //   注意：rgb 為 sRGB 域，進 path tracer radiance 需 pow(.,2.2) 轉 linear
+    // R3-3：Cloud rod Lambertian 3-face emitter。kelvinToRGB 回傳 sRGB，pow(,2.2) 轉 linear 給 path tracer。
+    // Track / TrackWide 留 R3-4 接手，此階段維持 0。
+    const srgb = kelvinToRGB(cloudKelvin);
+    const rLin = Math.pow(srgb.r, 2.2);
+    const gLin = Math.pow(srgb.g, 2.2);
+    const bLin = Math.pow(srgb.b, 2.2);
     for (let i = 0; i < 4; i++) {
-        pathTracingUniforms.uCloudEmission.value[i].set(0, 0, 0);
+        const radiance = computeCloudRadiance(CLOUD_ROD_LUMENS[i], cloudKelvin, CLOUD_ROD_FACE_AREA[i]);
+        pathTracingUniforms.uCloudEmission.value[i].set(radiance * rLin, radiance * gLin, radiance * bLin);
         pathTracingUniforms.uTrackEmission.value[i].set(0, 0, 0);
     }
     for (let i = 0; i < 2; i++) {
         pathTracingUniforms.uTrackWideEmission.value[i].set(0, 0, 0);
     }
+    console.log('[R3-3]', {
+        mode: cloudColorMode,
+        T_K: cloudKelvin,
+        rodLumens: CLOUD_ROD_LUMENS,
+        faceArea: CLOUD_ROD_FACE_AREA,
+        rodRadiance: pathTracingUniforms.uCloudEmission.value.map(v => ({ r: +v.x.toFixed(4), g: +v.y.toFixed(4), b: +v.z.toFixed(4) })),
+        objIdBase: pathTracingUniforms.uCloudObjIdBase.value,
+    });
 }
 
 // CMD (或 Ctrl) + 左鍵點擊滑桿即重設為預設值
@@ -1138,6 +1173,7 @@ function setupGUI() {
         .onChange(function (label) {
             cloudColorMode = WARM3_LABEL_TO_MODE[label];
             cloudKelvin = CLOUD_MODE_K[cloudColorMode];
+            computeLightEmissions();
             wakeRender();
         });
 
