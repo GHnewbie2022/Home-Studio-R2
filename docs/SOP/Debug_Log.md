@@ -787,3 +787,75 @@ cache-buster 從 `r3-1-lumens-uniform-pipeline` bump 為 `r3-1-fix01-guard-order
 
 ### 驗證結果（使用者確認通過）
 cache-buster `r3-1-fix01-guard-ordering` 載入後使用者回報「有畫面了，跟 R2 做完一樣」。emission=0 + gate=0 雙重保險達成「像素級一致 R3-0 基線」之 R3-1 驗收門檻。
+
+---
+
+## R3-4 fix07｜軌道燈 lumens slider 與輸出解耦（photometric↔radiometric 量綱失配）
+
+### 症狀
+R3-4 fix05 狀態，Option A'（emissive + 5 選 1 stochastic NEE）落地、per-face gate 修好燈具外觀。肉眼回報：
+- 新加入的「東西軌道燈 lm」slider 拉到 5 lm 畫面仍過曝（正常應幾近不可見）
+- slider 0 → 2000 全區段光斑亮度無視覺差，亮度與 lumens 完全解耦
+- 調整「間接光倍率」與「最大彈跳數」皆無改善 → 排除間接光路成因
+
+### 根本原因（量綱失配 + band-aid clamp 雙重遮蔽）
+
+**上游**：`computeTrackRadiance(lm, T_K, A, beamDeg)` 舊公式為 `lm / (Ω · A)`（Ω = 2π(1-cos(beam/2))），產物為 **photometric cd/m²**（luminance）。shader tonemap 視輸入為 **radiometric W/(sr·m²)**（radiance）。量綱錯誤，無對應 `/K(T)` 與 `/π` 的 Lambertian 換算。
+
+- 2000 lm / 60° 全角：Ω ≈ 0.842 sr → cd = 2375；L_phot = 2375 / 2.827e-3 ≈ 8.4e5
+- 對照 Cloud 正確 radiometric：`Φ/(K·π·A)` ≈ 700（K=320@4000K，π Lambertian）
+- 差距約 1195×，且色溫 K(T) 完全不作用於 radiance（3000K vs 6500K 經 Ω 運算輸出恆等），故「色溫切換光斑顏色不變」
+
+**下游 band-aid 遮蔽訊號**：
+- `sampleStochasticLight5` 末段 fix05 `throughput` max-channel cap 50：lumens > ~0.1 lm 即永遠 fire，吞掉 lumens 變化
+- TRACK_LIGHT primary 分支 fix03 `bounces==0 → clampMax=10` 雙段 clamp：商品亮度永遠 fire，primary 直視近乎恆等
+
+### 診斷過程（systematic-debugging Phase 1）
+
+對齊 feedback memory `systematic_debugging_check_all_accumcol`，第一步 grep 全部 `accumCol` 寫入點（7 處）確認 accumulation path，而非先跳 hitType branch 假說。發現：
+- TRACK_LIGHT primary 分支與 sampleStochasticLight5 NEE 各有獨立 clamp
+- 二者 clamp 門檻皆低於量綱錯誤造成的 overshoot，但因 emit 色比被 max-channel normalize 保留，畫面看似「色溫還在」但其實亮度被鎖定
+
+對照 Cloud `computeCloudRadiance = (Φ/3) / (K·π·A)`（W/(sr·m²)，radiometric）與 Track 舊 `Φ/(Ω·A)`（cd/m²，photometric）直接揭示量綱錯誤。`candelaToRadiance` 的 docstring 已自警「須再乘 (1/π) 補 Lambertian」，但 `computeTrackRadiance` 未落實 → 規劃階段埋下缺失。
+
+### 修法（單次根因修復，非 clamp 調參）
+
+**JS 端**（`js/Home_Studio.js` `computeTrackRadiance`）：
+```javascript
+// 舊：lm / (Ω · A) — photometric cd/m²
+// 新：lm / (K(T) · π · A) — radiometric W/(sr·m²)，與 computeCloudRadiance 同量綱
+function computeTrackRadiance(lm, T_K, A_m2, beamFullDeg) {
+    if (!Number.isFinite(lm) || lm <= 0) return 0;
+    const K = kelvinToLuminousEfficacy(T_K);
+    const A = Math.max(A_m2, 1e-8);
+    return lm / (K * Math.PI * A);
+}
+```
+
+**Shader 端**（`shaders/Home_Studio_Fragment.glsl`）：
+- 新增 `const float TRACK_LAMP_EMITTER_AREA = PI * 0.03 * 0.03;`（雙源同步契約與 JS 值一致）
+- `sampleStochasticLight5` track 分支 throughput 改 `emit * geom * TRACK_LAMP_EMITTER_AREA / selectPdf`（disk-area integrand，radiance × 面積還原 flux contribution）
+- 移除 fix05 throughput max-channel cap 50（上游量綱修正後不再 firefly）
+- TRACK_LIGHT primary 分支：移除 fix03 `(bounces==0) ? 10.0 : 1.0` 雙段 clamp，改用既有 `uEmissiveClamp`（預設 50）max-channel normalize
+
+cache-buster 由 `r3-4-fix06b-defaults` bump 為 `r3-4-fix07-radiometric-unit`。
+
+### 驗證
+
+**contract-test**（`docs/tests/r3-4-track-radiance.test.js`）新增兩條斷言：
+- [G] `computeTrackRadiance(2000, 4000, A, 60) ≈ 703.43 W/(sr·m²)` rel tol 1%（手算 2000/(320·π·2.827e-3)）+ 與 Cloud 同序 O(10²~10³)
+- [H] `r(2700K)/r(6500K) = 340/280`（K(T) 確實經 radiance 作用於色溫）
+
+修復前 [G] rel=1193.58（FAIL，直接證實 ~1200× overshoot），[H] ratio=1（FAIL，色溫完全不作用）。修復後 11 PASS / 0 FAIL；r3-3 Cloud regression 8 PASS、r3-2 Kelvin regression 25 PASS 皆未破。
+
+**肉眼驗收**（2026-04-19 使用者回報）：
+- trackLumens slider 任意數值視覺預期一致，過曝消失
+- 直接光光斑柔邊自然
+- 色溫切換（北暖南冷／全暖／全冷）光斑色差清晰可辨
+
+### 教訓（跨 R 階段通用）
+
+1. **光度↔輻射量綱失配是 path tracer 最難抓的一類 bug**：結果「看起來合理」（色比對、幾何對、變化方向對），只是尺度錯 1000×。須在 photometry 函式的 docstring 明確標註回傳量綱，並在施工時對齊既有正確管線（本案應從 R3-1 階段就對齊 Cloud 的 `Φ/(K·π·A)`）。
+2. **clamp 是診斷訊號，不是 fix**：fix05/fix03 兩道 clamp 都在「上游量綱錯」的條件下被迫加入。事後看兩道 clamp 吞掉了 overshoot 訊號 + lumens 調整訊號，反而延後找到根因。規則：當 clamp 必須打到「基準商品亮度」時，應立即質疑上游而非調 clamp 係數。
+3. **對比既有正確實作 > 從零推導**：Cloud 漫射燈條 R3-3 已落地正確 `Φ/(K·π·A)`，軌道燈 R3-4 只需對齊即可；當初若直接 diff 兩者公式，量綱錯誤會在 5 分鐘內自曝。
+4. **Lambertian `/π` 因子是 radiometric vs photometric 的標記**：`cd/m²` 除 `K(T)` 得 `W/(sr·m²)`；若忽略 `/π` 則雖量綱對但比例仍偏 3.14×。本案 `computeTrackRadiance` 同時漏兩者。
