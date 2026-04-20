@@ -4,7 +4,7 @@
 		<title>three.js PathTracing Renderer - Home Studio</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
-		<link href="css/default.css?v=r4-1-fix06" rel="stylesheet"/>
+		<link href="css/default.css?v=r4-3-fix12" rel="stylesheet"/>
 
 		<script type="importmap">
 		{
@@ -97,6 +97,7 @@
 					<div id="group-b-controls" style="display:none;">
 						<div id="slider-mult-b"></div>
 					</div>
+					<div id="slider-wall-albedo"></div>
 				</div>
 
 				<!-- 🔧 配置 -->
@@ -117,48 +118,40 @@
 						</label>
 					</div>
 					<div id="config-desc" class="config-description">吸頂燈 + 牆面吸音板</div>
-				</div>
-
-				<!-- 🔲 材質設定 -->
-				<div id="mat-header" class="panel-header item-divider">🔲 材質設定</div>
-				<div id="mat-panel" class="panel-content collapsed">
-					<div id="slider-wall-albedo"></div>
-					<div style="margin-bottom:8px; color:#aaa; font-size:10px; margin-top:12px;">吸音板變色</div>
-					<div style="display:flex; gap:4px; margin-bottom:12px; padding-left:12px;" id="groupGikPresets">
-						<button class="action-btn" data-val="PRESET1">北牆灰/其餘白</button>
-						<button class="action-btn glow-white" data-val="PRESET2">北牆灰/頂白/側牆紅</button>
-					</div>
-					<div class="gik-minimap">
-						<div class="gik-row">
-							<div class="gik-label">全部</div>
-							<div class="gik-blocks"><div class="gik-block" data-idx="all" data-color="3"></div></div>
-						</div>
-						<div class="gik-row">
-							<div class="gik-label">天花板</div>
-							<div class="gik-blocks"><div class="gik-block" data-idx="ceil" data-color="1"></div></div>
-						</div>
-						<div class="gik-row">
-							<div class="gik-label">北牆</div>
-							<div class="gik-blocks">
-								<div class="gik-block" data-idx="8" data-color="0"></div>
-								<div class="gik-block" data-idx="7" data-color="0"></div>
-								<div class="gik-block" data-idx="6" data-color="0"></div>
+					<div class="panel-header item-divider" style="font-size: 11px; padding-left: 0; margin-top: 8px;">吸音板顏色</div>
+					<div class="panel-content collapsed" style="padding-left: 0; padding-bottom: 0;">
+						<div class="gik-minimap" style="margin-top: 8px;">
+							<div class="gik-row" id="row-all">
+								<div class="gik-label">全部</div>
+								<div class="gik-blocks"><div class="gik-block" data-idx="all" data-color="0"></div></div>
 							</div>
-						</div>
-						<div class="gik-row">
-							<div class="gik-label">東牆</div>
-							<div class="gik-blocks">
-								<div class="gik-block" data-idx="3" data-color="3"></div>
-								<div class="gik-block" data-idx="4" data-color="3"></div>
-								<div class="gik-block" data-idx="5" data-color="3"></div>
+							<div class="gik-row" id="row-north">
+								<div class="gik-label">北牆</div>
+								<div class="gik-blocks">
+									<div class="gik-block" id="blk-n3" data-idx="8" data-color="0"></div>
+									<div class="gik-block" id="blk-n2" data-idx="7" data-color="0"></div>
+									<div class="gik-block" id="blk-n1" data-idx="6" data-color="0"></div>
+								</div>
 							</div>
-						</div>
-						<div class="gik-row">
-							<div class="gik-label">西牆</div>
-							<div class="gik-blocks">
-								<div class="gik-block" data-idx="0" data-color="3"></div>
-								<div class="gik-block" data-idx="1" data-color="3"></div>
-								<div class="gik-block" data-idx="2" data-color="3"></div>
+							<div class="gik-row" id="row-east">
+								<div class="gik-label">東牆</div>
+								<div class="gik-blocks">
+									<div class="gik-block" id="blk-e1" data-idx="3" data-color="0"></div>
+									<div class="gik-block" id="blk-e2" data-idx="4" data-color="0"></div>
+									<div class="gik-block" id="blk-e3" data-idx="5" data-color="0"></div>
+								</div>
+							</div>
+							<div class="gik-row" id="row-west">
+								<div class="gik-label">西牆</div>
+								<div class="gik-blocks">
+									<div class="gik-block" id="blk-w1" data-idx="0" data-color="0"></div>
+									<div class="gik-block" id="blk-w2" data-idx="1" data-color="0"></div>
+									<div class="gik-block" id="blk-w3" data-idx="2" data-color="0"></div>
+								</div>
+							</div>
+							<div class="gik-row" id="row-ceil">
+								<div class="gik-label">天花板</div>
+								<div class="gik-blocks"><div class="gik-block" data-idx="ceil" data-color="0"></div></div>
 							</div>
 						</div>
 					</div>
@@ -167,7 +160,7 @@
 				<!-- 💡 燈光設定 -->
 				<div id="light-header" class="panel-header item-divider">💡 燈光設定</div>
 				<div id="light-panel" class="panel-content collapsed">
-					<div id="slider-emissive-clamp" style="margin-bottom:12px;"></div>
+
 
 					<!-- Cloud -->
 					<div class="control-row" style="margin-bottom:8px;">

@@ -319,6 +319,28 @@ function buildSceneBVH() {
     }
 }
 
+function updateBoxDataTexture() {
+    var N = sceneBoxes.length;
+    var BVH_TEX_W = 512;
+    if (pathTracingUniforms.tBoxDataTexture && pathTracingUniforms.tBoxDataTexture.value) {
+        var boxArr = pathTracingUniforms.tBoxDataTexture.value.image.data;
+        for (var i = 0; i < N; i++) {
+            var b = sceneBoxes[i];
+            var p = i * 5;
+            boxArr[(p) * 4 + 0] = b.emission[0]; boxArr[(p) * 4 + 1] = b.emission[1];
+            boxArr[(p) * 4 + 2] = b.emission[2]; boxArr[(p) * 4 + 3] = b.type;
+            boxArr[(p + 1) * 4 + 0] = b.color[0]; boxArr[(p + 1) * 4 + 1] = b.color[1];
+            boxArr[(p + 1) * 4 + 2] = b.color[2]; boxArr[(p + 1) * 4 + 3] = b.meta || 0;
+            boxArr[(p + 2) * 4 + 0] = b.min[0]; boxArr[(p + 2) * 4 + 1] = b.min[1];
+            boxArr[(p + 2) * 4 + 2] = b.min[2]; boxArr[(p + 2) * 4 + 3] = b.cullable || 0;
+            boxArr[(p + 3) * 4 + 0] = b.max[0]; boxArr[(p + 3) * 4 + 1] = b.max[1];
+            boxArr[(p + 3) * 4 + 2] = b.max[2]; boxArr[(p + 3) * 4 + 3] = b.fixtureGroup || 0;
+            boxArr[(p + 4) * 4 + 0] = b.roughness; boxArr[(p + 4) * 4 + 1] = b.metalness;
+        }
+        pathTracingUniforms.tBoxDataTexture.value.needsUpdate = true;
+    }
+}
+
 function applyPanelConfig(config) {
     sceneBoxes.length = BASE_BOX_COUNT;
     // R2-18 fix22：Config 1/2/3 三者互斥
@@ -391,6 +413,31 @@ function applyPanelConfig(config) {
         var descs = { 1: '吸頂燈 + 牆面吸音板', 2: '吸頂燈 + 牆面吸音板（配色 2）', 3: '全吸音處理（Cloud + 軌道燈 + 廣角燈）' };
         descEl.textContent = descs[config] || '';
     }
+
+    // UI decoupling logic for GIK map based on config
+    if (config === 1) {
+        var elCeil = document.getElementById('row-ceil'); if (elCeil) elCeil.style.display = 'none';
+        ['blk-n1', 'blk-n3', 'blk-e1', 'blk-e3', 'blk-w1', 'blk-w3'].forEach(function(id) {
+            var e = document.getElementById(id);
+            if (e) e.style.display = 'none';
+        });
+    } else if (config === 2) {
+        var elCeil = document.getElementById('row-ceil'); if (elCeil) elCeil.style.display = 'none';
+        ['blk-n1', 'blk-n3', 'blk-e1', 'blk-e3', 'blk-w1', 'blk-w3'].forEach(function(id) {
+            var e = document.getElementById(id);
+            if (e) e.style.display = '';
+        });
+    } else if (config === 3) {
+        var elCeil = document.getElementById('row-ceil'); if (elCeil) elCeil.style.display = 'flex';
+        ['blk-n1', 'blk-n3', 'blk-e1', 'blk-e3', 'blk-w1', 'blk-w3'].forEach(function(id) {
+            var e = document.getElementById(id);
+            if (e) e.style.display = '';
+        });
+    }
+    
+    if (window.reapplyGikColors) {
+        window.reapplyGikColors();
+    }
 }
 
 // R4-1：依 currentPanelConfig 同步燈光 slider enable/disable。
@@ -420,8 +467,8 @@ const rotatedMeshes = [];
 let samplesPerFrame = 1.0;
 
 const CAMERA_PRESETS = {
-    cam1: { position: { x: -1.115, y: 1.992, z: 3.310 }, pitch: -0.156, yaw: -0.290 },
-    cam2: { position: { x: -0.9, y: 1.5, z: 3.4 }, pitch: 0.3, yaw: -0.25 },
+    cam1: { position: { x: -1.4, y: 2.3, z: 3.9 }, pitch: -0.18, yaw: -0.40 },
+    cam2: { position: { x: -0.9, y: 1.1, z: 3.7 }, pitch: 0.3, yaw: -0.25 },
     cam3: { position: { x: 0.0, y: 1.3, z: -1.0 }, pitch: 0.0, yaw: -Math.PI }
 };
 let currentCameraPreset = 'cam1';
@@ -1384,8 +1431,14 @@ function initUI() {
         return v;
     });
 
-    createS('slider-mult-a', '間接光補償', 0.1, 5.0, 0.1, 1.0, function(v) { wakeRender(); return v; });
-    createS('slider-mult-b', '間接光補償', 0.1, 5.0, 0.1, 2.0, function(v) { wakeRender(); return v; });
+    createS('slider-mult-a', '間接光補償', 0.1, 5.0, 0.1, 1.7, function(v) { 
+        if (btnA && btnA.classList.contains('glow-white') && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = v;
+        wakeRender(); return v; 
+    });
+    createS('slider-mult-b', '間接光補償', 0.1, 5.0, 0.1, 1.7, function(v) { 
+        if (btnB && btnB.classList.contains('glow-white') && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = v;
+        wakeRender(); return v; 
+    });
 
     // A/B radio
     var btnA = document.getElementById('btnGroupA'), btnB = document.getElementById('btnGroupB');
@@ -1396,6 +1449,7 @@ function initUI() {
         if (ctrlB) ctrlB.style.display = 'none';
         setSliderValue('slider-bounces', 8);
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 8;
+        if (pathTracingUniforms && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = getSliderValue('slider-mult-a');
         wakeRender();
     };
     if (btnB) btnB.onclick = function() {
@@ -1404,14 +1458,28 @@ function initUI() {
         if (ctrlA) ctrlA.style.display = 'none';
         setSliderValue('slider-bounces', 4);
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 4;
+        if (pathTracingUniforms && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = getSliderValue('slider-mult-b');
         wakeRender();
     };
 
-    // 🔲 材質設定
-    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 1.0, function(v) { wakeRender(); return v; });
+
+    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 1.0, function(v) { 
+        wallAlbedo = v;
+        var r = 1.0 * v, g = 0.984 * v, b = 0.949 * v;
+        C_WALL[0] = r; C_WALL[1] = g; C_WALL[2] = b;
+        C_WALL_L[0] = r; C_WALL_L[1] = g; C_WALL_L[2] = b;
+        C_WALL_R[0] = r; C_WALL_R[1] = g; C_WALL_R[2] = b;
+        C_WALL_S[0] = r; C_WALL_S[1] = g; C_WALL_S[2] = b;
+        updateBoxDataTexture();
+        wakeRender();
+        return v; 
+    });
 
     // 💡 燈光設定
-    createS('slider-emissive-clamp', '發光面上限', 10, 500, 1, 50, function(v) { wakeRender(); return v; });
+    createS('slider-emissive-clamp', '發光面上限', 10, 500, 1, 250, function(v) { 
+        if (pathTracingUniforms && pathTracingUniforms.uEmissiveClamp) pathTracingUniforms.uEmissiveClamp.value = v;
+        wakeRender(); return v; 
+    });
 
     // Brightness (吸頂主燈) — inject slider div into light panel
     var lightPanel = document.getElementById('light-panel');
@@ -1474,12 +1542,19 @@ function initUI() {
 
     // Cloud lumens
     createS('slider-lumens', '光通量 (lm/m)', 0, 4000, 1, 800, function(v) {
+        CLOUD_ROD_LUMENS[0] = v * 2.4;
+        CLOUD_ROD_LUMENS[1] = v * 2.4;
+        CLOUD_ROD_LUMENS[2] = v * 1.768;
+        CLOUD_ROD_LUMENS[3] = v * 1.768;
+        computeLightEmissions();
         wakeRender();
         return v;
     });
 
     // Track lumens
     createS('slider-track-lumens', '光通量 (單盞)', 0, 3000, 50, 500, function(v) {
+        trackLumens = v;
+        computeLightEmissions();
         wakeRender();
         return v;
     });
@@ -1493,6 +1568,8 @@ function initUI() {
 
     // Wide lumens
     createS('slider-track-wide-lumens', '光通量 (單盞)', 0, 4000, 50, 2500, function(v) {
+        trackWideLumens = v;
+        computeLightEmissions();
         wakeRender();
         return v;
     });
@@ -1504,15 +1581,176 @@ function initUI() {
     createS('slider-track-wide-tilt-north', '北側傾斜角', -70, 70, 1, -25, function(v) { wakeRender(); return v; });
     createS('slider-track-wide-z', '距Cloud邊距', 0.10, 1.30, 0.01, 0.10, function(v) { wakeRender(); return v; });
 
+    // GIK Minimap state & logic
+    var gikColors = [0, 0, 0, 0, 0, 0, 0, 0, 0]; // 9 wall panels (W1, W2, W3, E1, E2, E3, N1, N2, N3 mapping to index 0-8)
+    var gikCeilColor = 0;
+
+    // Helper to update the "All" button appearance
+    window.updateAllButtonState = function() {
+        var allBtn = document.querySelector('.gik-block[data-idx="all"]');
+        if (!allBtn) return;
+        
+        var activeColors = [];
+        if (currentPanelConfig === 1) {
+            activeColors.push(gikColors[4], gikColors[1], gikColors[7]);
+        } else {
+            for (var i=0; i<9; i++) activeColors.push(gikColors[i]);
+            if (currentPanelConfig === 3) activeColors.push(gikCeilColor);
+        }
+        
+        var firstColor = activeColors[0];
+        var isMixed = false;
+        for (var i = 1; i < activeColors.length; i++) {
+            if (activeColors[i] !== firstColor) {
+                isMixed = true;
+                break;
+            }
+        }
+        
+        allBtn.dataset.color = isMixed ? 'mixed' : firstColor;
+    };
+
     // CONFIG radio group
     document.querySelectorAll('input[name="panelConfig"]').forEach(function(radio) {
         radio.addEventListener('change', function() {
-            applyPanelConfig(parseInt(this.value));
+            var conf = parseInt(this.value);
+            if (conf === 1) {
+                for(var i=0; i<9; i++) gikColors[i] = 0;
+                gikCeilColor = 0;
+            } else {
+                for(var i=0; i<6; i++) gikColors[i] = 1; // EW white
+                for(var i=6; i<9; i++) gikColors[i] = 0; // N gray
+                gikCeilColor = 1;
+            }
+            document.querySelectorAll('.gik-block').forEach(function(b) {
+                var idx = b.dataset.idx;
+                if (idx === 'all') {} // Handled by updateAllButtonState
+                else if (idx === 'ceil') b.dataset.color = gikCeilColor;
+                else b.dataset.color = gikColors[parseInt(idx)];
+            });
+            applyPanelConfig(conf);
         });
     });
 
+    function applyGikColorToAbsBox(boxIdx, colorIdx) {
+        var box = sceneBoxes[boxIdx];
+        if (!box) return;
+        box.meta = (colorIdx === 0) ? 0 : 1;
+        var c = C_WHITE;
+        if (colorIdx === 0) c = C_GIK;
+        else if (colorIdx === 1) c = C_WHITE;
+        else if (colorIdx === 2) c = [0.8, 0.2, 0.2];
+        else if (colorIdx === 3) c = [0.2, 0.2, 0.2];
+        box.color = c;
+    }
+
+    function applyGikColorToBox(boxIdxOffset, colorIdx) {
+        applyGikColorToAbsBox(BASE_BOX_COUNT + boxIdxOffset, colorIdx);
+    }
+
+    function syncGikPanels() {
+        if (currentPanelConfig === 1) {
+            // Config 1 has only 3 panels. Hardcode them to first 3 elements for now or ignore advanced picking.
+            // E2=0, W2=1, N_v=2
+            applyGikColorToBox(0, gikColors[4]); // E2
+            applyGikColorToBox(1, gikColors[1]); // W2
+            applyGikColorToBox(2, gikColors[7]); // N_v (closest to N2)
+        } else {
+            // Config 2 or 3 has 9 panels
+            for (var i = 0; i < 9; i++) {
+                // map index to panelConfig2 indices (which align with how they are pushed to sceneBoxes)
+                // 0,1,2 = N1,N2,N3
+                // 3,4,5 = E1,E2,E3
+                // 6,7,8 = W1,W2,W3
+                var pIdx = i;
+                if (i >= 0 && i <= 2) pIdx = i + 6; // W1,W2,W3 from gikColors to W1,W2,W3 in panelConfig2
+                else if (i >= 3 && i <= 5) pIdx = i; // E1,E2,E3
+                else if (i >= 6 && i <= 8) pIdx = i - 6; // N1,N2,N3 mapping fixed! i=6->0(N1 bottom), i=8->2(N3 top)
+                
+                applyGikColorToBox(pIdx, gikColors[i]);
+            }
+            // Cloud
+            if (currentPanelConfig === 3) {
+                // Cloud panels are permanently at absolute indices 65 to 70 in sceneBoxes
+                for (var c = 65; c <= 70; c++) applyGikColorToAbsBox(c, gikCeilColor);
+            }
+        }
+        updateBoxDataTexture();
+        if (window.updateAllButtonState) window.updateAllButtonState();
+        wakeRender();
+    }
+    window.reapplyGikColors = syncGikPanels;
+
+
+
+    var gikPalette = document.createElement('div');
+    gikPalette.className = 'gik-palette';
+    gikPalette.innerHTML = '<div class="gik-color-btn" data-val="0"></div><div class="gik-color-btn" data-val="1"></div>';
+    document.body.appendChild(gikPalette);
+    var activeGikBlock = null;
+    function attachPaletteEvents() {
+        gikPalette.querySelectorAll('.gik-color-btn').forEach(function(btn) {
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                var valStr = btn.dataset.val;
+                var idxStr = activeGikBlock.dataset.idx;
+                
+                if (valStr === 'mixed') {
+                    for(var i=0; i<6; i++) gikColors[i] = 1;
+                    for(var i=6; i<9; i++) gikColors[i] = 0;
+                    gikCeilColor = 1;
+                    document.querySelectorAll('.gik-block').forEach(function(b) {
+                        var bIdx = b.dataset.idx;
+                        if (bIdx !== 'all' && bIdx !== 'ceil') b.dataset.color = gikColors[parseInt(bIdx)];
+                        else if (bIdx === 'ceil') b.dataset.color = gikCeilColor;
+                    });
+                } else {
+                    var val = parseInt(valStr);
+                    if (idxStr === 'all') {
+                        for(var i=0; i<9; i++) gikColors[i] = val;
+                        gikCeilColor = val;
+                        document.querySelectorAll('.gik-block').forEach(function(b) { if(b.dataset.idx !== 'all') b.dataset.color = val; });
+                    } else if (idxStr === 'ceil') {
+                        gikCeilColor = val;
+                        activeGikBlock.dataset.color = val;
+                    } else {
+                        var idx = parseInt(idxStr);
+                        gikColors[idx] = val;
+                        activeGikBlock.dataset.color = val;
+                    }
+                }
+                
+                gikPalette.style.display = 'none';
+                activeGikBlock = null;
+                syncGikPanels();
+            };
+        });
+    }
+
+    document.querySelectorAll('.gik-block').forEach(function(blk) {
+        blk.onclick = function(e) {
+            e.stopPropagation();
+            if (activeGikBlock === blk) { gikPalette.style.display = 'none'; activeGikBlock = null; return; }
+            activeGikBlock = blk;
+            
+            var html = '<div class="gik-color-btn" data-val="0"></div><div class="gik-color-btn" data-val="1"></div>';
+            if (blk.dataset.idx === 'all' && currentPanelConfig !== 1) {
+                html += '<div class="gik-color-btn" data-val="mixed" title="恢復預設配置"></div>';
+            }
+            gikPalette.innerHTML = html;
+            attachPaletteEvents();
+            
+            var rect = blk.getBoundingClientRect();
+            gikPalette.style.display = 'flex';
+            gikPalette.style.top = (rect.top - 28) + 'px';
+            gikPalette.style.left = (rect.left + rect.width / 2 - gikPalette.offsetWidth / 2) + 'px';
+        };
+    });
+    document.addEventListener('click', function() { if (activeGikBlock) { gikPalette.style.display = 'none'; activeGikBlock = null; } });
+    window.addEventListener('resize', function() { if (activeGikBlock) { gikPalette.style.display = 'none'; activeGikBlock = null; } });
+
     // Button group visual toggle — glow-white only groups
-    ['groupGikPresets', 'groupTrackMeshColor', 'groupTrackWideMeshColor'].forEach(function(gid) {
+    ['groupTrackMeshColor', 'groupTrackWideMeshColor'].forEach(function(gid) {
         var group = document.getElementById(gid);
         if (!group) return;
         group.addEventListener('click', function(e) {
@@ -1520,6 +1758,16 @@ function initUI() {
             if (!btn) return;
             group.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-white'); });
             btn.classList.add('glow-white');
+            
+            if (gid === 'groupTrackMeshColor') {
+                var c = (btn.dataset.val === 'WHITE') ? C_WHITE : [0.05, 0.05, 0.05];
+                sceneBoxes.forEach(b => { if(b.fixtureGroup === 1 && b.type === 13) b.color = c; });
+                updateBoxDataTexture();
+            } else if (gid === 'groupTrackWideMeshColor') {
+                var c = (btn.dataset.val === 'WHITE') ? C_WHITE : [0.05, 0.05, 0.05];
+                sceneBoxes.forEach(b => { if(b.fixtureGroup === 2 && b.type === 13) b.color = c; });
+                updateBoxDataTexture();
+            }
             wakeRender();
         });
     });
@@ -1531,9 +1779,11 @@ function initUI() {
         if (!btn) return;
         gcCloud.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-white', 'glow-orange', 'glow-blue'); });
         var val = btn.dataset.val;
-        if (val === 'WARM') btn.classList.add('glow-orange');
-        else if (val === 'NEUTRAL') btn.classList.add('glow-white');
-        else if (val === 'COLD') btn.classList.add('glow-blue');
+        if (val === 'WARM') { btn.classList.add('glow-orange'); cloudKelvin = CLOUD_MODE_K.WARM; }
+        else if (val === 'NEUTRAL') { btn.classList.add('glow-white'); cloudKelvin = CLOUD_MODE_K.NEUTRAL; }
+        else if (val === 'COLD') { btn.classList.add('glow-blue'); cloudKelvin = CLOUD_MODE_K.COLD; }
+        cloudColorMode = val;
+        computeLightEmissions();
         wakeRender();
     });
 
@@ -1544,10 +1794,12 @@ function initUI() {
         if (!btn) return;
         gcTrack.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-orange', 'glow-blue', 'glow-gradient-ob', 'glow-gradient-bo'); });
         var val = btn.dataset.val;
-        if (val === 'ALL_WARM') btn.classList.add('glow-orange');
-        else if (val === 'ALL_COLD') btn.classList.add('glow-blue');
-        else if (val === 'WARM_COLD') btn.classList.add('glow-gradient-ob');
-        else if (val === 'COLD_WARM') btn.classList.add('glow-gradient-bo');
+        if (val === 'ALL_WARM') { btn.classList.add('glow-orange'); trackKelvin = [TRACK_MODE_K.WARM, TRACK_MODE_K.WARM, TRACK_MODE_K.WARM, TRACK_MODE_K.WARM]; }
+        else if (val === 'ALL_COLD') { btn.classList.add('glow-blue'); trackKelvin = [TRACK_MODE_K.COLD, TRACK_MODE_K.COLD, TRACK_MODE_K.COLD, TRACK_MODE_K.COLD]; }
+        else if (val === 'WARM_COLD') { btn.classList.add('glow-gradient-ob'); trackKelvin = [TRACK_MODE_K.WARM, TRACK_MODE_K.WARM, TRACK_MODE_K.COLD, TRACK_MODE_K.COLD]; }
+        else if (val === 'COLD_WARM') { btn.classList.add('glow-gradient-bo'); trackKelvin = [TRACK_MODE_K.COLD, TRACK_MODE_K.COLD, TRACK_MODE_K.WARM, TRACK_MODE_K.WARM]; }
+        trackColorMode = val;
+        computeLightEmissions();
         wakeRender();
     });
 
@@ -1560,9 +1812,15 @@ function initUI() {
             if (!btn) return;
             group.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-orange', 'glow-white', 'glow-blue'); });
             var val = btn.dataset.val;
-            if (val === 'WARM') btn.classList.add('glow-orange');
-            else if (val === 'NEUTRAL') btn.classList.add('glow-white');
-            else if (val === 'COLD') btn.classList.add('glow-blue');
+            var k = WIDE_MODE_K.NEUTRAL;
+            if (val === 'WARM') { btn.classList.add('glow-orange'); k = WIDE_MODE_K.WARM; }
+            else if (val === 'NEUTRAL') { btn.classList.add('glow-white'); k = WIDE_MODE_K.NEUTRAL; }
+            else if (val === 'COLD') { btn.classList.add('glow-blue'); k = WIDE_MODE_K.COLD; }
+            
+            if (gid === 'groupTrackWideColorSouth') { trackWideKelvin[0] = k; trackWideColorSouth = val; }
+            else { trackWideKelvin[1] = k; trackWideColorNorth = val; }
+            
+            computeLightEmissions();
             wakeRender();
         });
     });
@@ -1597,45 +1855,26 @@ function initUI() {
         topRightGroup.addEventListener('click', function(e) { e.stopPropagation(); }, false);
     }
 
-    // GIK palette (ported from old project L2115-2157)
-    var gikPalette = document.createElement('div');
-    gikPalette.className = 'gik-palette';
-    gikPalette.innerHTML = '<div class="gik-color-btn" data-val="0"></div><div class="gik-color-btn" data-val="1"></div><div class="gik-color-btn" data-val="2"></div><div class="gik-color-btn" data-val="3"></div>';
-    document.body.appendChild(gikPalette);
-    var activeGikBlock = null;
-    document.querySelectorAll('.gik-block').forEach(function(blk) {
-        blk.onclick = function(e) {
-            e.stopPropagation();
-            if (activeGikBlock === blk) { gikPalette.style.display = 'none'; activeGikBlock = null; return; }
-            activeGikBlock = blk;
-            var rect = blk.getBoundingClientRect();
-            gikPalette.style.display = 'flex';
-            gikPalette.style.top = (rect.top - 28) + 'px';
-            gikPalette.style.left = (rect.left + rect.width / 2 - gikPalette.offsetWidth / 2) + 'px';
-        };
-    });
-    gikPalette.querySelectorAll('.gik-color-btn').forEach(function(btn) {
-        btn.onclick = function(e) {
-            e.stopPropagation();
-            var val = btn.dataset.val;
-            var idx = activeGikBlock.dataset.idx;
-            if (idx === 'all') {
-                document.querySelectorAll('.gik-block').forEach(function(b) { b.dataset.color = val; });
-            } else if (idx === 'ceil') {
-                activeGikBlock.dataset.color = val;
-            } else {
-                activeGikBlock.dataset.color = val;
-            }
-            gikPalette.style.display = 'none';
-            activeGikBlock = null;
-            wakeRender();
-        };
-    });
-    document.addEventListener('click', function() { if (activeGikBlock) { gikPalette.style.display = 'none'; activeGikBlock = null; } });
-    window.addEventListener('resize', function() { if (activeGikBlock) { gikPalette.style.display = 'none'; activeGikBlock = null; } });
 
     // Sync initial state
     syncR3ColorUIEnable();
+
+    // Camera preset buttons
+    ['btnCam1', 'btnCam2', 'btnCam3'].forEach(function(id, idx) {
+        var btn = document.getElementById(id);
+        if (btn) {
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                // Remove glow from all, add to clicked
+                ['btnCam1', 'btnCam2', 'btnCam3'].forEach(function(bid) {
+                    var b = document.getElementById(bid);
+                    if (b) b.classList.remove('glow-white');
+                });
+                btn.classList.add('glow-white');
+                switchCamera('cam' + (idx + 1));
+            };
+        }
+    });
 }
 
 function updateVariablesAndUniforms() {

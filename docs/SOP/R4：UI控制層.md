@@ -25,7 +25,7 @@
 | R4-0 | 舊專案 UI 盤點 + 新 R3 控件整合策略 | ✅ |
 | R4-1 | UI 骨架復刻（HTML panel + CSS + createS 工廠 + DOM adapter；丟棄 lil-gui；含 InitCommon.js 改造） | ✅ |
 | R4-2 | 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除） | ✅ |
-| R4-3 | 控件接線（CONFIG 1/2/3、A/B radio、色溫 radio、lumens slider、GIK 色控、light checkbox） | ⬜ |
+| R4-3 | 控件接線（CONFIG 1/2/3、A/B radio、色溫 radio、lumens slider、GIK 色控、light checkbox） | ✅ |
 | R4-4 | 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型；BVH 兩層更新策略） | ⬜ |
 | R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ⬜ |
 
@@ -261,7 +261,7 @@
 
 ---
 
-## R4-3 控件接線 ⬜
+## R4-3 控件接線 ✅
 
 ### 目標
 
@@ -285,9 +285,9 @@
    - Wide South / North：各 3 button
    - Track / Wide 外觀色：各 2 button（黑 / 白）
 4. **Lumens slider**：Cloud（0~4000, step 1, init 800）/ Track（0~3000, step 50, init 500）/ Wide（0~4000, step 50, init 2500）
-5. **其他 slider**：牆面反射率（0.1~1.0）/ 發光面上限（10~500）/ 彈跳次數（1~8）/ 間接光補償（A/B 各一，0.1~5.0）
+5. **其他 slider**：牆面反射率（0.1~1.0）/ 彈跳次數（1~8）/ 間接光補償（A/B 各一，0.1~5.0）
 6. **Light enable checkbox**：Cloud / Track / Wide South / Wide North → 各自 uniform + `rebuildActiveLightLUT`
-7. **GIK 色控**：2 preset button + 13 block minimap（點擊循環 4 色）→ `gikColors[]` → `cameraIsMoving=true`
+7. **GIK 色控**：2 preset button + 13 block minimap（懸浮選色面板）→ `gikColors[]` → `cameraIsMoving=true`
 
 ### 驗收
 
