@@ -1021,3 +1021,130 @@ pathTracingUniforms.uTrackWideLampDir = { value: [
 1. **R2 重建不可憑「該對稱吧」美感直覺猜數值**。真實空間配置常不對稱（地形 / 設備位置 / 使用需求造成）。廣角燈這類具物理配置語義的元件，重建前必 grep 舊專案實測值（`trackWideTiltSouth` / `trackWideTiltNorth`）。
 2. **A/B probe 值變化是 debug 首選**，不要為了診斷先花半天做 UI。使用者提示「直接改一個值做對比」比 UI slider 快 10 倍。
 3. **北牆假陰影 vs 動態池 bug** 容易誤判為同一個系統（R3-6.5 收尾時發生），必須用 tilt A/B 獨立隔離因子才能歸因到 R2-15 而非 R3-6.5。memory feedback_r2_rebuild_check_legacy_numbers.md 已記錄警示。
+
+---
+
+## Phase 2 漫射能量 2-bounce truncation 說明（R3-7 寫入）
+
+本章為後續任何 Claude / 工程師接手時的必讀參考。目的：**防止再次誤以為 `uIndirectMultiplier = 1.7` 與 `uLegacyGain = 1.5` 是可透過提 `max_bounces` 歸一的臨時魔數**。
+
+### 症狀起點
+
+R3-7 原計畫（見 `docs/SOP/R3：燈光系統.md` 舊版 R3-7 章節）假設：
+> R3-6 MIS 上線後，理論上提高 max_bounces 能自然收斂到正確能量，不必靠 1.7。
+
+做法為 `max_bounces` 4→6→8 × `indirectMul` 1.7 / 1.5 / 1.3 / 1.0 四級 × Cam 1/2/3 × 2000 spp，比對亮度分佈。
+
+使用者 2026-04-20 提問：「我目前預設彈跳不是 4 嗎 為何這一段寫 2 截斷？然後目前我是覺得 4～8 肉眼沒有差異」。此觀察推翻原假設。
+
+### 根因：erichlof 框架 `diffuseCount == 1` 單掛旗
+
+`shaders/Home_Studio_Fragment.glsl` L1386-1392 的漫射反彈機制：
+
+```glsl
+diffuseCount++;
+if (diffuseCount == 1)            // ★ 只有第 1 次漫射才掛旗
+{
+    diffuseBounceMask = mask;
+    diffuseBounceRayOrigin = rayOrigin;
+    diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+    willNeedDiffuseBounceRay = TRUE;
+}
+```
+
+流程：
+
+```
+第 1 次打到漫射面：
+  - 做 NEE（直接射向光源的陰影採樣）
+  - 掛旗 willNeedDiffuseBounceRay = TRUE（等 NEE 結算完再從這點隨機彈 1 次）
+  - continue 往 NEE 目標走
+
+第 2 次打到漫射面（從掛旗點彈出來）：
+  - 再做 NEE
+  - diffuseCount 已經 = 2，上面 if 不成立 → **不再掛旗**
+
+第 3 次以後打到漫射面：
+  - 永遠不會發生（沒人掛旗讓它彈）
+```
+
+所以不管 `uMaxBounces` 給多少（目前 4，設 8 / 14 同理），**漫射能量累加永遠停在第 2 次**。剩餘的 bounce 預算只影響 specular / mirror / refraction 路徑；Home_Studio 場景幾乎全為 DIFF 材質（牆、地、天花板、GIK、Cloud、木質家具），多出來的 bounce 大多用不到。
+
+### 框架普遍性（非 Home_Studio 專案簡化）
+
+2026-04-20 抽樣 4 支 erichlof 代表範例 shader，`diffuseCount == 1` 單掛旗模式全部一致：
+
+| 範例 shader | 位置 | `willNeedDiffuseBounceRay = TRUE` 夾於 `if (diffuseCount == 1)` |
+|---|---|---|
+| Cornell_Box_Fragment.glsl | L322 | ✓ |
+| Global_Illumination_Wikipedia1_Fragment.glsl | L457 | ✓ |
+| Kajiya_TheRenderingEquation_Fragment.glsl | L584 | ✓ |
+| Geometry_Showcase_Fragment.glsl | L501 | ✓ |
+
+連 erichlof 為了示範 Kajiya 經典全局光渲染方程式而寫的 Kajiya_TheRenderingEquation 範例都是 2 層截斷。這代表 **此限制是 erichlof 框架核心設計決策**，非 bug、非 Home_Studio 簡化。
+
+推測動機：
+- shader GPU worst-case work bound（無限漫射鏈會讓 per-pixel 成本爆炸）
+- 多數場景第 3 次以上漫射能量貢獻已在 noise 內
+- 單層掛旗狀態機比多層 chain 更容易避 MIS 雙計陷阱（R3-6 MIS 整合 fix01~fix06 可資佐證）
+
+### `uIndirectMultiplier = 1.7` 正當性
+
+- 這個係數補償的是**第 3 次以後永遠不再累加**的能量缺口
+- 1.7 是使用者 R2-18 fix21 肉眼對齊**真實工作室**的校準值
+- 渲染器本來就是「對齊您的眼睛」而非「對齊物理公式」——它是校準工具，不是純物理模擬
+- 提 `max_bounces` 無法移除這個補償（框架結構限制），只能動框架（見下方方向 B/C）
+
+### `uLegacyGain = 1.5` 同性質
+
+JS L1058 引入，shader 10 處 `mask *= weight * uLegacyGain` 套用於 NEE dispatch 直接光分支。同屬 R2 時代視覺校準傳承值，R3-7 方向 A 同樣定性為框架補償，不實驗歸一。
+
+### 1.7 / 1.5 對採購評估的影響（C3 dream 語境）
+
+兩者皆為**均勻純量乘數**，對所有漫射路徑一視同仁。故：
+
+- **相對比較永遠成立**：2000 lm vs 3000 lm 在同場景下的比例不會因補償失真
+- **色溫比對永遠成立**：純量乘數不動 RGB 比例
+- **幾何遮擋完全物理正確**：GIK / Cloud / 軌道擋光判斷純幾何，與 1.7 無關
+- **空間梯度微偏**：強依賴多反彈的角落（天花板四角、書櫃底下）會相對「平」一點；不翻盤採購決策
+
+結論：對「C3 採購評估」目的（R3-8）完全可用。
+
+### 方向 B / C（延後至 R5 完工後）
+
+若未來要徹底消除 1.7 補償（歸物理正確），有兩條路：
+
+**方向 B：動框架讓漫射鏈無限**
+- 移除 `if (diffuseCount == 1)` 單掛旗限制，每次漫射都 stash + 重新掛旗
+- 配合 Russian Roulette（俄羅斯輪盤機率終止）防 throughput 太低還追
+- 重新驗證 MIS 不雙計（R3-6 框架只驗過 2 層）
+- 風險：等同偏離 erichlof 整套設計哲學
+
+**方向 C：Russian Roulette 完整重構 bounce loop**
+- 把「硬上限 `bounces >= uMaxBounces` break」換成標準機率終止
+- 影響面：整個 `CalculateRadiance()` 主迴圈 + 17 處 diffuseBounce dispatch site
+- 風險：等於重做 path tracer 核心
+
+**2026-04-20 決議**：方向 B/C 延後至 R3 + R4 + R5 全部完工、token 預算充裕後才挑戰。若使用者主動提起，先確認 token 充裕再動手——中途停工會留下半完工框架污染。
+
+### Blender 接軌觀點（2026-04-20 補充）
+
+使用者未來可能把此專案校準資料導入 Blender Cycles 做最終渲染。對照表：
+
+| 項目 | erichlof 框架 | Blender Cycles 接軌 |
+|---|---|---|
+| 幾何 (中心, halfSize) | `addBox()` 實測值 | Mesh 尺寸數值直接吃 |
+| 光通量 → radiance | `lumensToWatts` / `Φ/(K·π·A)` | Cycles Light Watt + Kelvin 直接吃 |
+| PBR (roughness/metalness) | per-class uniforms | Principled BSDF 同名欄位 |
+| 商品規格 | 4 種 Cloud / 5 段 Track / 2 支 Wide | Cycles Area/Spot Light 直接吃 |
+| GLSL shader code | 1800+ 行 | ✗ Cycles 用 OSL Shader Node |
+| 2-bounce 截斷 + 1.7 補償 | 框架限制 | ✗ Cycles 原生多反彈 + Russian Roulette |
+| `CalculateRadiance` | 自訂 path tracing loop | ✗ Cycles 核心接手 |
+
+結論：**shader 層不無縫，科學校準層 100% 無縫**。1.7 / 1.5 補償在跨引擎時自動消失——這也是為何 R3-7 不值得為歸一投入工程量的另一原因。
+
+### 教訓
+
+1. **別把「Phase 2」當時限標籤看待**：SOP 早期寫「Phase 2 2-bounce truncation」給人一種「之後 Phase 3 會解」的錯覺；實則這是 erichlof 框架固定行為，不會自動升級
+2. **`max_bounces` 與「漫射能量累加深度」是兩件事**：前者是所有射線類型的總迴圈上限，後者被 `diffuseCount == 1` 單掛旗鎖在 2 層
+3. **渲染器的驗收標準是使用者眼睛，不是物理公式**：1.7 是對齊真實空間的校準產物；R2-18 定案時已經通過此門檻

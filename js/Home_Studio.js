@@ -1052,10 +1052,13 @@ function initSceneData() {
     // R2-18 fix17：地板霧面磁磚（dielectric Fresnel F0=0.04 + roughness blur）；fix18 預設 0.1 肉眼校準
     pathTracingUniforms.uFloorRoughness = { value: 0.1 };
 
-    // R2-18 fix19：間接光倍率（1.0=原值，>1 提亮陰影區）；fix21 預設 1.7
+    // R2-18 fix19 / R3-7：間接光補償（erichlof 框架 diffuseCount==1 單掛旗 → 2-diffuse-bounce 截斷）
+    // 本係數補償第 3 次以後永遠不再累加的間接反彈能量；非臨時值。提 max_bounces 4→8 肉眼無差（R3-7 驗）。
+    // 詳見 docs/SOP/Debug_Log.md「Phase 2 漫射能量 2-bounce truncation 說明」章節。
     pathTracingUniforms.uIndirectMultiplier = { value: 1.7 };
 
-    // R3-0：legacy gain（shader 10 處 weight × magic 魔數抽離為 uniform，預設 1.5 維持 R2-18 亮度）
+    // R3-0 / R3-7：NEE 直接光補償（shader 10 處 `mask *= weight * uLegacyGain`）。
+    // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。
     pathTracingUniforms.uLegacyGain = { value: 1.5 };
 
     // R3-6：MIS Phase-1 全局閘門（ceiling quadLight idx 0 + Cloud 4 rod idx 7-10 = 5 DIFF-emitters）
@@ -1600,8 +1603,8 @@ function setupGUI() {
         wakeRender();
     });
 
-    // R2-18 fix19：間接光倍率（>1 提亮陰影區，僅影響 indirect bounce）；fix21 預設 1.7 肉眼校準
-    const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('間接光倍率').onChange(function (v) {
+    // R2-18 fix19 / R3-7：間接光補償（框架 2-bounce 截斷補償，非物理值；詳 Debug_Log.md R3-7 章節）
+    const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('間接光補償（框架限制）').onChange(function (v) {
         pathTracingUniforms.uIndirectMultiplier.value = v; wakeRender();
     });
     attachMetaClickReset(indirectCtrl, 1.7);
