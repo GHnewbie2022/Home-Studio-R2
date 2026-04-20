@@ -94,11 +94,10 @@ let pixelEdgeSharpness = 0.75;
 let edgeSharpenSpeed = 0.05;
 //let filterDecaySpeed = 0.0001;
 
-let gui;
 let ableToEngagePointerLock = true;
-let pixel_ResolutionController, pixel_ResolutionObject;
+let pixel_ResolutionObject;
 let needChangePixelResolution = false;
-let orthographicCamera_ToggleController, orthographicCamera_ToggleObject;
+let orthographicCamera_ToggleObject;
 let currentlyUsingOrthographicCamera = false;
 
 // the following variables will be used to calculate rotations and directions from the camera
@@ -436,40 +435,10 @@ function init()
 	}
 
 
-	gui = new GUI();
-
-	gui.domElement.style.userSelect = "none";
-	gui.domElement.style.MozUserSelect = "none";
-
-
-	// CMD (或 Ctrl) + 左鍵點擊滑桿即重設為預設值
-	function _attachMetaClickReset(ctrl, defaultValue)
-	{
-		if (!ctrl || !ctrl.domElement) return ctrl;
-		ctrl.domElement.addEventListener('mousedown', function (e)
-		{
-			if (!(e.metaKey || e.ctrlKey)) return;
-			if (e.button !== 0) return;
-			e.preventDefault();
-			e.stopPropagation();
-			ctrl.setValue(defaultValue);
-		}, true);
-		return ctrl;
-	}
+	// R4-1: lil-gui removed; ui-container pointer-lock guard is in initUI()
 
 	if (mouseControl) // on desktop
 	{
-		pixel_ResolutionController = gui.add(pixel_ResolutionObject, 'pixel_Resolution', 0.5, 2.0, 0.1).onChange(handlePixelResolutionChange);
-		_attachMetaClickReset(pixel_ResolutionController, pixel_ResolutionObject.pixel_Resolution);
-
-		gui.domElement.addEventListener("mouseenter", function (event) 
-		{
-			ableToEngagePointerLock = false;
-		}, false);
-		gui.domElement.addEventListener("mouseleave", function (event) 
-		{
-			ableToEngagePointerLock = true;
-		}, false);
 
 		window.addEventListener('wheel', onMouseWheel, false);
 
@@ -517,9 +486,7 @@ function init()
 
 	if (!mouseControl) // on mobile
 	{
-		pixel_ResolutionController = gui.add(pixel_ResolutionObject, 'pixel_Resolution', 0.5, 1.0, 0.05).onChange(handlePixelResolutionChange);
-		_attachMetaClickReset(pixel_ResolutionController, pixel_ResolutionObject.pixel_Resolution);
-		orthographicCamera_ToggleController = gui.add(orthographicCamera_ToggleObject, 'Orthographic_Camera', false).onChange(handleCameraProjectionChange);
+		// R4-1: pixel resolution slider is now in initUI(); orthographic toggle removed
 	}
 
 
@@ -588,6 +555,7 @@ function initTHREEjs()
 	stats.domElement.style.cursor = "default";
 	stats.domElement.style.userSelect = "none";
 	stats.domElement.style.MozUserSelect = "none";
+	stats.domElement.style.display = 'none';
 	container.appendChild(stats.domElement);
 
 
@@ -679,12 +647,8 @@ function initTHREEjs()
 		});
 	}
 
-	pixel_ResolutionController.setValue(pixelRatio);
-	if (!allowOrthographicCamera && !mouseControl)
-	{
-		orthographicCamera_ToggleController.domElement.hidden = true;
-		orthographicCamera_ToggleController.domElement.remove();
-	}
+	if (typeof setSliderValue === 'function') setSliderValue('slider-pixel-res', pixelRatio);
+	// R4-1: orthographic toggle removed (was lil-gui controller)
 
 
 	// setup oversized full-screen triangle geometry and shaders....
@@ -928,7 +892,7 @@ function animate()
 	// if GUI has been used, update
 	if (needChangePixelResolution)
 	{
-		pixelRatio = pixel_ResolutionController.getValue();
+		pixelRatio = (typeof getSliderValue === 'function') ? getSliderValue('slider-pixel-res') : pixelRatio;
 		onWindowResize();
 		needChangePixelResolution = false;
 	}

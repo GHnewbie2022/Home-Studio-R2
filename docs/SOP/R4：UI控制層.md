@@ -22,16 +22,16 @@
 
 | 階段 | 主題 | 狀態 |
 |------|------|------|
-| R4-0 | 舊專案 UI 盤點 + 新 R3 控件整合策略 | ⬜ |
-| R4-1 | UI 骨架復刻（HTML panel-group + CSS + createS 工廠，對齊舊專案自製 UI；丟棄主專案 lil-gui） | ⬜ |
-| R4-2 | 鷹架移除（R3-6 MIS checkbox + R3-6.5 動態池 checkbox / N 顯示 hardcode 為 1.0） | ⬜ |
-| R4-3 | 保留 R3 控件併入舊版面（CONFIG 1/2/3、色溫 radio、lumens sliders、吸音板色） | ⬜ |
-| R4-4 | R3-5a 甜蜜點 UI 復刻（4 sliders：燈傾角 / beam 角 / 軌到 GIK 距離 / 同側燈距） | ⬜ |
-| R4-5 | 互動打磨（reset、listen-bound、hotkeys 視需） | ⬜ |
+| R4-0 | 舊專案 UI 盤點 + 新 R3 控件整合策略 | ✅ |
+| R4-1 | UI 骨架復刻（HTML panel + CSS + createS 工廠 + DOM adapter；丟棄 lil-gui；含 InitCommon.js 改造） | ✅ |
+| R4-2 | 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除） | ⬜ |
+| R4-3 | 控件接線（CONFIG 1/2/3、A/B radio、色溫 radio、lumens slider、GIK 色控、light checkbox） | ⬜ |
+| R4-4 | 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型；BVH 兩層更新策略） | ⬜ |
+| R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ⬜ |
 
 ---
 
-## R4-0 舊專案 UI 盤點 + 整合策略 ⬜
+## R4-0 舊專案 UI 盤點 + 整合策略 ✅
 
 **來源檔**：`/Users/eajrockmacmini/Documents/VS Code/My Project/Home_Studio_3D_OLD/Path Tracking 260412a 5.4 Clarity.html`（2272 行、單檔自包含；CSS 與 JS 全 inline；唯一外部 JS 為 `sylvester.min.js` CDN）。
 
@@ -145,37 +145,249 @@
 - 吸音板色控（`#groupGikPresets` 2 presets + `.gik-minimap` 5 row × 13 blocks）
   - Dimi Music 僅售白色 GIK，色控為視覺預覽工具，非採購決策依據
 
-### R4-1 ~ R4-5 影響
+### R4 架構決策（2026-04-20 ralplan 三方共識）
 
-- **R4-1**（骨架復刻）：複製舊 HTML `<div id="ui-container">` 三個 `panel-group`（光追 / 材質 / 燈光，扣除已決策移除的空腔與後製）+ `.panel-header` / `.panel-content.collapsed` 折疊機制 + CSS 抽到 `css/default.css` + `createS` 工廠搬進 `js/Home_Studio.js`（`createPostControl` 不搬）。
-- **R4-2**（鷹架移除）：先行拆掉目前 lil-gui 實體 + 兩個舊 checkbox（R3-6 / R3-6.5），確保 R4-1 之後 shader gate uniform 的預設值 `1.0` 生效。
-- **R4-3**（保留控件整合）：針對新 R3 控件按本表策略逐一接線。
-- **R4-4**（甜蜜點 UI）：4 slider 跨層接線（HTML + JS + shader uniform）。
-- **R4-5**（互動打磨）：折疊預設值、`cameraIsMoving=true` 觸發、⌘/Ctrl+Click slider 還原預設、Cam1/2/3 按鈕還原視角、help / hide / snapshot milestone bar 是否保留由使用者驗收時決。
+以下決策經 Planner / Architect / Critic 兩輪迭代確立，R4 全程適用。
 
-## R4-1 UI 骨架復刻 ⬜
+1. **Option A — 原子切換**：R4-1 一次搬完 HTML 骨架 + CSS + `createS` factory，同時丟棄 lil-gui。不採 Option B（lil-gui 共存漸進搬遷）——兩套 UI 共存期間同一 uniform 有兩個控件驅動，race condition 風險高於單次切換。
+2. **光度量測模型（photometric）**：R4-4 beam 角度 slider 影響亮度（收窄 beam = 中心更亮）。`computeTrackRadiance` 啟用 `beamFullDeg` 參數：`candela = lm / (2π(1 − cos(halfAngle)))`，對齊舊專案 `lumenToCandela` 行為。
+3. **BVH 兩層更新策略**：beam/tilt/emission 更新 = 即時 uniform-only（低成本）；spacing/distance 更新 = `sceneBoxes` 位置變動 → 200ms debounce 後呼叫 `buildSceneBVH()`。
+4. **InitCommon.js 納入 R4-1 範圍**：`gui = new GUI()` 在 `InitCommon.js:439`，非 `Home_Studio.js`。R4-1 必須同步改造此檔案。
+5. **DOM adapter 取代 lil-gui API**：`applyPanelConfig()` 內 `.setValue()` / `.disable()` / `.updateDisplay()` 等 lil-gui 方法改為自製 adapter 函式。
 
-- 目標：依 R4-0 盤點結果，搬舊專案自製 HTML panel 骨架（`<div id="ui-container">` 三個 `panel-group`：光追設定、材質設定、燈光設定）+ CSS（抽到 `css/default.css`）+ `createS` 工廠函式進本專案；**丟棄目前主專案的 lil-gui 實作**。骨架空殼化（控件存在但 onChange 暫不接新 R3 uniform，接線留給 R4-3 / R4-4）。
-- 不搬（依 R4-0 決策）：
-  - `#cavity-panel` 整區（`#btnSideCavity` / `#btnNorthCavity` + `updateCavity` 邏輯）
-  - `#post-panel` 整區（edge-sigma placeholder + bloom 2 slider + 6 條 post control）
-  - `createPostControl` 工廠、`postState` 物件、`postSyncers` / `syncPostUI`、`renderPost()` 相關觸發
+---
+
+## R4-1 UI 骨架復刻 ✅
+
+### 目標
+
+依 R4-0 盤點結果，搬舊專案自製 HTML panel 骨架（3 個 panel-group：⚙️光追設定 / 🔲材質設定 / 💡燈光設定）+ CSS + `createS` 工廠 + DOM adapter 進本專案；**丟棄 lil-gui 整包**。骨架空殼化（所有 slider onChange 暫接 `wakeRender()` 空殼，真正接線留 R4-3 / R4-4）。
+
+### 交付物
+
+`Home_Studio.html`、`css/default.css`、`js/Home_Studio.js`、`js/InitCommon.js`、刪除 `js/lil-gui.module.min.js`
+
+### 不搬（依 R4-0 決策）
+
+- `#cavity-panel` 整區（`#btnSideCavity` / `#btnNorthCavity` + `updateCavity` 邏輯）
+- `#post-panel` 整區（edge-sigma placeholder + bloom 2 slider + 6 條 post control）
+- `createPostControl` 工廠、`postState` 物件、`postSyncers` / `syncPostUI`、`renderPost()` 相關觸發
+
+### 步驟
+
+1. **`css/default.css`**：從舊專案 `<style>` 抽取所有 panel / button / slider / gik CSS class（約 130 行），附加於現有 base 樣式尾端
+2. **`Home_Studio.html`**：
+   - 移除 `<style>` 中 lil-gui 巢狀縮排覆寫 4 行（L10-14）
+   - 移除 `<script type="module">` 中 `import GUI ...` + `window.GUI = GUI`
+   - 新增 `<div id="ui-container">` 含 3 個 panel-group（HTML 結構照搬舊專案，扣除 post + cavity）
+   - 新增右上角視角按鈕群組 `#top-right-group`
+   - 新增右下角 help + hide 按鈕群組 `#bottom-right-group`
+   - 新增左下角 info-panel（FPS + sample counter）
+   - 新增 snapshot-bar + snapshot-preview + snapshot-actions
+   - 新增 loading-screen（SVG 圓環進度）
+3. **`js/Home_Studio.js`**：
+   - 搬入 `createS(id, label, min, max, step, init, cb, reset=true)` 工廠（舊專案 L2083-2089，7 行；內建 meta+click reset）
+   - 搬入 panel-header toggle 折疊邏輯
+   - 重構 `setupGUI()` → `initUI()`：所有 `gui.add()` / `gui.addFolder()` / `attachMetaClickReset()` 移除，改用 `createS` 空殼呼叫
+   - 移除 `gui.domElement.addEventListener('click', ...)` 防冒泡 → 改綁 `#ui-container`
+   - 新增 DOM adapter 函式（取代 lil-gui API）：
+     - `setSliderValue(sliderId, value)` — 設定 createS slider 的 range + number input 值
+     - `getSliderValue(sliderId)` — 讀取 slider 當前值
+     - `setSliderEnabled(sliderId, enabled)` — toggle pointer-events + opacity
+     - `setSliderLabel(sliderId, label)` — 更新 `.label-text` 內容
+     - `setCheckboxChecked(checkboxId, checked)` — 同步 checkbox 狀態
+   - `applyPanelConfig()` 內所有 `brightnessCtrl.setValue/disable/enable/name` → 改呼叫 adapter
+   - `trackLightCtrl.updateDisplay()` → `setCheckboxChecked('chkTrack', ...)`（同理 wide / cloud）
+4. **`js/InitCommon.js`**：
+   - 移除 L439 `gui = new GUI()` 及 L441-442 style 設定
+   - `pixel_Resolution` slider：移至 HTML panel（⚙️光追設定頂端），改用 `createS`
+   - L462-472 pointer-lock guard（`gui.domElement.addEventListener mouseenter/mouseleave`）→ 改綁 `#ui-container`
+   - L682 `pixel_ResolutionController.setValue(pixelRatio)` → `setSliderValue('slider-pixel-res', pixelRatio)`
+   - L931 `pixel_ResolutionController.getValue()` → `getSliderValue('slider-pixel-res')`
+   - L446-458 `_attachMetaClickReset` 使用 lil-gui `.domElement` + `.setValue()` → 改用 `createS` 內建的 meta+click reset（無需額外處理）
+   - Mobile `Orthographic_Camera` toggle → HTML checkbox in ray-panel
+5. **刪除 `js/lil-gui.module.min.js`**
+
+### 驗收
+
+- 頁面載入無 console error
+- 3 個 panel（⚙️光追設定 / 🔲材質設定 / 💡燈光設定）可折疊展開
+- pixel_Resolution slider 可拖曳並影響渲染解析度
+- CONFIG 1/2/3 切換正常（`applyPanelConfig` DOM adapter 運作）
+- Cam 1 下 64 spp 渲染正常、無視覺異常
+
+---
 
 ## R4-2 鷹架移除 ⬜
 
-- 目標：拆除 R3-6 MIS 啟用 checkbox 與 R3-6.5 動態池 checkbox / N 顯示；shader 端 `uR3MisEnabled = 1.0` 與 `uR3DynamicPoolEnabled = 1.0` 寫死，移除死分支 else-branch。
+### 目標
 
-## R4-3 保留 R3 控件併入舊版面 ⬜
+刪除 R3-6 MIS checkbox + R3-6.5 動態池 checkbox + Active N 顯示；shader 分支扁平化 + 死碼清理。
 
-- 目標：將保留的 R3 控件按舊專案風格整合進舊版面——CONFIG 1/2/3 切換、色溫 **radio buttons**（對齊舊觀感）、lumens sliders（Cloud / Track / Wide）、吸音板顏色控制。
+### 交付物
 
-## R4-4 R3-5a 甜蜜點 UI 復刻 ⬜
+`js/Home_Studio.js`、`shaders/Home_Studio_Fragment.glsl`
 
-- 目標：跨 shader 幾何 + JS uniform + GUI 三層復刻舊專案 4 條 sweet-spot slider：燈傾角、beam 角、軌道到 GIK 距離、同側燈距。
+### 移除清單（12 處 shader 分支 + 函式 + 3 uniform）
+
+**GLSL `uR3DynamicPoolEnabled` — 12 處**：
+- 10 dispatch if/else：L1396, L1438, L1490, L1546, L1658, L1701, L1766, L1815, L1928, L1986 → 保留 true-branch（`sampleStochasticLightDynamic`），刪除 else-branch（`sampleStochasticLight11` 呼叫）
+- 2 inline ternary：L1176, L1882 → `uR3DynamicPoolEnabled > 0.5 ? 1.0/float(uActiveLightCount) : 1.0/11.0` → 簡化為 `1.0 / float(uActiveLightCount)`
+
+**GLSL `uR3MisEnabled` — 5 處**：
+- L1158, L1168, L1297, L1854, L1868 → 條件中移除 `uR3MisEnabled > 0.5 &&`（保留其餘條件）
+
+**死碼**：
+- `sampleStochasticLight11` 函式（L261-378，約 120 行）→ 扁平化後無呼叫者，整段刪除
+- L2027 DCE sentinel `accumCol += vec3(uR3MisEnabled + uR3MisPickMode)` → 刪除
+
+**uniform 移除**：
+- GLSL：`uniform float uR3MisEnabled` / `uR3MisPickMode` / `uR3DynamicPoolEnabled` 三行宣告
+- JS：對應 `pathTracingUniforms.uR3MisEnabled` / `.uR3MisPickMode` / `.uR3DynamicPoolEnabled` 三處 uniform 註冊
+- JS：`computeLightEmissions()` 內 throw-first guard（檢查 uR3MisEnabled / uR3MisPickMode 是否存在）→ 刪除
+
+### 步驟（每步驗 shader 編譯）
+
+1. JS 端：移除 MIS checkbox + 動態池 checkbox + Active N 顯示 + `uR3MisPickMode` uniform → **瀏覽器驗 shader 編譯**
+2. GLSL Phase A：分 3 批扁平化 12 處 `uR3DynamicPoolEnabled`（每批 4 處 → **驗編譯**）
+3. GLSL Phase A'：刪除 `sampleStochasticLight11` 整段 → **驗編譯**
+4. GLSL Phase B：扁平化 5 處 `uR3MisEnabled` + 刪除 DCE sentinel → **驗編譯**
+5. GLSL Phase C：移除 3 uniform 宣告 + JS uniform 註冊 + throw-first guard → **驗編譯**
+
+### 驗收
+
+- CONFIG 1/2/3 × Cam 1，64 spp 渲染正常
+- Console 零 error、零 warning
+
+---
+
+## R4-3 控件接線 ⬜
+
+### 目標
+
+將保留的 R3 控件按舊專案風格整合進 HTML 面板，全部接線到現有 JS / shader uniform。
+
+### 交付物
+
+`Home_Studio.html`（div 結構微調）、`js/Home_Studio.js`
+
+### 控件清單
+
+1. **CONFIG 1/2/3 radio**：💡燈光設定頂端，3 個 `.action-btn`（active = `glow-white`）→ `applyPanelConfig(n)`
+2. **A/B 趨近真實/快速預覽 radio**：⚙️光追設定，2 個 `.action-btn` → 切換 `activeGroup`，覆寫 bounces/clamp/mult 預設值（邏輯從舊專案 L2097-2109 搬入）
+3. **色溫 radio button 群組**：
+   - Cloud：3 button（暖 3000K / 自然 4000K / 白光 6500K）→ `glow-orange` / `glow-white` / `glow-blue`
+   - Track：4 button（全暖 / 全冷 / 北暖南冷 / 北冷南暖）→ 含 `glow-gradient-ob` 漸層
+   - Wide South / North：各 3 button
+   - Track / Wide 外觀色：各 2 button（黑 / 白）
+4. **Lumens slider**：Cloud（0~4000, step 1, init 800）/ Track（0~3000, step 50, init 500）/ Wide（0~4000, step 50, init 2500）
+5. **其他 slider**：牆面反射率（0.1~1.0）/ 發光面上限（10~500）/ 彈跳次數（1~8）/ 間接光補償（A/B 各一，0.1~5.0）
+6. **Light enable checkbox**：Cloud / Track / Wide South / Wide North → 各自 uniform + `rebuildActiveLightLUT`
+7. **GIK 色控**：2 preset button + 13 block minimap（點擊循環 4 色）→ `gikColors[]` → `cameraIsMoving=true`
+
+### 驗收
+
+- 每組控件接線後即時測試：slider 拖曳可見渲染效果、radio 切換可見色溫 / 配置變化
+- CONFIG 1/2/3 切換：燈具顯示/隱藏正確、checkbox 連動同步
+
+---
+
+## R4-4 甜蜜點 UI ⬜
+
+### 目標
+
+跨 HTML slider → JS 變數 → shader uniform 三層復刻舊專案 sweet-spot slider。採光度量測模型（收窄 beam = 中心更亮）。
+
+### 交付物
+
+`js/Home_Studio.js`（HTML slider div 已在 R4-1 存在）
+
+### Slider 完整清單
+
+#### Track 投射燈（5 條，lumens 已在 R4-3 接線）
+
+| id | label | 範圍 | step | 預設 | state 變數 |
+|---|---|---|---|---|---|
+| `slider-track-beam-inner` | 光束角(內) | 1 ~ 90 | 1 | 30 | `trackBeamInner` |
+| `slider-track-beam-outer` | 光束角(外) | 15 ~ 90 | 1 | 55 | `trackBeamOuter` |
+| `slider-track-tilt` | 傾斜角 | 0 ~ 90 | 1 | 45 | `trackTilt` |
+| `slider-track-space` | 間距 (cm) | 0 ~ 180 | 1 | 150 | `trackSpacing` |
+| `slider-track-x` | 距Cloud邊距 | 0.05 ~ 0.90 | 0.01 | 0.05 | `trackBaseX = 0.90 + v` |
+
+#### Wide 廣角燈（5 條，lumens 已在 R4-3 接線）
+
+| id | label | 範圍 | step | 預設 | state 變數 |
+|---|---|---|---|---|---|
+| `slider-track-wide-beam-inner` | 廣角束角(內) | 10 ~ 160 | 1 | 95 | `trackWideBeamInner` |
+| `slider-track-wide-beam-outer` | 廣角束角(外) | 60 ~ 160 | 1 | 120 | `trackWideBeamOuter` |
+| `slider-track-wide-tilt-south` | 南側傾斜角 | -70 ~ 70 | 1 | 15 | `trackWideTiltSouth` |
+| `slider-track-wide-tilt-north` | 北側傾斜角 | -70 ~ 70 | 1 | -25 | `trackWideTiltNorth` |
+| `slider-track-wide-z` | 距Cloud邊距 | 0.10 ~ 1.30 | 0.01 | 0.10 | `trackWideZ = 1.20 + v` |
+
+### 新增函式
+
+- **`recomputeTrackGeometry()`**（uniform-only，低成本）：
+  - 從 `trackBeamInner/Outer` 重新計算 `cos(halfAngle)` → 寫入 `uTrackBeamCos[0..3]`
+  - 從 `trackTilt` 重新計算燈頭方向 → 寫入 `uTrackLampDir[0..3]`
+  - 同理 `recomputeWideTrackGeometry()` → `uTrackWideBeamCos[0..1]`
+- **`recomputeTrackPositions()`**（geometry + BVH rebuild，高成本）：
+  - 從 `trackSpacing` / `trackBaseX` 重新計算燈頭位置 → 寫入 `uTrackLampPos[0..3]`
+  - 更新 `sceneBoxes` 中軌道支架位置（min/max 座標）
+  - 呼叫 `buildSceneBVH()`（**200ms debounce**，trailing edge）
+  - 同理 `recomputeWideTrackPositions()` → `uTrackWideLampPos[0..1]` + 廣角支架 sceneBoxes
+
+### 光度量測模型
+
+`computeTrackRadiance(lm, T_K, A_m2, beamFullDeg)` 啟用 `beamFullDeg` 參數：
+```
+halfAngleRad = beamFullDeg / 2 * π / 180
+candela = lm / (2π * (1 − cos(halfAngleRad)))
+radiance = candela / A_m2
+```
+效果：收窄 beam → candela 上升 → 中心更亮（對齊舊專案 `lumenToCandela` 行為）。
+
+### beam inner/outer 互鎖
+
+- inner onChange → `Math.min(v, trackBeamOuter)`
+- outer onChange → `Math.max(v, trackBeamInner)`
+（同樣適用 wide beam）
+
+### onChange 呼叫鏈
+
+每條 slider callback → 更新 JS 變數 → `recomputeTrackGeometry()` 或 `recomputeTrackPositions()`（依類型）→ `computeLightEmissions()` → `wakeRender()`
+
+### 驗收
+
+- CONFIG 3 下拖動每條 slider → 光斑位置、角度、大小、亮度即時變化
+- beam 互鎖正確：inner 不超過 outer、outer 不低於 inner
+
+---
 
 ## R4-5 互動打磨 ⬜
 
-- 目標：reset 按鈕、listen-bound values、必要的 hotkeys。
+### 目標
+
+固定控件、視覺收尾、使用者直接驗收。
+
+### 交付物
+
+`Home_Studio.html`、`js/Home_Studio.js`
+
+### 項目
+
+1. **Panel 折疊預設**：所有 panel 預設 `collapsed`（使用者展開感興趣項目）
+2. **Cam 1/2/3 按鈕**：`#btnCam1/2/3` → `switchCamera()` 切預設視角
+3. **X-ray toggle**：checkbox → `uXrayEnabled`
+4. **Hide UI**：`#hide-btn` → toggle 所有 UI 群組顯示
+5. **Help hover**：`#help-wrapper:hover #instructions` pure CSS 展開
+6. **FPS + sample counter**：`#info-panel` 搬入，bind `requestAnimationFrame` 更新
+7. **Snapshot**：milestone 自動截圖 + bar 縮圖 + 打包下載
+8. **Loading screen**：SVG 圓環進度（shader compile → 0~100%）
+
+### 驗收
+
+- 使用者直接操作每個固定控件確認反應正確
+- 可折疊、可隱藏、可截圖、loading 正常
 
 ---
 
@@ -183,3 +395,4 @@
 
 - R4 無 spp 比對驗收（UI 層）；由使用者直接操作每一控件確認反應正確。
 - 關鍵行為錯誤（如色溫 radio 不切換、lumens slider 無效）當場修掉，不累到後段。
+- R4-2 shader 修改例外：CONFIG 1/2/3 × Cam 1，64 spp 確認渲染無異常。

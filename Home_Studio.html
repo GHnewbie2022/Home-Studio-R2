@@ -1,18 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 	<head>
 		<title>three.js PathTracing Renderer - Home Studio</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
-		<link href="css/default.css" rel="stylesheet"/>
-
-		<style>
-			/* R2-18 fix34：lil-gui 巢狀資料夾視覺縮排，以 !important 壓過預設 padding:0 */
-			.lil-gui .lil-gui > .title { padding-left: 20px !important; }
-			.lil-gui .lil-gui .controller { padding-left: 20px !important; }
-			.lil-gui .lil-gui .lil-gui > .title { padding-left: 36px !important; }
-			.lil-gui .lil-gui .lil-gui .controller { padding-left: 36px !important; }
-		</style>
+		<link href="css/default.css?v=r4-1-fix06" rel="stylesheet"/>
 
 		<script type="importmap">
 		{
@@ -27,25 +19,230 @@
 			window.THREE = THREE;
 			import Stats from './js/stats.module.js';
 			window.Stats = Stats;
-			import GUI from './js/lil-gui.module.min.js';
-			window.GUI = GUI;
 		</script>
 	</head>
-	
+
 	<body>
-		
+
 		<div id="container"> </div>
 		<div id="info">three.js PathTracing Renderer - Home Studio</div>
-		
-		<div id="snapshot-bar" style="position:fixed; bottom:32px; left:10px; z-index:25; display:flex; gap:4px; align-items:flex-end; pointer-events:auto; flex-wrap:wrap; max-width:90vw;"></div>
+
+		<!-- Loading screen -->
+		<div id="loading-screen" style="position:absolute; top:0; left:0; width:100%; height:100%; background:#0c0c0c; z-index:9999; display:none; align-items:center; justify-content:center; transition:opacity 0.5s ease;">
+			<div style="position:relative; width:80px; height:80px; display:flex; align-items:center; justify-content:center;">
+				<svg width="80" height="80" style="position:absolute; top:0; left:0;">
+					<circle stroke="rgba(255,255,255,0.1)" stroke-width="4" fill="transparent" r="36" cx="40" cy="40"/>
+					<circle id="loading-ring" stroke="#8c8273" stroke-width="4" stroke-dasharray="226" stroke-dashoffset="226" stroke-linecap="round" fill="transparent" r="36" cx="40" cy="40" style="transition:stroke-dashoffset 0.1s; transform:rotate(-90deg); transform-origin:50% 50%;"/>
+				</svg>
+				<span id="loading-text" style="color:#d3d3d1; font-size:12px; font-weight:normal; letter-spacing:0.5px;">0%</span>
+			</div>
+		</div>
+
+		<!-- Info panel (bottom-left, R4-5 will bind live data) -->
+		<div id="info-panel" style="display:none;">
+			<div style="color:#aaa;">FPS: <span id="fps-counter">0</span></div>
+			<div style="color:#aaa;">累計採樣: <span id="sample-counter">0</span></div>
+		</div>
+
+		<!-- Snapshot bar -->
+		<div id="snapshot-bar"></div>
+		<div id="snapshot-actions">
+			<button class="snapshot-action-btn" id="btn-save-all">📦 打包下載全部</button>
+		</div>
+		<img id="snapshot-preview" src="" alt="snapshot">
+
+		<!-- Camera buttons (top-right) -->
+		<div id="top-right-group" class="panel-group" style="position:fixed; top:15px; right:15px; z-index:20; padding:4px; gap:4px; flex-direction:column;">
+			<button id="btnCam1" class="cam-btn">視角 1</button>
+			<button id="btnCam2" class="cam-btn">視角 2</button>
+			<button id="btnCam3" class="cam-btn">視角 3</button>
+		</div>
+
+		<!-- Help + Hide (bottom-right) -->
+		<div id="bottom-right-group" style="position:fixed; bottom:15px; right:15px; z-index:20; display:flex; align-items:flex-end; gap:8px;">
+			<div id="help-wrapper">
+				<div id="help-btn">?</div>
+				<div id="instructions">
+					[PC] W,A,S,D 移動 | E 上升 | C 下降<br>
+					[Mouse] 左鍵鎖定視角 | 滾輪縮放 | 右鍵拖曳平移<br>
+					[Mobile] 左半邊拖曳移動 | 右半邊滑動轉角<br>
+					💡 CMD/CTRL + 點擊滑桿可重置數值
+				</div>
+			</div>
+			<div id="hide-btn" title="隱藏 UI">
+				<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M2 12c.94-3.46 4.35-6 8-6s7.06 2.54 8 6c-.94 3.46-4.35 6-8 6s-7.06-2.54-8-6Z"></path>
+					<circle cx="12" cy="12" r="3"></circle>
+				</svg>
+			</div>
+		</div>
+
+		<!-- Main UI container -->
+		<div id="ui-container">
+			<div class="panel-group">
+
+				<!-- ⚙️ 光追設定 -->
+				<div id="ray-header" class="panel-header">⚙️ 光追設定</div>
+				<div id="ray-panel" class="panel-content collapsed">
+					<div style="display:flex; gap:8px; margin-bottom:12px;">
+						<button id="btnGroupA" class="action-btn glow-white">趨近真實</button>
+						<button id="btnGroupB" class="action-btn">快速預覽</button>
+					</div>
+					<div id="slider-pixel-res"></div>
+					<div id="slider-bounces"></div>
+					<div class="item-divider" style="margin:12px 0;"></div>
+					<div id="group-a-controls">
+						<div id="slider-mult-a"></div>
+					</div>
+					<div id="group-b-controls" style="display:none;">
+						<div id="slider-mult-b"></div>
+					</div>
+				</div>
+
+				<!-- 🔲 材質設定 -->
+				<div id="mat-header" class="panel-header item-divider">🔲 材質設定</div>
+				<div id="mat-panel" class="panel-content collapsed">
+					<div id="slider-wall-albedo"></div>
+					<div style="margin-bottom:8px; color:#aaa; font-size:10px; margin-top:12px;">吸音板變色</div>
+					<div style="display:flex; gap:4px; margin-bottom:12px; padding-left:12px;" id="groupGikPresets">
+						<button class="action-btn" data-val="PRESET1">北牆灰/其餘白</button>
+						<button class="action-btn glow-white" data-val="PRESET2">北牆灰/頂白/側牆紅</button>
+					</div>
+					<div class="gik-minimap">
+						<div class="gik-row">
+							<div class="gik-label">全部</div>
+							<div class="gik-blocks"><div class="gik-block" data-idx="all" data-color="3"></div></div>
+						</div>
+						<div class="gik-row">
+							<div class="gik-label">天花板</div>
+							<div class="gik-blocks"><div class="gik-block" data-idx="ceil" data-color="1"></div></div>
+						</div>
+						<div class="gik-row">
+							<div class="gik-label">北牆</div>
+							<div class="gik-blocks">
+								<div class="gik-block" data-idx="8" data-color="0"></div>
+								<div class="gik-block" data-idx="7" data-color="0"></div>
+								<div class="gik-block" data-idx="6" data-color="0"></div>
+							</div>
+						</div>
+						<div class="gik-row">
+							<div class="gik-label">東牆</div>
+							<div class="gik-blocks">
+								<div class="gik-block" data-idx="3" data-color="3"></div>
+								<div class="gik-block" data-idx="4" data-color="3"></div>
+								<div class="gik-block" data-idx="5" data-color="3"></div>
+							</div>
+						</div>
+						<div class="gik-row">
+							<div class="gik-label">西牆</div>
+							<div class="gik-blocks">
+								<div class="gik-block" data-idx="0" data-color="3"></div>
+								<div class="gik-block" data-idx="1" data-color="3"></div>
+								<div class="gik-block" data-idx="2" data-color="3"></div>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- 💡 燈光設定 -->
+				<div id="light-header" class="panel-header item-divider">💡 燈光設定</div>
+				<div id="light-panel" class="panel-content collapsed">
+					<div id="slider-emissive-clamp" style="margin-bottom:12px;"></div>
+
+					<!-- Cloud -->
+					<div class="control-row" style="margin-bottom:8px;">
+						<div class="label-group"><input type="checkbox" id="chkCloud" checked><span class="label-text">Cloud 漫射燈</span></div>
+					</div>
+					<div class="sub-panel">
+						<div style="display:flex; gap:4px; margin-bottom:12px;" id="groupCloudColor">
+							<button class="action-btn" data-val="WARM">暖光 3000K</button>
+							<button class="action-btn glow-white" data-val="NEUTRAL">自然 4000K</button>
+							<button class="action-btn" data-val="COLD">白光 6500K</button>
+						</div>
+						<div id="slider-lumens"></div>
+					</div>
+
+					<div class="item-divider" style="margin:12px 0;"></div>
+
+					<!-- Track -->
+					<div class="control-row" style="margin-bottom:8px;">
+						<div class="label-group"><input type="checkbox" id="chkTrack" checked><span class="label-text">軌道燈</span></div>
+					</div>
+					<div class="sub-panel">
+						<div style="margin-bottom:6px; color:#aaa; font-size:10px;">外觀顏色</div>
+						<div style="display:flex; gap:4px; margin-bottom:12px;" id="groupTrackMeshColor">
+							<button class="action-btn" data-val="BLACK">黑色</button>
+							<button class="action-btn glow-white" data-val="WHITE">白色</button>
+						</div>
+						<div style="margin-bottom:6px; color:#aaa; font-size:10px;">色溫設定</div>
+						<div style="display:flex; gap:4px; margin-bottom:12px;" id="groupTrackColor">
+							<button class="action-btn" data-val="ALL_WARM">全暖 3000K</button>
+							<button class="action-btn" data-val="ALL_COLD">全冷 6000K</button>
+							<button class="action-btn glow-gradient-ob" data-val="WARM_COLD">北暖/南冷</button>
+							<button class="action-btn" data-val="COLD_WARM">北冷/南暖</button>
+						</div>
+						<div id="slider-track-lumens"></div>
+						<div id="slider-track-beam-inner"></div>
+						<div id="slider-track-beam-outer"></div>
+						<div id="slider-track-tilt"></div>
+						<div id="slider-track-space"></div>
+						<div id="slider-track-x"></div>
+					</div>
+
+					<div class="item-divider" style="margin:12px 0;"></div>
+
+					<!-- Wide -->
+					<div class="control-row" style="margin-bottom:8px;">
+						<div class="label-group"><span class="label-text">廣角燈</span></div>
+					</div>
+					<div class="sub-panel">
+						<div style="display:flex; gap:12px; margin-bottom:12px;">
+							<label style="display:flex; align-items:center; gap:4px; color:#aaa; font-size:10px; cursor:pointer;">
+								<input type="checkbox" id="chkTrackWideSouth" checked> 南側電源
+							</label>
+							<label style="display:flex; align-items:center; gap:4px; color:#aaa; font-size:10px; cursor:pointer;">
+								<input type="checkbox" id="chkTrackWideNorth" checked> 北側電源
+							</label>
+						</div>
+						<div style="margin-bottom:6px; color:#aaa; font-size:10px;">外觀顏色</div>
+						<div style="display:flex; gap:4px; margin-bottom:12px;" id="groupTrackWideMeshColor">
+							<button class="action-btn" data-val="BLACK">黑色</button>
+							<button class="action-btn glow-white" data-val="WHITE">白色</button>
+						</div>
+						<div id="ns-wide-controls">
+							<div style="margin-bottom:6px; color:#aaa; font-size:10px;">南側色溫</div>
+							<div style="display:flex; gap:4px; margin-bottom:8px;" id="groupTrackWideColorSouth">
+								<button class="action-btn" data-val="WARM">暖光 3000K</button>
+								<button class="action-btn glow-white" data-val="NEUTRAL">自然 4000K</button>
+								<button class="action-btn" data-val="COLD">白光 6000K</button>
+							</div>
+							<div style="margin-bottom:6px; color:#aaa; font-size:10px;">北側色溫</div>
+							<div style="display:flex; gap:4px; margin-bottom:12px;" id="groupTrackWideColorNorth">
+								<button class="action-btn" data-val="WARM">暖光 3000K</button>
+								<button class="action-btn glow-white" data-val="NEUTRAL">自然 4000K</button>
+								<button class="action-btn" data-val="COLD">白光 6000K</button>
+							</div>
+							<div id="slider-track-wide-lumens"></div>
+							<div id="slider-track-wide-beam-inner"></div>
+							<div id="slider-track-wide-beam-outer"></div>
+							<div id="slider-track-wide-tilt-south"></div>
+							<div id="slider-track-wide-tilt-north"></div>
+						</div>
+						<div id="slider-track-wide-z"></div>
+					</div>
+				</div>
+
+			</div>
+		</div>
+
 		<div id="cameraInfo" style="position:fixed; left:10px; bottom:6px; font-family:arial; font-size:11px; color:rgb(255,255,255); text-shadow:0 0 4px #000;"></div>
-		
+
 		<script defer src="js/MobileJoystickControls.js"> </script>
 		<script defer src="js/PathTracingCommon.js"> </script>
 		<script defer src="js/BVH_Acc_Structure_Iterative_Fast_Builder.js"> </script>
-		<script defer src="js/InitCommon.js"> </script>
+		<script defer src="js/InitCommon.js?v=r4-1-skeleton"> </script>
 
-		<script defer src="js/Home_Studio.js?v=r3-6-5-wide-dir-legacy-restore"> </script>
+		<script defer src="js/Home_Studio.js?v=r4-1-fix06"> </script>
 
 	</body>
 </html>

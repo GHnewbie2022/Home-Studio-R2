@@ -148,8 +148,13 @@ Pick tool by phase characteristics; do not apply one skill throughout.
 | R3-6.5 (planned) | Dynamic NEE pool size (changes probability density function) | `/ralplan --deliberate` (high risk) |
 | R3-7 | indirectMul calibration | Direct edit with side-by-side screenshots |
 | R3-8 | Procurement acceptance (4 scenarios, user tests personally) | Direct edit; fix bugs only |
+| R4-1 | HTML skeleton + CSS + createS + DOM adapters; drop lil-gui; InitCommon.js rework | `/ultrawork` or `/ralph` (multi-file atomic switch) |
+| R4-2 | 12-point shader branch flattening + dead code deletion | `/ultrawork` or `/ralph` (step-by-step compile verification) |
+| R4-3 | Wire CONFIG/A-B/color-temp/lumens/GIK controls | `/ultrawork` or `/ralph` |
+| R4-4 | Sweet-spot sliders (Track 5 + Wide 5); photometric beam model; BVH debounce | `/ralplan` if model decision changes, otherwise `/ultrawork` or `/ralph` |
+| R4-5 | Interaction polish (fold defaults, Cam, Help, Hide, snapshot, loading) | Direct edit |
 
-`/team` does NOT fit R3: each phase has dependency chain (unit conversion → emitter → NEE → MIS), parallel is unsafe. `/team` fits mass-parallel independent file refactors.
+`/team` does NOT fit R3 or R4: each phase has dependency chain, parallel is unsafe. `/team` fits mass-parallel independent file refactors.
 
 ## Document Boundaries
 <!-- 文件邊界，避免重複 -->

@@ -351,34 +351,23 @@ function applyPanelConfig(config) {
         pathTracingUniforms.uCeilingLampPos.value.z = cloudOn ? -1.5 : 0.591;
     }
     // R3-4 fix06：Config 3 吸頂燈預設壓 0（軌道燈+Cloud 燈撐場景），Config 1/2 回 900
-    // R3-6-5 S4：CONFIG 3 雙重退場：disable slider + rename label
+    // R4-1：DOM adapter 取代 lil-gui API
     basicBrightness = cloudOn ? 0 : 900;
-    if (brightnessCtrl) {
-        if (config === 3) {
-            // CONFIG 3：吸頂燈物理拆除，UI setValue(0) 於 disable() 前 → disabled slider 顯示 0
-            if (brightnessCtrl.setValue) brightnessCtrl.setValue(0);
-            if (brightnessCtrl.disable) brightnessCtrl.disable();
-            if (brightnessCtrl.name) brightnessCtrl.name('吸頂主燈（CONFIG 3 已拆除）');
-        } else {
-            // CONFIG 1/2：吸頂燈在場，UI enable + label 恢復 + 回預設 900
-            if (brightnessCtrl.enable) brightnessCtrl.enable();
-            if (brightnessCtrl.name) brightnessCtrl.name('吸頂主燈');
-            if (brightnessCtrl.setValue) brightnessCtrl.setValue(900);
-        }
+    if (config === 3) {
+        setSliderValue('slider-brightness', 0);
+        setSliderEnabled('slider-brightness', false);
+        setSliderLabel('slider-brightness', '吸頂主燈（CONFIG 3 已拆除）');
+    } else {
+        setSliderEnabled('slider-brightness', true);
+        setSliderLabel('slider-brightness', '吸頂主燈');
+        setSliderValue('slider-brightness', 900);
     }
-    // GUI checkbox 同步（若已建構）
-    if (typeof trackLightState !== 'undefined' && trackLightState) {
-        trackLightState.trackLight = cloudOn;
-        if (trackLightCtrl && trackLightCtrl.updateDisplay) trackLightCtrl.updateDisplay();
-    }
-    if (typeof wideTrackLightState !== 'undefined' && wideTrackLightState) {
-        wideTrackLightState.wideTrackLight = cloudOn;
-        if (wideTrackLightCtrl && wideTrackLightCtrl.updateDisplay) wideTrackLightCtrl.updateDisplay();
-    }
-    if (typeof cloudLightState !== 'undefined' && cloudLightState) {
-        cloudLightState.cloudLight = cloudOn;
-        if (cloudLightCtrl && cloudLightCtrl.updateDisplay) cloudLightCtrl.updateDisplay();
-    }
+    // GUI checkbox 同步
+    setCheckboxChecked('chkTrack', cloudOn);
+    setCheckboxChecked('chkTrackWideSouth', cloudOn);
+    setCheckboxChecked('chkTrackWideNorth', cloudOn);
+    setCheckboxChecked('chkCloud', cloudOn);
+    syncWideEmissions();
     currentPanelConfig = config;
     buildSceneBVH();
     needClearAccumulation = true;
@@ -396,15 +385,12 @@ function applyPanelConfig(config) {
     rebuildActiveLightLUT('applyPanelConfig');
 }
 
-// R3-2-fix01b：依 currentPanelConfig 同步 R3 4 dropdown 的 enable/disable。
-// Config 1/2 = 吸頂燈撐場景 → R3 dropdown disable（R3 燈關，吸頂燈固定 4000K 內部自然光）。
-// Config 3   = 吸頂燈撤場（UI 已無滑桿）→ R3 dropdown enable。
+// R4-1：依 currentPanelConfig 同步燈光 slider enable/disable。
+// Config 1/2 = 吸頂燈撐場景 → 燈光 slider disable。Config 3 = enable。
 function syncR3ColorUIEnable() {
-    const isConfig3 = (currentPanelConfig === 3);
-    const r3Ctrls = [cloudColorCtrl, trackColorCtrl, trackLumensCtrl, trackWideColorSouthCtrl, trackWideColorNorthCtrl, trackWideLumensCtrl];
-    r3Ctrls.forEach(function (c) {
-        if (!c || !c.enable) return;
-        if (isConfig3) c.enable(); else c.disable();
+    var isConfig3 = (currentPanelConfig === 3);
+    ['slider-lumens', 'slider-track-lumens', 'slider-track-wide-lumens'].forEach(function(id) {
+        setSliderEnabled(id, isConfig3);
     });
 }
 
@@ -424,7 +410,6 @@ const rotatedObjects = [
 const rotatedMeshes = [];
 
 let samplesPerFrame = 1.0;
-let samplesPerFrameController;
 
 const CAMERA_PRESETS = {
     cam1: { position: { x: -1.115, y: 1.992, z: 3.310 }, pitch: -0.156, yaw: -0.290 },
@@ -432,14 +417,7 @@ const CAMERA_PRESETS = {
     cam3: { position: { x: 0.0, y: 1.3, z: -1.0 }, pitch: 0.0, yaw: -Math.PI }
 };
 let currentCameraPreset = 'cam1';
-let camPosXCtrl, camPosYCtrl, camPosZCtrl, camPitchCtrl, camYawCtrl;
-
 let basicBrightness = 900.0;
-// R2-18 fix24：軌道燈 checkbox 狀態與 controller 引用（供 applyPanelConfig 聯動更新）
-let trackLightState = null, trackLightCtrl = null;
-let wideTrackLightState = null, wideTrackLightCtrl = null;
-// R3-6 fix04：Cloud 漫射燈條 checkbox 狀態與 controller 引用（fixtureGroup=4，對應 uCloudLightEnabled）
-let cloudLightState = null, cloudLightCtrl = null;
 let colorTemperature = 4000;
 
 // ---------------- R3-2-fix01 色溫 mode state（三檔 preset + 商品規格映射）----------------
@@ -457,20 +435,13 @@ let cloudKelvin     = CLOUD_MODE_K.NEUTRAL;
 // trackKelvin[0..3] 對應 NW/NE/SW/SE；北=0,1、南=2,3；初值與 trackColorMode='WARM_COLD' 對齊
 let trackKelvin     = [TRACK_MODE_K.WARM, TRACK_MODE_K.WARM, TRACK_MODE_K.COLD, TRACK_MODE_K.COLD];
 let trackWideKelvin = [WIDE_MODE_K.NEUTRAL, WIDE_MODE_K.NEUTRAL];
-// GUI controller refs（供 applyPanelConfig → syncR3ColorUIEnable 聯動 enable/disable）
+// R4-1: color ctrl refs（R4-3 will assign; currently null）
 let cloudColorCtrl           = null;
 let trackColorCtrl           = null;
 let trackLumensCtrl          = null;
 let trackWideColorSouthCtrl  = null;
 let trackWideColorNorthCtrl  = null;
-let trackWideLumensCtrl      = null;  // CONFIG 1/2 lock 需模組級可見
-let brightnessCtrl           = null;  // Config 3 自動壓 0 需模組級可見
-
-// R3-6.5 S5：rollback checkbox state + active light count display state（listen+updateDisplay 雙保險）
-var r3DynamicState = { dynamicPool: true };
-var r3DynamicCtrl = null;
-var activeLightCountState = { N: 1 };
-var activeLightCountDisplay = null;
+let trackWideLumensCtrl      = null;
 
 // ---------------- R3-1 Photometry Pipeline ----------------
 /**
@@ -800,14 +771,6 @@ function switchCamera(preset) {
     // R2-UI：瞬間清空累加 buffer，消除前視角殘影
     needClearAccumulation = true;
 
-    // 同步 GUI 顯示
-    if (camPosXCtrl) {
-        camPosXCtrl.setValue(cam.position.x);
-        camPosYCtrl.setValue(cam.position.y);
-        camPosZCtrl.setValue(cam.position.z);
-        camPitchCtrl.setValue(cam.pitch);
-        camYawCtrl.setValue(cam.yaw);
-    }
 }
 
 function initSceneData() {
@@ -1160,9 +1123,8 @@ function initSceneData() {
         heuristic: 'power β=2'
     });
 
-    // R3-3 fix01：原 `if (mouseControl) setupGUI()` 守門在 Brave 桌面常態誤判 `'ontouchstart' in window`=true 導致 mouseControl=false，
-    // 整個 Light/Scene/Panels GUI 群組消失。desktop+mobile 皆需要 folder，無條件建立。
-    setupGUI();
+    // R4-1：initUI replaces setupGUI (lil-gui removed; HTML panel system)
+    initUI();
 }
 
 function computeLightEmissions() {
@@ -1323,7 +1285,10 @@ function rebuildActiveLightLUT(source) {
     } else if (config === 3) {
         // CONFIG 3：ceiling 撤場，依 checkbox gate 加入 track / wide / cloud slots
         if (trackOn) { lut[count++] = 1; lut[count++] = 2; lut[count++] = 3; lut[count++] = 4; }
-        if (wideOn)  { lut[count++] = 5; lut[count++] = 6; }
+        var wideSouthChk = document.getElementById('chkTrackWideSouth');
+        var wideNorthChk = document.getElementById('chkTrackWideNorth');
+        if (wideSouthChk && wideSouthChk.checked) { lut[count++] = 5; }
+        if (wideNorthChk && wideNorthChk.checked) { lut[count++] = 6; }
         if (cloudOn) { lut[count++] = 7; lut[count++] = 8; lut[count++] = 9; lut[count++] = 10; }
     }
 
@@ -1333,28 +1298,62 @@ function rebuildActiveLightLUT(source) {
     cameraIsMoving = true;
     cameraSwitchFrames = 3;
 
-    // R3-6.5 S5：Active N 顯示雙保險（listen 已綁但 updateDisplay 兜底，避免 lil-gui listen 漏同步）
-    if (typeof activeLightCountState !== 'undefined' && activeLightCountState) {
-        activeLightCountState.N = count;
-        if (activeLightCountDisplay && activeLightCountDisplay.updateDisplay) {
-            activeLightCountDisplay.updateDisplay();
-        }
-    }
 
     console.log('[R3-6.5] active pool rebuild', { count, LUT: Array.from(lut), source });
 }
 
-// CMD (或 Ctrl) + 左鍵點擊滑桿即重設為預設值
-function attachMetaClickReset(ctrl, defaultValue) {
-    if (!ctrl || !ctrl.domElement) return ctrl;
-    ctrl.domElement.addEventListener('mousedown', function (e) {
-        if (!(e.metaKey || e.ctrlKey)) return;
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        ctrl.setValue(defaultValue);
-    }, true);
-    return ctrl;
+function syncWideEmissions() {
+    if (!pathTracingUniforms || !pathTracingUniforms.uTrackWideEmission) return;
+    computeLightEmissions();
+    var s = document.getElementById('chkTrackWideSouth');
+    var n = document.getElementById('chkTrackWideNorth');
+    if (s && !s.checked) pathTracingUniforms.uTrackWideEmission.value[0].set(0, 0, 0);
+    if (n && !n.checked) pathTracingUniforms.uTrackWideEmission.value[1].set(0, 0, 0);
+}
+
+// R4-1: createS slider factory (replaces lil-gui)
+function createS(id, label, min, max, step, init, cb, reset) {
+    if (reset === undefined) reset = true;
+    var c = document.getElementById(id);
+    if (!c) return;
+    c.innerHTML = '<div class="control-row"><div class="label-group"><span class="label-text">' + label + '</span></div><input type="range" min="' + min + '" max="' + max + '" step="' + step + '" value="' + init + '"><input type="number" step="' + step + '" value="' + init + '"></div>';
+    var r = c.querySelector('input[type=range]'), n = c.querySelector('input[type=number]');
+    var upd = function(v) { var pv = parseFloat(v); var res = cb(pv); if (res !== undefined) pv = res; r.value = pv; n.value = pv; if (reset) { cameraIsMoving = true; } };
+    r.oninput = function(e) { upd(e.target.value); };
+    n.onchange = function(e) { upd(e.target.value); };
+    cb(init);
+    c.addEventListener('mousedown', function(e) { if (e.button === 0 && (e.metaKey || e.ctrlKey)) { e.preventDefault(); upd(init); } });
+}
+
+// R4-1: DOM adapters (replace lil-gui .setValue/.getValue/.disable/.enable/.name/.updateDisplay)
+function setSliderValue(sliderId, value) {
+    var c = document.getElementById(sliderId);
+    if (!c) return;
+    var r = c.querySelector('input[type=range]'), n = c.querySelector('input[type=number]');
+    if (r) r.value = value;
+    if (n) n.value = value;
+}
+function getSliderValue(sliderId) {
+    var c = document.getElementById(sliderId);
+    if (!c) return 0;
+    var r = c.querySelector('input[type=range]');
+    return r ? parseFloat(r.value) : 0;
+}
+function setSliderEnabled(sliderId, enabled) {
+    var c = document.getElementById(sliderId);
+    if (!c) return;
+    c.style.pointerEvents = enabled ? '' : 'none';
+    c.style.opacity = enabled ? '' : '0.4';
+}
+function setSliderLabel(sliderId, label) {
+    var c = document.getElementById(sliderId);
+    if (!c) return;
+    var t = c.querySelector('.label-text');
+    if (t) t.textContent = label;
+}
+function setCheckboxChecked(checkboxId, checked) {
+    var el = document.getElementById(checkboxId);
+    if (el) el.checked = checked;
 }
 
 // 強制重啟累加（即使已進入 1000 SPP 休眠也能即時刷新）
@@ -1363,311 +1362,292 @@ function wakeRender() {
     sceneParamsChanged = true;
 }
 
-function setupGUI() {
-    const qualityObject = { samples_per_frame: 1.0 };
-    samplesPerFrameController = gui.add(qualityObject, 'samples_per_frame', 1.0, 8.0, 1.0).onChange(function (value) {
-        samplesPerFrame = value;
-        pathTracingUniforms.uSamplesPerFrame.value = value;
+function initUI() {
+    // Panel header toggle
+    document.querySelectorAll('.panel-header').forEach(function(header) {
+        header.addEventListener('click', function() {
+            var content = header.nextElementSibling;
+            if (content && content.classList.contains('panel-content')) {
+                content.classList.toggle('collapsed');
+            }
+        });
     });
-    attachMetaClickReset(samplesPerFrameController, 1.0);
 
-    // R2-18 fix23：Scene Setup 收納 Acoustic Panels + Camera View，預設展開（max_bounces 移至 Light Settings）
-    const setupFolder = gui.addFolder('Scene Setup');
-
-    // R2-18 fix22：Config 3 = Cloud 6 片+燈條（天花板），與 Config 1/2 三者互斥
-    const panelFolder = setupFolder.addFolder('Panels & Lights');
-    var panelActions = {
-        config1: function () { applyPanelConfig(1); },
-        config2: function () { applyPanelConfig(2); },
-        config3: function () { applyPanelConfig(3); }
-    };
-    panelFolder.add(panelActions, 'config1').name('Config 1 (牆3+吸頂燈)');
-    panelFolder.add(panelActions, 'config2').name('Config 2 (牆9+吸頂燈)');
-    panelFolder.add(panelActions, 'config3').name('Config 3 (牆9+雲6+漫射燈+軌道燈)');
-    panelFolder.open();
-
-    const cameraFolder = setupFolder.addFolder('Camera View');
-    var camActions = {
-        cam1: function () { switchCamera('cam1'); },
-        cam2: function () { switchCamera('cam2'); },
-        cam3: function () { switchCamera('cam3'); }
-    };
-    cameraFolder.add(camActions, 'cam1').name('Cam 1');
-    cameraFolder.add(camActions, 'cam2').name('Cam 2');
-    cameraFolder.add(camActions, 'cam3').name('Cam 3');
-
-    var camPos = {
-        x: cameraControlsObject.position.x,
-        y: cameraControlsObject.position.y,
-        z: cameraControlsObject.position.z,
-        pitch: cameraControlsPitchObject.rotation.x,
-        yaw: cameraControlsYawObject.rotation.y
-    };
-
-    function applyCamManual() {
-        lockedPreset = null;
-        cameraControlsObject.position.set(camPos.x, camPos.y, camPos.z);
-        cameraControlsPitchObject.rotation.set(camPos.pitch, 0, 0);
-        cameraControlsYawObject.rotation.set(0, camPos.yaw, 0);
-        inputRotationHorizontal = camPos.yaw;
-        inputRotationVertical = camPos.pitch;
-        oldYawRotation = camPos.yaw;
-        oldPitchRotation = camPos.pitch;
-        inputMovementHorizontal = 0;
-        inputMovementVertical = 0;
-        isPaused = true;
-        cameraIsMoving = true;
-        cameraSwitchFrames = 3;
+    // Click stopPropagation on ui-container (prevent pointer lock)
+    var uiContainer = document.getElementById('ui-container');
+    if (uiContainer) {
+        uiContainer.addEventListener('click', function(e) { e.stopPropagation(); }, false);
+        uiContainer.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);
+        uiContainer.addEventListener('mouseleave', function() { ableToEngagePointerLock = true; }, false);
     }
 
-    camPosXCtrl = cameraFolder.add(camPos, 'x', -3, 3, 0.01).name('pos X').onChange(applyCamManual);
-    camPosYCtrl = cameraFolder.add(camPos, 'y', 0, 4, 0.01).name('pos Y').onChange(applyCamManual);
-    camPosZCtrl = cameraFolder.add(camPos, 'z', -3, 5, 0.01).name('pos Z').onChange(applyCamManual);
-    camPitchCtrl = cameraFolder.add(camPos, 'pitch', -1.5, 1.5, 0.01).name('pitch').onChange(applyCamManual);
-    camYawCtrl = cameraFolder.add(camPos, 'yaw', -Math.PI, Math.PI, 0.01).name('yaw').onChange(applyCamManual);
+    // ⚙️ 光追設定
+    createS('slider-pixel-res', '渲染解析度', 0.5, 2.0, 0.1, 1.0, function(v) {
+        needChangePixelResolution = true;
+        return v;
+    }, false);
 
-    // CMD+click reset（以 cam1 為預設基準）
-    attachMetaClickReset(camPosXCtrl, CAMERA_PRESETS.cam1.position.x);
-    attachMetaClickReset(camPosYCtrl, CAMERA_PRESETS.cam1.position.y);
-    attachMetaClickReset(camPosZCtrl, CAMERA_PRESETS.cam1.position.z);
-    attachMetaClickReset(camPitchCtrl, CAMERA_PRESETS.cam1.pitch);
-    attachMetaClickReset(camYawCtrl, CAMERA_PRESETS.cam1.yaw);
-
-    // R2-13 X-ray 透視剝離 toggle（預設開 = 自動透視：相機位於房外時同側牆面自動消隱）
-    // checkbox 實為 debug override —— 取消勾選可強制顯示完整牆面（用於檢查牆體細節）
-    // 沿用 wallAlbedo 同式：uniform 更新 + wakeRender() 即足。
-    cameraFolder.add({ xray: true }, 'xray').name('X-ray 透視 (自動)').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uXrayEnabled) {
-            pathTracingUniforms.uXrayEnabled.value = value ? 1.0 : 0.0;
+    createS('slider-bounces', '彈跳次數', 1, 14, 1, 4, function(v) {
+        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) {
+            pathTracingUniforms.uMaxBounces.value = v;
         }
-        console.log('[X-ray] onChange fired, value =', value, '→ uXrayEnabled =', value ? 1.0 : 0.0);
         wakeRender();
+        return v;
     });
 
-    // R2-14 東西投射燈軌道 toggle（fixtureGroup=1）；fix24：預設 OFF，由 Config 3 聯動開
-    trackLightState = { trackLight: false };
-    trackLightCtrl = cameraFolder.add(trackLightState, 'trackLight').name('投射燈軌道 (東西)').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uTrackLightEnabled) {
-            pathTracingUniforms.uTrackLightEnabled.value = value ? 1.0 : 0.0;
-        }
-        rebuildActiveLightLUT('trackCheckbox');
+    createS('slider-mult-a', '間接光補償', 0.1, 5.0, 0.1, 1.0, function(v) { wakeRender(); return v; });
+    createS('slider-mult-b', '間接光補償', 0.1, 5.0, 0.1, 2.0, function(v) { wakeRender(); return v; });
+
+    // A/B radio
+    var btnA = document.getElementById('btnGroupA'), btnB = document.getElementById('btnGroupB');
+    var ctrlA = document.getElementById('group-a-controls'), ctrlB = document.getElementById('group-b-controls');
+    if (btnA) btnA.onclick = function() {
+        btnA.className = 'action-btn glow-white'; btnB.className = 'action-btn';
+        if (ctrlA) ctrlA.style.display = 'block';
+        if (ctrlB) ctrlB.style.display = 'none';
+        setSliderValue('slider-bounces', 8);
+        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 8;
         wakeRender();
+    };
+    if (btnB) btnB.onclick = function() {
+        btnB.className = 'action-btn glow-white'; btnA.className = 'action-btn';
+        if (ctrlB) ctrlB.style.display = 'block';
+        if (ctrlA) ctrlA.style.display = 'none';
+        setSliderValue('slider-bounces', 4);
+        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 4;
+        wakeRender();
+    };
+
+    // 🔲 材質設定
+    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 1.0, function(v) { wakeRender(); return v; });
+
+    // 💡 燈光設定
+    createS('slider-emissive-clamp', '發光面上限', 10, 500, 1, 50, function(v) { wakeRender(); return v; });
+
+    // Brightness (吸頂主燈) — inject slider div into light panel
+    var lightPanel = document.getElementById('light-panel');
+    if (lightPanel) {
+        var bDiv = document.createElement('div');
+        bDiv.id = 'slider-brightness';
+        lightPanel.insertBefore(bDiv, lightPanel.firstChild);
+    }
+    createS('slider-brightness', '吸頂主燈', 0, 4000, 1, 900, function(v) {
+        basicBrightness = v;
+        wakeRender();
+        return v;
     });
 
-    // R2-15 南北廣角燈軌道 toggle（fixtureGroup=2）；fix24：預設 OFF，由 Config 3 聯動開
-    wideTrackLightState = { wideTrackLight: false };
-    wideTrackLightCtrl = cameraFolder.add(wideTrackLightState, 'wideTrackLight').name('廣角燈軌道 (南北)').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
-            pathTracingUniforms.uWideTrackLightEnabled.value = value ? 1.0 : 0.0;
-        }
-        rebuildActiveLightLUT('wideCheckbox');
-        wakeRender();
-    });
-
-    // R3-6 fix04：Cloud 漫射燈條 toggle（fixtureGroup=4）；shader 三處 gate（primary-hit / NEE pool / BSDF-indirect）已就位
-    // 預設 OFF，由 Config 3 聯動開；獨立勾選可在 Config 3 下單獨關 Cloud 漫射貢獻以對照 Track/Wide 效果
-    cloudLightState = { cloudLight: false };
-    cloudLightCtrl = cameraFolder.add(cloudLightState, 'cloudLight').name('Cloud 漫射燈條').onChange(function (value) {
+    // Cloud checkbox
+    var chkCloud = document.getElementById('chkCloud');
+    if (chkCloud) chkCloud.onchange = function(e) {
         if (pathTracingUniforms && pathTracingUniforms.uCloudLightEnabled) {
-            pathTracingUniforms.uCloudLightEnabled.value = value ? 1.0 : 0.0;
+            pathTracingUniforms.uCloudLightEnabled.value = e.target.checked ? 1.0 : 0.0;
         }
         rebuildActiveLightLUT('cloudCheckbox');
         wakeRender();
-    });
+    };
 
-    cameraFolder.open();
-
-    // Prevent GUI clicks from bubbling to body's pointer lock handler
-    gui.domElement.addEventListener('click', function (e) { e.stopPropagation(); }, false);
-
-    const lightFolder = gui.addFolder('Light Settings');
-    lightFolder.close();
-
-    brightnessCtrl = lightFolder.add({ brightness: basicBrightness }, 'brightness', 0, 4000, 1).onChange(function (value) {
-        basicBrightness = value;
-        wakeRender();
-    });
-    brightnessCtrl.name('吸頂主燈');
-    attachMetaClickReset(brightnessCtrl, 900);
-
-    // R3-6.5 S5：動態池 rollback checkbox（關閉 → 走 legacy sampleStochasticLight11 路徑；預設 ON）
-    r3DynamicCtrl = lightFolder.add(r3DynamicState, 'dynamicPool').name('R3-6.5 動態池啟用').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uR3DynamicPoolEnabled) {
-            pathTracingUniforms.uR3DynamicPoolEnabled.value = value ? 1.0 : 0.0;
+    // Track checkbox
+    var chkTrack = document.getElementById('chkTrack');
+    if (chkTrack) chkTrack.onchange = function(e) {
+        if (pathTracingUniforms && pathTracingUniforms.uTrackLightEnabled) {
+            pathTracingUniforms.uTrackLightEnabled.value = e.target.checked ? 1.0 : 0.0;
         }
-        needClearAccumulation = true;
+        rebuildActiveLightLUT('trackCheckbox');
         wakeRender();
+    };
+
+    // Wide South checkbox
+    var chkWideSouth = document.getElementById('chkTrackWideSouth');
+    if (chkWideSouth) chkWideSouth.onchange = function(e) {
+        if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
+            var northChk = document.getElementById('chkTrackWideNorth');
+            var anyOn = e.target.checked || (northChk && northChk.checked);
+            pathTracingUniforms.uWideTrackLightEnabled.value = anyOn ? 1.0 : 0.0;
+        }
+        syncWideEmissions();
+        rebuildActiveLightLUT('wideCheckbox');
+        wakeRender();
+    };
+
+    // Wide North checkbox
+    var chkWideNorth = document.getElementById('chkTrackWideNorth');
+    if (chkWideNorth) chkWideNorth.onchange = function(e) {
+        if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
+            var southChk = document.getElementById('chkTrackWideSouth');
+            var anyOn = e.target.checked || (southChk && southChk.checked);
+            pathTracingUniforms.uWideTrackLightEnabled.value = anyOn ? 1.0 : 0.0;
+        }
+        syncWideEmissions();
+        rebuildActiveLightLUT('wideCheckbox');
+        wakeRender();
+    };
+
+    // Cloud lumens
+    createS('slider-lumens', '光通量 (lm/m)', 0, 4000, 1, 800, function(v) {
+        wakeRender();
+        return v;
     });
 
-    // R3-6.5 S5：目前 Active N 顯示（read-only；listen 自動更新 + rebuildActiveLightLUT updateDisplay 雙保險）
-    activeLightCountDisplay = lightFolder.add(activeLightCountState, 'N').name('目前 Active N').listen().disable();
+    // Track lumens
+    createS('slider-track-lumens', '光通量 (單盞)', 0, 3000, 50, 500, function(v) {
+        wakeRender();
+        return v;
+    });
 
-    // R3-2-fix01b：吸頂燈色溫 UI 移除（房間現況固定 4000K 自然光，內部 colorTemperature=4000 常數維持）。
-    // R3 4 dropdown 直掛 lightFolder，與 brightness 同級（不再作為 subfolder）。
-    // 商品規格映射見上方 CLOUD_MODE_K / TRACK_MODE_K / WIDE_MODE_K。
-    // Config 1/2 disable、Config 3 enable（applyPanelConfig → syncR3ColorUIEnable）。
+    // Track sweet-spot sliders (R4-4 will wire real logic; R4-1 = wakeRender shell)
+    createS('slider-track-beam-inner', '光束角(內)', 1, 90, 1, 30, function(v) { wakeRender(); return v; });
+    createS('slider-track-beam-outer', '光束角(外)', 15, 90, 1, 55, function(v) { wakeRender(); return v; });
+    createS('slider-track-tilt', '傾斜角', 0, 90, 1, 45, function(v) { wakeRender(); return v; });
+    createS('slider-track-space', '間距 (cm)', 0, 180, 1, 150, function(v) { wakeRender(); return v; });
+    createS('slider-track-x', '距Cloud邊距', 0.05, 0.90, 0.01, 0.05, function(v) { wakeRender(); return v; });
 
-    // 3-選單共用 label↔mode 映射（Cloud + 南北廣角南 + 南北廣角北 同綱要）
-    const WARM3_LABEL_TO_MODE = { '暖': 'WARM', '自然': 'NEUTRAL', '冷': 'COLD' };
-    const WARM3_MODE_TO_LABEL = { 'WARM': '暖', 'NEUTRAL': '自然', 'COLD': '冷' };
-    const WARM3_OPTIONS = ['暖', '自然', '冷'];
+    // Wide lumens
+    createS('slider-track-wide-lumens', '光通量 (單盞)', 0, 4000, 50, 2500, function(v) {
+        wakeRender();
+        return v;
+    });
 
-    cloudColorCtrl = lightFolder
-        .add({ c: WARM3_MODE_TO_LABEL[cloudColorMode] }, 'c', WARM3_OPTIONS)
-        .name('Cloud漫射燈')
-        .onChange(function (label) {
-            cloudColorMode = WARM3_LABEL_TO_MODE[label];
-            cloudKelvin = CLOUD_MODE_K[cloudColorMode];
-            computeLightEmissions();
+    // Wide sweet-spot sliders
+    createS('slider-track-wide-beam-inner', '廣角束角(內)', 10, 160, 1, 95, function(v) { wakeRender(); return v; });
+    createS('slider-track-wide-beam-outer', '廣角束角(外)', 60, 160, 1, 120, function(v) { wakeRender(); return v; });
+    createS('slider-track-wide-tilt-south', '南側傾斜角', -70, 70, 1, 15, function(v) { wakeRender(); return v; });
+    createS('slider-track-wide-tilt-north', '北側傾斜角', -70, 70, 1, -25, function(v) { wakeRender(); return v; });
+    createS('slider-track-wide-z', '距Cloud邊距', 0.10, 1.30, 0.01, 0.10, function(v) { wakeRender(); return v; });
+
+    // Config 1/2/3 buttons (HTML already has action-btn elements)
+    var btnConfig1 = document.getElementById('btnConfig1');
+    var btnConfig2 = document.getElementById('btnConfig2');
+    var btnConfig3 = document.getElementById('btnConfig3');
+    if (btnConfig1) btnConfig1.onclick = function() { applyPanelConfig(1); };
+    if (btnConfig2) btnConfig2.onclick = function() { applyPanelConfig(2); };
+    if (btnConfig3) btnConfig3.onclick = function() { applyPanelConfig(3); };
+
+    // Button group visual toggle — glow-white only groups
+    ['groupGikPresets', 'groupTrackMeshColor', 'groupTrackWideMeshColor'].forEach(function(gid) {
+        var group = document.getElementById(gid);
+        if (!group) return;
+        group.addEventListener('click', function(e) {
+            var btn = e.target.closest('.action-btn');
+            if (!btn) return;
+            group.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-white'); });
+            btn.classList.add('glow-white');
             wakeRender();
         });
+    });
 
-    const TRACK_LABEL_TO_MODE = {
-        '全暖': 'ALL_WARM', '全自然': 'ALL_NATURAL', '全冷': 'ALL_COLD',
-        '北暖南冷': 'WARM_COLD', '北冷南暖': 'COLD_WARM'
-    };
-    const TRACK_MODE_TO_LABEL = {
-        'ALL_WARM': '全暖', 'ALL_NATURAL': '全自然', 'ALL_COLD': '全冷',
-        'WARM_COLD': '北暖南冷', 'COLD_WARM': '北冷南暖'
-    };
-    trackColorCtrl = lightFolder
-        .add({ t: TRACK_MODE_TO_LABEL[trackColorMode] }, 't',
-             ['全暖', '全自然', '全冷', '北暖南冷', '北冷南暖'])
-        .name('東西軌道燈')
-        .onChange(function (label) {
-            trackColorMode = TRACK_LABEL_TO_MODE[label];
-            const W = TRACK_MODE_K.WARM, N = TRACK_MODE_K.NEUTRAL, C = TRACK_MODE_K.COLD;
-            // trackKelvin[0..3] 對應 NW / NE / SW / SE；北=0,1、南=2,3。
-            switch (trackColorMode) {
-                case 'ALL_WARM':    trackKelvin[0]=W; trackKelvin[1]=W; trackKelvin[2]=W; trackKelvin[3]=W; break;
-                case 'ALL_NATURAL': trackKelvin[0]=N; trackKelvin[1]=N; trackKelvin[2]=N; trackKelvin[3]=N; break;
-                case 'ALL_COLD':    trackKelvin[0]=C; trackKelvin[1]=C; trackKelvin[2]=C; trackKelvin[3]=C; break;
-                case 'WARM_COLD':   trackKelvin[0]=W; trackKelvin[1]=W; trackKelvin[2]=C; trackKelvin[3]=C; break;
-                case 'COLD_WARM':   trackKelvin[0]=C; trackKelvin[1]=C; trackKelvin[2]=W; trackKelvin[3]=W; break;
+    // Cloud color — warm/neutral/cold glow
+    var gcCloud = document.getElementById('groupCloudColor');
+    if (gcCloud) gcCloud.addEventListener('click', function(e) {
+        var btn = e.target.closest('.action-btn');
+        if (!btn) return;
+        gcCloud.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-white', 'glow-orange', 'glow-blue'); });
+        var val = btn.dataset.val;
+        if (val === 'WARM') btn.classList.add('glow-orange');
+        else if (val === 'NEUTRAL') btn.classList.add('glow-white');
+        else if (val === 'COLD') btn.classList.add('glow-blue');
+        wakeRender();
+    });
+
+    // Track color — 4-way gradient glow
+    var gcTrack = document.getElementById('groupTrackColor');
+    if (gcTrack) gcTrack.addEventListener('click', function(e) {
+        var btn = e.target.closest('.action-btn');
+        if (!btn) return;
+        gcTrack.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-orange', 'glow-blue', 'glow-gradient-ob', 'glow-gradient-bo'); });
+        var val = btn.dataset.val;
+        if (val === 'ALL_WARM') btn.classList.add('glow-orange');
+        else if (val === 'ALL_COLD') btn.classList.add('glow-blue');
+        else if (val === 'WARM_COLD') btn.classList.add('glow-gradient-ob');
+        else if (val === 'COLD_WARM') btn.classList.add('glow-gradient-bo');
+        wakeRender();
+    });
+
+    // Wide South/North color — warm/neutral/cold glow
+    ['groupTrackWideColorSouth', 'groupTrackWideColorNorth'].forEach(function(gid) {
+        var group = document.getElementById(gid);
+        if (!group) return;
+        group.addEventListener('click', function(e) {
+            var btn = e.target.closest('.action-btn');
+            if (!btn) return;
+            group.querySelectorAll('.action-btn').forEach(function(b) { b.classList.remove('glow-orange', 'glow-white', 'glow-blue'); });
+            var val = btn.dataset.val;
+            if (val === 'WARM') btn.classList.add('glow-orange');
+            else if (val === 'NEUTRAL') btn.classList.add('glow-white');
+            else if (val === 'COLD') btn.classList.add('glow-blue');
+            wakeRender();
+        });
+    });
+
+    // Hide UI toggle — eye stays visible so user can click to restore
+    var hideBtn = document.getElementById('hide-btn');
+    var helpWrapper = document.getElementById('help-wrapper');
+    var topRightGroup = document.getElementById('top-right-group');
+    if (hideBtn) {
+        var uiHidden = false;
+        hideBtn.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+        hideBtn.onclick = function(e) {
+            e.stopPropagation();
+            uiHidden = !uiHidden;
+            var d = uiHidden ? 'none' : '';
+            if (uiContainer) uiContainer.style.display = d;
+            if (topRightGroup) topRightGroup.style.display = d;
+            if (helpWrapper) helpWrapper.style.display = d;
+        };
+    }
+
+    // Pointer-lock guard for fixed control groups
+    var brg = document.getElementById('bottom-right-group');
+    if (brg) {
+        brg.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);
+        brg.addEventListener('mouseleave', function() { ableToEngagePointerLock = true; }, false);
+        brg.addEventListener('click', function(e) { e.stopPropagation(); }, false);
+    }
+    if (topRightGroup) {
+        topRightGroup.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);
+        topRightGroup.addEventListener('mouseleave', function() { ableToEngagePointerLock = true; }, false);
+        topRightGroup.addEventListener('click', function(e) { e.stopPropagation(); }, false);
+    }
+
+    // GIK palette (ported from old project L2115-2157)
+    var gikPalette = document.createElement('div');
+    gikPalette.className = 'gik-palette';
+    gikPalette.innerHTML = '<div class="gik-color-btn" data-val="0"></div><div class="gik-color-btn" data-val="1"></div><div class="gik-color-btn" data-val="2"></div><div class="gik-color-btn" data-val="3"></div>';
+    document.body.appendChild(gikPalette);
+    var activeGikBlock = null;
+    document.querySelectorAll('.gik-block').forEach(function(blk) {
+        blk.onclick = function(e) {
+            e.stopPropagation();
+            if (activeGikBlock === blk) { gikPalette.style.display = 'none'; activeGikBlock = null; return; }
+            activeGikBlock = blk;
+            var rect = blk.getBoundingClientRect();
+            gikPalette.style.display = 'flex';
+            gikPalette.style.top = (rect.top - 28) + 'px';
+            gikPalette.style.left = (rect.left + rect.width / 2 - gikPalette.offsetWidth / 2) + 'px';
+        };
+    });
+    gikPalette.querySelectorAll('.gik-color-btn').forEach(function(btn) {
+        btn.onclick = function(e) {
+            e.stopPropagation();
+            var val = btn.dataset.val;
+            var idx = activeGikBlock.dataset.idx;
+            if (idx === 'all') {
+                document.querySelectorAll('.gik-block').forEach(function(b) { b.dataset.color = val; });
+            } else if (idx === 'ceil') {
+                activeGikBlock.dataset.color = val;
+            } else {
+                activeGikBlock.dataset.color = val;
             }
-            computeLightEmissions();
+            gikPalette.style.display = 'none';
+            activeGikBlock = null;
             wakeRender();
-        });
+        };
+    });
+    document.addEventListener('click', function() { if (activeGikBlock) { gikPalette.style.display = 'none'; activeGikBlock = null; } });
+    window.addEventListener('resize', function() { if (activeGikBlock) { gikPalette.style.display = 'none'; activeGikBlock = null; } });
 
-    // R3-4 fix06：軌道燈光通量滑桿（4 盞同值，0 ~ 商品規格最大 2000 lm，預設最大）
-    trackLumensCtrl = lightFolder
-        .add({ l: trackLumens }, 'l', 0, TRACK_LAMP_LUMENS_MAX, 10)
-        .name('東西軌道燈 lm')
-        .onChange(function (v) {
-            trackLumens = v;
-            computeLightEmissions();
-            wakeRender();
-        });
-    attachMetaClickReset(trackLumensCtrl, TRACK_LAMP_LUMENS_MAX);
-
-    trackWideColorNorthCtrl = lightFolder
-        .add({ n: WARM3_MODE_TO_LABEL[trackWideColorNorth] }, 'n', WARM3_OPTIONS)
-        .name('北廣角燈')
-        .onChange(function (label) {
-            trackWideColorNorth = WARM3_LABEL_TO_MODE[label];
-            trackWideKelvin[1] = WIDE_MODE_K[trackWideColorNorth];  // [1]=北
-            computeLightEmissions();
-            wakeRender();
-        });
-
-    trackWideColorSouthCtrl = lightFolder
-        .add({ s: WARM3_MODE_TO_LABEL[trackWideColorSouth] }, 's', WARM3_OPTIONS)
-        .name('南廣角燈')
-        .onChange(function (label) {
-            trackWideColorSouth = WARM3_LABEL_TO_MODE[label];
-            trackWideKelvin[0] = WIDE_MODE_K[trackWideColorSouth];  // [0]=南
-            computeLightEmissions();
-            wakeRender();
-        });
-
-    // R3-5a：廣角燈光通量滑桿（2 盞同值，0 ~ 商品規格最大 2500 lm，預設最大）
-    trackWideLumensCtrl = lightFolder
-        .add({ l: trackWideLumens }, 'l', 0, TRACK_WIDE_LAMP_LUMENS_MAX, 10)
-        .name('南北廣角燈 lm')
-        .onChange(function (v) {
-            trackWideLumens = v;
-            computeLightEmissions();
-            wakeRender();
-        });
-    attachMetaClickReset(trackWideLumensCtrl, TRACK_WIDE_LAMP_LUMENS_MAX);
-
-    // 4 dropdown 建構完後立即依 currentPanelConfig 同步 enable/disable 初始狀態。
+    // Sync initial state
     syncR3ColorUIEnable();
-
-    // R3-6：MIS Phase-1 全局閘門 dev checkbox（AC-M5 rollback 用；正式發布可隱藏但 R3-6 驗收期保留）
-    lightFolder.add({ r3_6_mis: true }, 'r3_6_mis').name('R3-6 MIS 啟用').onChange(function (v) {
-        if (pathTracingUniforms && pathTracingUniforms.uR3MisEnabled) {
-            pathTracingUniforms.uR3MisEnabled.value = v ? 1.0 : 0.0;
-            console.log('[R3-6] uR3MisEnabled =', pathTracingUniforms.uR3MisEnabled.value);
-        }
-        wakeRender();
-    });
-
-    // R2-18 fix19 / R3-7：間接光補償（框架 2-bounce 截斷補償，非物理值；詳 Debug_Log.md R3-7 章節）
-    const indirectCtrl = lightFolder.add({ indirect: 1.7 }, 'indirect', 0.5, 3.0, 0.05).name('間接光補償（框架限制）').onChange(function (v) {
-        pathTracingUniforms.uIndirectMultiplier.value = v; wakeRender();
-    });
-    attachMetaClickReset(indirectCtrl, 1.7);
-
-    // R2-UI：最大反彈次數（1~14，預設 4），shader 內動態 break 控制實際 bounce 數
-    const bouncesObject = { max_bounces: 4 };
-    const bouncesCtrl = lightFolder.add(bouncesObject, 'max_bounces', 1, 14, 1).name('最大彈跳數').onChange(function (value) {
-        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) {
-            pathTracingUniforms.uMaxBounces.value = value;
-        }
-        wakeRender();
-    });
-    attachMetaClickReset(bouncesCtrl, 4);
-
-    // R2-18 fix23：Material Settings UI 移除，所有 roughness/metalness/albedo 預設值已定案寫死於 uniform 初值
-
-    const bloomFolder = gui.addFolder('Bloom');
-    bloomFolder.close();
-
-    const bloomIntensityCtrl = bloomFolder.add({ intensity: 0.025 }, 'intensity', 0.0, 1.0, 0.001).onChange(function (value) {
-        bloomIntensity = value;
-        if (screenOutputUniforms && screenOutputUniforms.uBloomIntensity) {
-            screenOutputUniforms.uBloomIntensity.value = bloomIntensity;
-        }
-    });
-    attachMetaClickReset(bloomIntensityCtrl, 0.025);
-
-    // R2-UI: Bloom pyramid 層數（3~7）
-    //   3 層：halo 集中，約 full-res ±32 px；7 層：halo 廣域，約 full-res ±512 px
-    //   層數由 JS 端 truncate downsample/upsample chain 實現，無 shader 切換成本
-    const bloomLayersCtrl = bloomFolder.add({ layers: 7 }, 'layers', 3, 7, 1).onChange(function (value) {
-        bloomMipCount = value;
-        window.bloomMipCount = value;
-    });
-    attachMetaClickReset(bloomLayersCtrl, 7);
-
-    // R2-UI: Bloom debug checkbox — 勾選時直接顯示 bloom target（verify pipeline，全黑 = brightpass 砍光或 STEP 2.5 未跑）
-    bloomFolder.add({ debug: false }, 'debug').onChange(function (value) {
-        if (screenOutputUniforms && screenOutputUniforms.uBloomDebug) {
-            screenOutputUniforms.uBloomDebug.value = value ? 1.0 : 0.0;
-        }
-    });
-
-    // R2-18 fix23：Light / Bloom / Snapshot 三者預設折疊
-
-    const snapshotFolder = gui.addFolder('Snapshot');
-    snapshotFolder.close();
-
-    snapshotFolder.add({ capture: 'Capture' }, 'capture').onChange(function () {
-        const dataURL = captureSnapshot();
-        snapshots.push({
-            samples: sampleCounter,
-            src: dataURL,
-            filename: makeFilename(sampleCounter)
-        });
-        capturedMilestones.add(sampleCounter);
-        buildSnapshotBar();
-    });
-
-    snapshotFolder.add({ downloadAll: 'Download All' }, 'downloadAll').onChange(function () {
-        downloadAllSnapshots();
-    });
-
 }
 
 function updateVariablesAndUniforms() {
@@ -1706,20 +1686,6 @@ function updateVariablesAndUniforms() {
         cameraControlsObject.position.y,
         cameraControlsObject.position.z
     );
-
-    // 每幀同步攝影機實際值到 GUI（updateDisplay 不觸發 onChange）
-    if (camPosXCtrl) {
-        camPosXCtrl.object.x = cameraControlsObject.position.x;
-        camPosYCtrl.object.y = cameraControlsObject.position.y;
-        camPosZCtrl.object.z = cameraControlsObject.position.z;
-        camPitchCtrl.object.pitch = cameraControlsPitchObject.rotation.x;
-        camYawCtrl.object.yaw = cameraControlsYawObject.rotation.y;
-        camPosXCtrl.updateDisplay();
-        camPosYCtrl.updateDisplay();
-        camPosZCtrl.updateDisplay();
-        camPitchCtrl.updateDisplay();
-        camYawCtrl.updateDisplay();
-    }
 
     cameraInfoElement.innerHTML = "FOV: " + worldCamera.fov + " / Samples: " + sampleCounter + (sampleCounter >= MAX_SAMPLES ? " (休眠)" : "");
 

@@ -1,8 +1,32 @@
-# Handover: R4-0 DONE → R4-1~R4-5 entry
+# Handover: R4-1 ✅ → R4-2 execution entry
 
 **Branch**: `r3-light`
-**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅. R4-1 ~ R4-5 pending SOP expansion.
-**Next task**: `/ralplan` to reach consensus on R4-1 ~ R4-5 full SOP bodies, then user decides execution path.
+**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅ (2026-04-21).
+**Next task**: R4-2 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除）
+
+---
+
+## R4-1 completion summary
+
+### What was done
+- CSS: ~180 lines of panel UI styles ported from old project (css/default.css)
+- HTML: lil-gui removed; `#ui-container` with 3 panel-groups (⚙️光追設定 / 🔲材質設定 / 💡燈光設定) + cam buttons + help/hide + loading-screen + snapshot-bar
+- JS: `createS` factory with meta+click reset; 5 DOM adapters (setSliderValue, getSliderValue, setSliderEnabled, setSliderLabel, setCheckboxChecked); `initUI()` replaces `setupGUI()`
+- InitCommon.js: `gui = new GUI()` removed; pixel_Resolution ported to createS; pointer-lock events rebound to `#ui-container`
+- lil-gui.module.min.js deleted
+
+### User verification fixes (fix01-fix06)
+- fix01: CSS cache-buster (panels invisible without it)
+- fix02: InitCommon.js cache-buster (Stats.js still showing)
+- fix03: Button group toggle handlers added
+- fix04: Hide UI + info-panel cleanup + slider defaults aligned to shader uniforms
+- fix05: Hide button stays visible; camera buttons pointer-lock guard; button glow matches old project
+- fix06: Color temperature glow (orange/blue/gradient per old project); "南北側燈光"→"廣角燈" rename; per-side wide emission zeroing via syncWideEmissions(); panel max-height reduced to avoid snapshot overlap
+
+### Known R4-3 scope items
+- Wide track per-side mesh (housing) visibility needs shader-level separate uniforms
+- Slider callbacks are wakeRender shells (R4-3 wires real logic)
+- GIK preset buttons set block colors but don't update shader uniforms yet
 
 ---
 
@@ -10,48 +34,43 @@
 
 | Commit | Scope |
 |---|---|
-| `a9c0fe6` | R4-0 revision — cavity-panel + post-panel removed from scope; color control reclassified as the sole 美學預覽 item |
-| `97f70de` | R4-0 old-project UI inventory (tables + integration strategy + lil-gui assumption correction) |
-| `deb2c99` | R4 entry cleanup — R5 SOP deleted, R3-8 chapter stripped, R4 SOP expanded to R4-0 ~ R4-5 skeleton |
-| `d2a6544` | R3-7 DONE (prior stage, reference) |
+| *(pending)* | R4-1 DONE: UI skeleton + CSS + createS + DOM adapters + lil-gui removal + fix01-fix06 |
+| `4eb2187` | R4-0 HANDOVER update |
+| `a9c0fe6` | R4-0 revision — cavity-panel + post-panel removed |
+| `97f70de` | R4-0 old-project UI inventory |
+| `deb2c99` | R4 entry cleanup |
+| `d2a6544` | R3-7 DONE |
 
 ## Pre-reads (in order)
 
 1. `docs/SOP/Debug_Log.md` — universal debug discipline (never skip)
 2. `docs/SOP/（先讀大綱.md` — stage overview, current ✅ / ⬜ snapshot
-3. `docs/SOP/R4：UI控制層.md` — R4 SOP with R4-0 inventory table, integration strategy, and R4-1 ~ R4-5 skeletons (one-line goals, bodies still pending)
-4. `CLAUDE.md` + `AGENTS.md` — project-level conventions
+3. `docs/SOP/R4：UI控制層.md` — fully expanded SOP with R4-1~R4-5 detailed bodies
+4. `CLAUDE.md` — project-level conventions
 
-## Step 3 — R4-1 ~ R4-5 full SOP expansion (pending user trigger)
+## Ralplan consensus decisions (2026-04-20, Planner+Architect+Critic 2 iterations)
 
-1. User runs `/ralplan` to get Planner + Architect + Critic consensus on each of R4-1 ~ R4-5.
-2. Areas expected to carry real risk surface (worth pushing in ralplan):
-   - **R4-1** — how to strip the existing lil-gui cleanly without breaking shader uniform dispatch, while HTML panel skeleton is built in parallel (switchover cutover point).
-   - **R4-2** — scaffold removal order matters: `uR3MisEnabled` / `uR3DynamicPoolEnabled` dead-branch deletion in GLSL requires shader recompile verification at each step.
-   - **R4-3** — integration style for new R3 controls (CONFIG 1/2/3, per-light color temperature radios, lumens sliders) into the old HTML layout; radio button group visual glow mapping (warm/neutral/cold).
-   - **R4-4** — R3-5a sweet-spot UI crosses shader geometry + JS uniforms + HTML sliders; highest coupling.
-   - **R4-5** — reset / listen-bound / hotkeys mostly low-risk polish.
-3. After ralplan consensus, user picks execution path (likely `/ultrawork` or direct executor per phase).
+1. **Option A — atomic switch**: R4-1 ports HTML skeleton + CSS + createS factory in one commit; lil-gui removed simultaneously.
+2. **Photometric beam model**: R4-4 beam angle sliders affect brightness. `computeTrackRadiance` activates `beamFullDeg` parameter.
+3. **BVH two-tier update**: beam/tilt/emission = instant uniform-only; spacing/distance = sceneBoxes mutation → 200ms debounce → `buildSceneBVH()`.
+4. **InitCommon.js in R4-1 scope**: `gui = new GUI()` removed, pixel_Resolution ported to createS, pointer-lock rebound.
+5. **DOM adapters replace lil-gui API**: setSliderValue / getSliderValue / setSliderEnabled / setSliderLabel / setCheckboxChecked.
 
 ## Constraints / non-negotiables
 
 - **No R4-6.** User verifies UX directly; no A/B screenshot phase.
-- **Wabi-sabi is not the design goal** — ignore any prior Gemini-era framing; the directive is 1:1 old-project replication, new R3 controls styled consistently with the old layout.
-- **Old project does not use lil-gui.** It's hand-rolled HTML + inline CSS + inline JS with `createS(...)` factory. R4-1 ports the HTML panel skeleton, CSS, and `createS` factory; the current main-project lil-gui implementation is discarded whole.
-- **R4-0 removal decisions (2026-04-20, user):**
-  - `#cavity-panel` removed — GIK 244 is composite-type; cavity pulls cancel between porous/resonant modes, no net benefit for procurement evaluation.
-  - `#post-panel` removed — R3 physics-correct pipeline makes post layer unnecessary; keeping it would slide output back to "pretty screenshot" rather than faithful model.
-  - 吸音板色控 kept as the only "美學預覽" item (Dimi Music sells white GIK only).
+- **1:1 old-project replication** — not wabi-sabi.
+- **R4-0 removal decisions**: `#cavity-panel` removed, `#post-panel` removed.
 - **No cache-buster bump** for doc-only commits.
-- **CONFIG 3 path-tracing noise** is deferred to a later denoising stage, not R4.
-- **uLegacyGain = 1.5** stays a framework-compensation uniform, not UI-exposed.
+- **CONFIG 3 path-tracing noise** deferred to later denoising stage.
+- **uLegacyGain = 1.5** stays framework-compensation uniform, not UI-exposed.
 
-## R4 sub-phase skeleton (one-liner reminder; full bodies are Step 3 output)
+## R4 sub-phase summary
 
-| Phase | Goal |
-|---|---|
-| R4-1 | HTML panel skeleton port (3 panels after removals) + CSS + `createS` factory; drop lil-gui |
-| R4-2 | Scaffold removal — strip R3-6 MIS checkbox + R3-6.5 dynamic-pool checkbox / N-display; hardcode `uR3MisEnabled = 1.0` and `uR3DynamicPoolEnabled = 1.0`; delete dead else-branches |
-| R4-3 | Merge retained R3 controls: CONFIG 1/2/3 switch, per-light color-temp radios, lumens sliders (Cloud / Track / Wide), GIK color control |
-| R4-4 | R3-5a sweet-spot UI — 4 sliders (lamp tilt / beam angle / track-to-GIK distance / same-side lamp spacing) spanning shader + JS uniforms + GUI |
-| R4-5 | Interaction polish (reset, listen-bound values, hotkeys if needed) |
+| Phase | Goal | Key risk |
+|---|---|---|
+| R4-1 | HTML panel skeleton + CSS + createS + DOM adapters; drop lil-gui + modify InitCommon.js | ✅ DONE |
+| R4-2 | 12-point shader flattening + sampleStochasticLight11 deletion + 3 uniform removal | Step-by-step compile verification; DCE sentinel at L2027 |
+| R4-3 | CONFIG 1/2/3, A/B radio, color-temp radios, lumens, GIK minimap, light checkboxes | A/B group display toggle + CONFIG interaction |
+| R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | Beam→candela coupling; sceneBoxes mutation cost |
+| R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | Low risk |
