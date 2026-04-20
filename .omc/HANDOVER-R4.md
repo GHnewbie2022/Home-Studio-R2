@@ -1,8 +1,8 @@
-# Handover: R4-1 ✅ → R4-2 execution entry
+# Handover: R4-3 ✅ → R4-4 execution entry
 
 **Branch**: `r3-light`
-**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅ (2026-04-21).
-**Next task**: R4-3 控件接線（CONFIG 1/2/3, A/B radio, 色溫 radio, GIK minimap 等 UI 狀態與 uniform 的實際綁定）
+**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21).
+**Next task**: R4-4 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型啟用；BVH 兩層更新策略）
 
 ---
 
@@ -41,12 +41,48 @@
 
 ---
 
+## R4-3 completion summary
+
+### What was done
+- JS: 全面控件接線：A/B radio（bounces/mult 切換）、色溫 radio 群組（Cloud/Track/Wide South/North）、Lumens slider（Cloud/Track/Wide）、Light enable checkbox（Cloud/Track/Wide South/Wide North）、牆面反射率 slider、間接光補償 A/B slider
+- JS: GIK minimap 完整接線：9 塊牆板 + All + Ceil，palette（灰/白 2 色，紅色因廠商無貨移除）；索引映射 Config 1/2/3 正確對齊 sceneBoxes
+- JS: Track / Wide 外觀色 radio（黑/白）→ sceneBoxes color 更新
+- JS: 視角按鈕 cam1/2/3 → `switchCamera()` 接線
+- JS: Hide UI 按鈕接線
+
+### User decisions (scope changes vs original SOP)
+- `slider-emissive-clamp` 移除：使用者主動決定（固定值 50 已足夠，不需 UI 暴露）
+- `#groupGikPresets` 2 個預設按鈕整合進 GIK palette：使用者主動決定
+- `🔲材質設定` 獨立 panel 整合進配置/光追面板：使用者主動決定
+- GIK 只保留灰/白 2 色：廠商無紅色 GIK 貨，CSS data-color=2/3 為 dead code
+
+### Known R4-4 scope items (carried forward)
+- Sweet-spot sliders（beam-inner/outer, tilt, spacing, x/z）= wakeRender shell，待 R4-4 接真實 uniform
+- Wide track per-side mesh (housing) visibility 需 shader 端分開 uniform（延後）
+- A/B bounces/mult 初始值未細調，待使用者決定後 R4-4 一併處理
+
+### Session hotfix (2026-04-21, post R4-3)
+- **Bug fix**: CONFIG 3 吸頂燈出現黑色圓柱於房間北方
+  - Root cause: `uCeilingLampPos.value.z = -1.5` 落在房間內（北牆 z=-1.874）；`CylinderIntersect` 無條件執行，emission=0 → 黑色幾何體可見
+  - Fix: `applyPanelConfig` L373 改為 `cloudOn ? 100.0 : 0.591`（房間 z_max=3.056，100.0 確保光線永不命中）
+
+### Pending research — 打破間接漫射 2 層截斷（使用者已確認列入待辦）
+- **背景**: erichlof 框架在每個漫射材質分支以 `if (diffuseCount == 1)` 存間接反彈路徑，第 2 次漫射命中後停止存檔 → 無論 `uMaxBounces` 設多高，間接漫射最多 2 層
+- **使用者需求**: 實驗真實 8 bounce 渲染（移除截斷） + 快速預覽 4 bounce 預設；想確認視覺差異
+- **執行方式**: 把 shader 裡 10+ 處 `if (diffuseCount == 1)` 的 `willNeedDiffuseBounceRay = TRUE` 條件改為每次漫射命中都觸發，或抽共用函式
+- **風險**: 多點 shader 改動，影響所有材質渲染路徑 → **建議先 `/ralplan` 取共識再執行**
+- **附帶**: 同時設定 slider-bounces A 預設值 8、B 預設值 4（快速預覽）
+
+---
+
 ## Completed commits on this branch (latest → oldest)
 
 | Commit | Scope |
 |---|---|
-| *(pending)* | R4-2 DONE: 12 shader branches flattened, sampleLight11 removed, 3 uniforms removed, CONFIG radio UI implemented |
-| *(pending)* | R4-1 DONE: UI skeleton + CSS + createS + DOM adapters + lil-gui removal + fix01-fix06 |
+| `03e0454` | R4-3 DONE: 控件接線（UI 事件全面綁定，GIK Minimap 索引修正與舊版視角參數復刻）|
+| `f0be38b` | R4-2 DONE: 12 shader branches flattened, sampleLight11 removed, 3 uniforms removed, CONFIG radio UI implemented |
+| `7d754cb` | docs: R4-1 Debug_Log 經驗紀錄 + HANDOVER 交接訊息 |
+| `017bfe0` | R4-1 DONE: UI skeleton + CSS + createS + DOM adapters + lil-gui removal + fix01-fix06 |
 | `4eb2187` | R4-0 HANDOVER update |
 | `a9c0fe6` | R4-0 revision — cavity-panel + post-panel removed |
 | `97f70de` | R4-0 old-project UI inventory |
@@ -83,6 +119,6 @@
 |---|---|---|
 | R4-1 | HTML panel skeleton + CSS + createS + DOM adapters; drop lil-gui + modify InitCommon.js | ✅ DONE |
 | R4-2 | 12-point shader flattening + sampleStochasticLight11 deletion + 3 uniform removal | ✅ DONE |
-| R4-3 | CONFIG 1/2/3, A/B radio, color-temp radios, lumens, GIK minimap, light checkboxes | A/B group display toggle + CONFIG interaction |
+| R4-3 | CONFIG 1/2/3, A/B radio, color-temp radios, lumens, GIK minimap, light checkboxes | ✅ DONE |
 | R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | Beam→candela coupling; sceneBoxes mutation cost |
 | R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | Low risk |

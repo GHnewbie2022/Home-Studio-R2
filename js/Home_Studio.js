@@ -370,7 +370,7 @@ function applyPanelConfig(config) {
         pathTracingUniforms.uWideTrackLightEnabled.value = cloudOn ? 1.0 : 0.0;
     }
     if (pathTracingUniforms && pathTracingUniforms.uCeilingLampPos) {
-        pathTracingUniforms.uCeilingLampPos.value.z = cloudOn ? -1.5 : 0.591;
+        pathTracingUniforms.uCeilingLampPos.value.z = cloudOn ? 100.0 : 0.591; // CONFIG 3: push outside room (z_max=3.056) so CylinderIntersect never hits
     }
     // R3-4 fix06：Config 3 吸頂燈預設壓 0（軌道燈+Cloud 燈撐場景），Config 1/2 回 900
     // R4-1：DOM adapter 取代 lil-gui API
