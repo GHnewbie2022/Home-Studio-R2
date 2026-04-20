@@ -1,0 +1,283 @@
+# R3-6.5 Ralph Progress
+
+## 2026-04-20 Step 1 (US-R3-6-5-S1) — DONE
+
+Implemented: JS LUT scaffold + 3 uniforms + throw-first assertion + rebuildActiveLightLUT.
+
+Files changed:
+- js/Home_Studio.js
+  - L31-32: module const ACTIVE_LIGHT_POOL_MAX=11, ACTIVE_LIGHT_LUT_SENTINEL=-1
+  - L1110-1113: 3 uniforms (uActiveLightCount, uActiveLightIndex Int32Array(11), uR3DynamicPoolEnabled)
+  - L1116-1118: throw-first for Int32Array type + length=11
+  - L1122: rebuildActiveLightLUT('init') call
+  - L1277-1302: rebuildActiveLightLUT(source) function, LUT-first write order, single-assignment uActiveLightCount.value=count, needClearAccumulation/cameraIsMoving/cameraSwitchFrames=3
+- Home_Studio.html L48: cache-buster r3-6-5-fix01-lut-uniform
+
+Playwright verification (fresh evidence):
+- isInt32Array: true, length: 11, firstSlot: 0, count: 1, rollbackEnabled: 1.0
+- Console log: [R3-6.5] active pool rebuild { count: 1, LUT: [0,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1], source: 'init' }
+- No GLSL compile error, no uniform binding error (only favicon 404 legacy).
+
+Learnings for future steps:
+- Home_Studio.html cache-buster is at L48 single line, format: `r3-6-5-fix0N-<slug>`
+- initSceneData uniform block ends at L1103 (uTrackWideLampDir), computeLightEmissions at L1105
+- R3-6 MIS ready log at L1107 — insert R3-6.5 init call between them (now L1122)
+- Function insertion tail of file is after L1122 computeLightEmissions — executor chose L1276 (after computeLightEmissions body closes)
+- Int32Array uniform requires `type: 'iv'` for three.js pathtracing renderer uniform1iv binding
+
+Next: US-R3-6-5-S2 (shader helper sampleStochasticLightDynamic + pdfNeeForLight 加 selectPdfArg)
+
+## 2026-04-20 Step 2 (US-R3-6-5-S2) — DONE
+
+Implemented: shader helper sampleStochasticLightDynamic + pdfNeeForLight 5-param + 10 NEE dispatch runtime branch + 2 BSDF reverse MIS ternary.
+
+Files changed:
+- shaders/Home_Studio_Fragment.glsl
+  - L85-87: 3 new uniforms (uActiveLightCount int, uActiveLightIndex[11], uR3DynamicPoolEnabled float)
+  - L236-248: pdfNeeForLight signature升 5-param (added selectPdfArg), body 改 selectPdfArg * (dist2 / ...)
+  - L264: sampleStochasticLight11 selectPdf legacy = 1.0/11.0 (keep)
+  - L279/L308/L332/L376: legacy 4 call sites pass 1.0/11.0 as 5th arg
+  - L381-513: new sampleStochasticLightDynamic (copy of sampleStochasticLight11 + black-out guard uActiveLightCount<=0 + slot→LUT 轉譯 + selectPdf = 1.0/float(uActiveLightCount))
+  - L1166: BSDF reverse MIS ceiling pNeeReverse with ternary `uR3DynamicPoolEnabled > 0.5 ? 1.0/float(uActiveLightCount) : 1.0/11.0`
+  - L1872: BSDF reverse MIS Cloud pNeeReverse same ternary
+  - 10 NEE dispatch sites (previously L1248/1286/1334/1386/1494/1533/1594/1639/1748/1802) 全改 if-else runtime branch
+- Home_Studio.html L48: cache-buster r3-6-5-fix02-shader-dynamic
+
+Grep verification counts:
+- `1.0 / 11.0` = 8 (1 comment + 1 selectPdf + 4 legacy args + 2 BSDF ternary) — PRD updated from ===1 to ===8 (plan iter 2 had self-contradiction; spec §3/§5 requires these literals)
+- `pdfNeeForLight(` = 11 (1 decl + 4 legacy + 4 dynamic + 2 BSDF reverse)
+- `sampleStochasticLightDynamic(` = 11 (1 decl + 10 dispatch)
+- `sampleStochasticLight11(` = 11 (1 decl + 10 dispatch, preserved as legacy rollback)
+
+Playwright verification:
+- Navigate http://localhost:9001/Home_Studio.html — no GLSL compile/link/uniform-binding error
+- [R3-6.5] active pool rebuild log still fires
+- uR3DynamicPoolEnabled.value = 1.0, uActiveLightCount.value = 1, uActiveLightIndex[0] = 0
+- Cam 1 click → Samples advancing 760→802 (10s), 35 fps, 畫面 non-black (walls, floor, speakers, ceiling glow visible)
+
+Learnings:
+- Dynamic helper placed immediately after sampleStochasticLight11 closing brace (L380 → L381 start)
+- 10 NEE dispatch sites were replaceable via single replace_all (all share identical line pattern)
+- Ternary branch preserves 1.0/11.0 literal in BSDF reverse path — legacy PDF stays consistent when uR3DynamicPoolEnabled=0
+- Plan iter 2 L305 `grep ===1` was stale from iter 1 design (before BSDF ternary + legacy call site 5-param pattern settled); PRD corrected
+
+Next: US-R3-6-5-S2_5 (DCE runtime-impossible guard probe)
+
+## 2026-04-20 Step 2.5 (US-R3-6-5-S2_5) — DONE (iter 3)
+
+Iter 2 uncovered plan design flaw: uR3DynamicPoolEnabled served double-duty as routing gate (>0.5) AND DCE sentinel (<-100). Setting -200 made routing gate evict dynamic dispatch → sentinel branch never reachable. User chose option C (dedicated sentinel uniform).
+
+Iter 3 fix:
+- js/Home_Studio.js L1114: new uniform pathTracingUniforms.uR3ProbeSentinel = { value: 1.0 } (DCE debug-only)
+- shaders/Home_Studio_Fragment.glsl L88: uniform float uR3ProbeSentinel;
+- shaders/Home_Studio_Fragment.glsl L387-389: DCE guard inside sampleStochasticLightDynamic swapped from uR3DynamicPoolEnabled to uR3ProbeSentinel
+
+Playwright ceremony:
+- A (normal): scene renders normal (ceiling light, walls, door, acoustic panels visible)
+- Set uR3ProbeSentinel=-200 + needClearAccumulation=true (uR3DynamicPoolEnabled stays 1.0, routing unaffected)
+- B (sentinel active): 幾乎全黑，僅 primary-hit ceiling emitter 殘影（預期：DCE guard 讓 throughput=0 → indirect/NEE 全熄；primary 直接打到 emitter 仍取 emission）
+- Restore uR3ProbeSentinel=1.0 + needClearAccumulation=true
+- C (restored): matches A, full scene back
+
+Console log confirmed: [R3-6.5] DCE guard alive: pickedIdx sentinel branch preserved
+0 GLSL compile/link errors across ceremony.
+3 PNGs saved to snapshot/: r3-6-5-dce-probe-A-normal.png / -B-sentinel.png / -C-restored.png
+
+Learnings:
+- Runtime-impossible guards sharing a business-logic uniform can create mutual exclusion bugs — dedicate a sentinel uniform for activation tests.
+- Primary-hit emitter in path tracer emits directly without going through NEE helper, so "sentinel black" = no indirect + no NEE, not literally every pixel 0.
+
+Cache-buster unchanged: r3-6-5-fix02b-dce-guard
+
+Next: US-R3-6-5-S3 (LUT 重建觸發點連接：applyPanelConfig + 3 checkbox onChange)
+
+## 2026-04-20 Step 3 (US-R3-6-5-S3) — DONE
+
+Implemented: full rebuildActiveLightLUT logic (replaced S1 scaffolding) + 4 trigger wires + cache-buster.
+
+Files changed:
+- js/Home_Studio.js
+  - L1276-1307 rebuildActiveLightLUT body replaced. Logic:
+    - Early-return guard if uniforms not ready (protects against premature calls during init)
+    - lut.fill(SENTINEL) first
+    - Read currentPanelConfig + 3 uniform gate bools
+    - CONFIG 1/2: slot 0 only (ceiling) → count=1
+    - CONFIG 3: trackOn → slots 1-4; wideOn → 5-6; cloudOn → 7-10 (variable count 0..10)
+    - Single-assignment write uActiveLightCount.value = count last
+  - L383: rebuildActiveLightLUT('applyPanelConfig') after syncR3ColorUIEnable()
+  - L1419: rebuildActiveLightLUT('trackCheckbox') before wakeRender()
+  - L1429: rebuildActiveLightLUT('wideCheckbox')
+  - L1440: rebuildActiveLightLUT('cloudCheckbox')
+- Home_Studio.html L48 cache-buster r3-6-5-fix03-lut-triggers
+
+Playwright verification (every transition matches expected):
+- init: source='init', count=1, LUT=[0,-1×10]
+- CONFIG 3 click: source='applyPanelConfig', count=10, LUT=[1..10,-1]
+- CONFIG 1 click: source='applyPanelConfig', count=1, LUT=[0,-1×10]
+- CONFIG 3 again: count=10 as above
+- Cloud checkbox uncheck: source='cloudCheckbox', count=6, LUT=[1..6,-1×5]
+- Track uncheck (cloud already off): source='trackCheckbox', count=2, LUT=[5,6,-1×9]
+- Wide uncheck: source='wideCheckbox', count=0, LUT all -1
+- All 3 re-check: count=10 restored
+
+No single-frame black/white flash during transitions observed.
+Screenshots moved to snapshot/: r3-6-5-s3-cfg3-init.png, r3-6-5-s3-cfg3-all-on.png
+
+Learnings:
+- Early-return guard matters: applyPanelConfig(1) runs inside initSceneData BEFORE uniforms pathTracingUniforms.uActiveLightIndex exist (scene setup order). Must tolerate that.
+- checkbox-gated slot logic is straight pool slot ranges per shader convention (1-4 track, 5-6 wide, 7-10 cloud)
+- CONFIG 1/2 intentionally exclude checkbox gates from pool (plan design: CONFIG 3 "owns" multi-light management)
+
+Next: US-R3-6-5-S4 (CONFIG 3 ceiling UI 雙重退場 disable+rename)
+
+## 2026-04-20 Step 4 (US-R3-6-5-S4) — DONE
+
+Implemented: applyPanelConfig L354-367 brightnessCtrl CONFIG 3 雙重退場 (setValue(0) → disable → rename) + CONFIG 1/2 reverse (enable → name → setValue(900)).
+
+Files changed:
+- js/Home_Studio.js L354-367 (replaced 2-line setValue block with config-branched 13-line block)
+- Home_Studio.html L48 cache-buster r3-6-5-fix04-ceiling-ui-retire
+
+Playwright 3-path symmetry verification (9 transitions all ✓):
+- Path 1 (1→3→1), Path 2 (2→3→2), Path 3 (3→1→3)
+- Every step: {labelText, disabled, value} matched expected
+
+Screenshot: snapshot/r3-6-5-s4-cfg3-ui-retired.png
+
+Learnings:
+- lil-gui .enable()/.disable()/.name()/.setValue() all present on brightnessCtrl
+- Order matters at CONFIG 3: setValue(0) MUST come before disable() so the disabled slider displays 0 (not 900)
+
+Next: US-R3-6-5-S5 (rollback checkbox + GUI Active N display) — USER CHECKPOINT after
+
+=== S5 完成 @ 2026-04-20 ===
+Files changed:
+- js/Home_Studio.js L468-472（module state: r3DynamicState/r3DynamicCtrl/activeLightCountState/activeLightCountDisplay）
+- js/Home_Studio.js L1487/L1496（lightFolder 2 controllers：R3-6.5 動態池啟用 checkbox + 目前 Active N disabled display）
+- js/Home_Studio.js L1330-1333（rebuildActiveLightLUT 雙保險 activeLightCountState.N sync + updateDisplay）
+- Home_Studio.html L48 cache-buster → r3-6-5-fix05-rollback-ui
+
+Playwright 6-step 驗證：
+- CONFIG 1 → Active N=1, count uniform=1 ✅
+- CONFIG 3 全 on → Active N=10, count uniform=10 ✅
+- CONFIG 3 取消 Cloud → Active N=6, count=6 ✅
+- CONFIG 3 取消 Track → Active N=2, count=2 ✅
+- 取消 R3-6.5 checkbox → uR3DynamicPoolEnabled=0.0 ✅
+- 重啟 checkbox → uR3DynamicPoolEnabled=1.0 ✅
+Snapshot: snapshot/r3-6-5-s5-gui-n-display.png
+
+Learning：
+- lil-gui .listen() + .disable() 組合 = read-only 但可程式化更新
+- 雙保險 updateDisplay()（rebuild 尾端 + .listen() 輪詢）防 lil-gui 部分控件 listen 不觸發
+- r3DynamicCtrl 與 activeLightCountDisplay 須 module-scope 宣告，setupGUI 賦值，rebuildActiveLightLUT 才能跨階段取用
+
+USER CHECKPOINT：ralph 停於此等使用者肉眼驗
+
+=== S5b（補洞）完成 @ 2026-04-20 ===
+Files changed:
+- js/Home_Studio.js L466（trackWideLumensCtrl 宣告為 module-scope let = null）
+- js/Home_Studio.js L1577（const trackWideLumensCtrl → 去 const 賦值）
+- js/Home_Studio.js L404（r3Ctrls 陣列加入 trackWideLumensCtrl，syncR3ColorUIEnable 自動處理 lock）
+- Home_Studio.html L48 cache-buster → r3-6-5-fix05b-widelm-lock
+
+原因：S5 驗收時 user 發現 CONFIG 1/2 漏 lock 南北廣角燈 lm slider（軌道燈 lm 已在 S4 之前的 syncR3ColorUIEnable 處理，但南北廣角燈 lm 建立時用 const local scope 無法被外部函式取用）。
+
+Learning：
+- syncR3ColorUIEnable 的 r3Ctrls 陣列是「物理不在場時 disable UI」的中央登記處，後續新增光源類別必同步加入
+
+=== S6 完成 @ 2026-04-20 ===
+Files changed:
+- docs/tests/r3-6-5-dynamic-pool.test.js（新建，5 個 Unit test U1~U5）
+- Home_Studio.html L48 cache-buster → r3-6-5-fix06-final-verify
+- snapshot/r3-6-5-cfg{1,3}-cam{1,2,3}-1000spp.png（6 張）
+- snapshot/r3-6-5-cfg3-all-off-1000spp.png（附加，N=0 全黑驗證）
+- snapshot/r3-6-5-rollback-cfg3-cam2-500spp.png（附加，rollback 對比）
+
+Contract test 結果：
+- U1 PASS config=1 all-off → count=1 LUT[0]=0
+- U2 PASS config=3 all-on → count=10 LUT[0..9]=[1..10]
+- U3 PASS config=3 cloud-off → count=6
+- U4 PASS config=3 all-off → count=0
+- U5 PASS pdfNeeForLight( occurrences = 11 (1 decl + 10 call sites)
+
+Playwright 動態驗證：
+- CONFIG 3 全開 N=10 → 取消 Cloud N=6 → 取消 Track N=2 → 取消 Wide N=0 全黑 ✅
+- rollback checkbox 切換 uR3DynamicPoolEnabled 0↔1 正確 ✅
+- Console NaN/Inf/Error = 0 ✅
+
+Learning：
+- Playwright MCP 截圖預設落在 session cwd，需 mv 或 filename 絕對路徑
+- contract test 純邏輯函式化（copy rebuildActiveLightLUT 核心去除 uniform 側效）可免 jsdom
+
+=== S6 USER CHECKPOINT：ralph 停於此等使用者肉眼驗 6 張對比圖 ===
+
+=== 廣角燈方向修正（R3-6.5 post-verify hotfix）@ 2026-04-20 ===
+症狀：使用者肉眼驗收 CONFIG 3 Cam 2 時發現北牆有水平明暗交界。
+診斷：南方廣角燈朝北打 → 光路被 Cloud 吸音板（GIK 版）遮擋 → 北牆底部陰影邊界。
+
+根因：R2-15 重建時誤設為對打配置（南→北、北→南），與舊專案原設計相反。
+舊專案 Home_Studio_3D_OLD/Path Tracking 260412a 5.4 Clarity.html L422-423 實測值：
+  trackWideTiltSouth = 15   南燈 +15° 朝南打（Z 正向）
+  trackWideTiltNorth = -25  北燈 -25° 朝北打（Z 負向）
+  → 雙燈朝各自所在牆面打，南北不對稱
+
+Files changed:
+- js/Home_Studio.js L1116-1131 改用 _wideSinS/_wideCosS + _wideSinN/_wideCosN 雙變數
+- Home_Studio.html L48 cache-buster → r3-6-5-wide-dir-legacy-restore
+
+使用者驗收結果：OK，陰影交界消失、亮度均勻。snapshot 不重拍（S6 snapshot 為動態池有效採樣率驗證用途，與廣角燈方向解耦）。
+
+Learning：
+- R2 重建需對照舊專案實測數值，不可憑印象「對稱好」猜預設值
+- 廣角燈 tilt 南北不對稱（+15 / -25）是刻意設計，非 bug
+- Debug 探針（45° A/B）先於 UI，5 分鐘結論勝過 30 分鐘 UI 跳關
+
+=== Step 7 architect review APPROVE @ 2026-04-20 ===
+Architect (Opus, THOROUGH tier) 對 PRD 7 story × acceptance criteria 獨立審查，APPROVE。
+
+3 項隱憂（非阻斷，延後處理）：
+
+【R3-7 plan 啟動前必讀】
+C3. BSDF reverse MIS N=0 inf 路徑（架構脆弱點）：
+- 位置：shaders/Home_Studio_Fragment.glsl:1176 / L1882
+- 症狀：uActiveLightCount == 0 且 uR3DynamicPoolEnabled > 0.5 時，ternary 計算 1.0/float(0) = +inf，GPU inf/inf = NaN
+- 目前被三重外部 gate 擋住：ceiling culling（uCeilingLampPos.z=-1.5）、Cloud gate（L1868 !uCloudLightEnabled）、primary-hit N=0 全黑 guard（L395）
+- 風險：R3-7（power-proportional CDF）或 R3-8 若改動 ceiling culling / Cloud gate，inf → NaN 爆 firefly 會讓 debug 誤判為新邏輯問題
+- 建議 fix snippet：
+    float activeN = float(max(uActiveLightCount, 1));
+    float selectPdfArg = uR3DynamicPoolEnabled > 0.5 ? 1.0/activeN : 1.0/11.0;
+- 決策理由：R3-7 必然觸碰 MIS 權重（power-proportional CDF），ternary 整條會重寫，現在修是 sunk cost。若 R3-7 plan 非碰 MIS，當場回補 C3。
+
+C1. Contract test U6 補 `1.0 / 11.0` 字面 grep === 8 斷言
+- 位置：docs/tests/r3-6-5-dynamic-pool.test.js
+- U5 只驗 pdfNeeForLight( === 11（call site 總數），未驗字面 1.0/11.0 === 8
+- 風險：未來 legacy 路徑誤動會失去字面數規模的早期警告
+- 決策理由：U5 已擋 call site 主要回歸，U6 屬低工低影響增強
+
+【R3 全部驗收後】
+C2-doc. plan 文字與 PRD 對齊（文件工）：
+- .omc/plans/R3-6.5.md L305/L477/第 10 條完成條件、U5 描述聲稱 === 1，過時
+- 實作與 PRD === 8 對齊；plan 字面過時
+
+Architect 3 項亮點：
+1. LUT 寫入順序正確（lut.fill → 逐槽填 → 最後 uActiveLightCount.value=count single-assignment）情境 1 race mitigation 落地
+2. DCE probe uR3ProbeSentinel 與 routing gate uR3DynamicPoolEnabled 分離（iter 3 修訂落實 memory feedback_pathtracing_dce_sink_gate_trap.md 教訓）
+3. rollback ternary 對稱（primary-hit 10 處 if-else + BSDF reverse MIS 2 處 ternary，鏡像對齊無半截開關）
+
+=== Step 7.5 ai-slop-cleaner @ 2026-04-20 ===
+Pass 2 (Duplicate removal)：
+- js/Home_Studio.js L1327 刪重複註解（L1302 prelude 已說 LUT-first write order）
+
+整體 slop 密度極低，R3-6.5 註解多為 memory 教訓落地 + 根因溯源 + 物理量綱，非 slop。
+
+=== Step 7.6 post-deslop regression @ 2026-04-20 ===
+node docs/tests/r3-6-5-dynamic-pool.test.js → U1~U5 全 PASS（5/5）
+Shader 未動、cache-buster 未動，回歸零影響。
+
+=== Step 8 ralph 狀態 @ 2026-04-20 ===
+PRD 7 stories 全 passes:true；architect APPROVE；deslop 完畢；post-deslop regression PASS。
+Ralph 執行完畢，等使用者說「R3-6.5 DONE」後觸發：
+  1. SOP R3：燈光系統.md 雙處打勾 ✅（outline + 內文）
+  2. SOP Debug_Log.md 補廣角燈 occlusion fix 紀錄
+  3. memory handover 更新（R3-6.5 完工狀態 + C3 脆弱點提示）
+  4. git push（r3-light branch）

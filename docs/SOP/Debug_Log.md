@@ -985,3 +985,39 @@ cullable tier 更新後定義：
 
 **教訓**
 cullable 機制原「雙層 tier」擴充為「三層 tier」的正確方式：**新增分支而非改現有語義**。若直接把 cullable=2 的 Z 軸拿掉會破壞未來可能的「雙軸柱」需求（例如房間正中心的獨立大柱）。保留 cullable=2 語義 + 新增 cullable=3 = 可讀性與擴充性雙贏。JS 端 box 資料不需 schema 遷移（cullable 本為 float，值 3 直接可用）。
+
+---
+
+## R3-6.5｜廣角燈 tilt 配置錯誤（北牆明暗交界假陰影）
+
+**症狀**
+R3-6.5 收尾 Cam 3 × CONFIG 3 全開驗收時，使用者肉眼發現**北牆有一道水平明暗交界**，不是廣角燈自身 pattern。
+
+**排除假設**
+先懷疑 R3-6.5 動態池本身（N=10 LUT 重建 / uActiveLightCount 錯算），但 N=1 退化路徑驗證乾淨、contract test 全綠，排除動態池 bug。
+
+**診斷（A/B probe，不跳 UI）**
+使用者提示「直接改一個 TILT 值跟 20 差多一點」，避免為了診斷先花半天做 UI slider。把南北廣角燈 tilt 從「對打 20°」臨時改成 45° 做 A/B 對比 → 北牆交界位置隨 tilt 漂移 → 確認是廣角燈光路被遮擋產生的**假陰影**、不是動態池演算法錯。
+
+**根因**
+R2-15 南北廣角燈重建時**憑印象設成對打配置**（南→北打、北→南打、tilt 都 20°）。真實空間兩盞廣角燈**不對稱**：南方廣角燈 **+15° 朝南打（外側）**、北方廣角燈 **-25° 朝北打（外側）**。對打配置讓南方廣角燈光路穿過房間中心被 **Cloud 吸音板（GIK 版）擋住** → 北牆形成水平陰影交界。
+
+**修法**
+查舊專案 `Home_Studio_3D_OLD/Path Tracking 260412a 5.4 Clarity.html` L422-423 實測值還原：
+```js
+// js/Home_Studio.js L1116-1132
+var _wideSinS = Math.sin( 15 * Math.PI / 180);
+var _wideCosS = Math.cos( 15 * Math.PI / 180);
+var _wideSinN = Math.sin(-25 * Math.PI / 180);
+var _wideCosN = Math.cos(-25 * Math.PI / 180);
+pathTracingUniforms.uTrackWideLampDir = { value: [
+    new THREE.Vector3(0, -_wideCosS,  _wideSinS), // 南燈 +15° 朝南打
+    new THREE.Vector3(0, -_wideCosN,  _wideSinN)  // 北燈 -25° 朝北打
+] };
+```
+還原後北牆水平交界消失，Cam 3 畫面正常。
+
+**教訓**
+1. **R2 重建不可憑「該對稱吧」美感直覺猜數值**。真實空間配置常不對稱（地形 / 設備位置 / 使用需求造成）。廣角燈這類具物理配置語義的元件，重建前必 grep 舊專案實測值（`trackWideTiltSouth` / `trackWideTiltNorth`）。
+2. **A/B probe 值變化是 debug 首選**，不要為了診斷先花半天做 UI。使用者提示「直接改一個值做對比」比 UI slider 快 10 倍。
+3. **北牆假陰影 vs 動態池 bug** 容易誤判為同一個系統（R3-6.5 收尾時發生），必須用 tilt A/B 獨立隔離因子才能歸因到 R2-15 而非 R3-6.5。memory feedback_r2_rebuild_check_legacy_numbers.md 已記錄警示。

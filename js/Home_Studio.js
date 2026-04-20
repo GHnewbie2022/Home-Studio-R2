@@ -27,6 +27,10 @@ const C_GIK = [0.50, 0.50, 0.50];
 const C_CLOUD_LIGHT = [0.9, 0.9, 0.9]; // R2-17 Cloud 漫射燈條；emission=0 視覺幾何，真光源留 R3
 const C_DARK_VENT = [0.0, 0.0, 0.0];
 
+// R3-6.5: Dynamic light pool 常數
+const ACTIVE_LIGHT_POOL_MAX = 11;
+const ACTIVE_LIGHT_LUT_SENTINEL = -1;
+
 // === Scene Box Data (single source of truth) ===
 const sceneBoxes = [];
 const z3 = [0, 0, 0]; // zero emission shorthand
@@ -347,8 +351,21 @@ function applyPanelConfig(config) {
         pathTracingUniforms.uCeilingLampPos.value.z = cloudOn ? -1.5 : 0.591;
     }
     // R3-4 fix06：Config 3 吸頂燈預設壓 0（軌道燈+Cloud 燈撐場景），Config 1/2 回 900
+    // R3-6-5 S4：CONFIG 3 雙重退場：disable slider + rename label
     basicBrightness = cloudOn ? 0 : 900;
-    if (brightnessCtrl && brightnessCtrl.setValue) brightnessCtrl.setValue(basicBrightness);
+    if (brightnessCtrl) {
+        if (config === 3) {
+            // CONFIG 3：吸頂燈物理拆除，UI setValue(0) 於 disable() 前 → disabled slider 顯示 0
+            if (brightnessCtrl.setValue) brightnessCtrl.setValue(0);
+            if (brightnessCtrl.disable) brightnessCtrl.disable();
+            if (brightnessCtrl.name) brightnessCtrl.name('吸頂主燈（CONFIG 3 已拆除）');
+        } else {
+            // CONFIG 1/2：吸頂燈在場，UI enable + label 恢復 + 回預設 900
+            if (brightnessCtrl.enable) brightnessCtrl.enable();
+            if (brightnessCtrl.name) brightnessCtrl.name('吸頂主燈');
+            if (brightnessCtrl.setValue) brightnessCtrl.setValue(900);
+        }
+    }
     // GUI checkbox 同步（若已建構）
     if (typeof trackLightState !== 'undefined' && trackLightState) {
         trackLightState.trackLight = cloudOn;
@@ -376,6 +393,7 @@ function applyPanelConfig(config) {
 
     // R3-2-fix01：Config 切換 → 吸頂燈滑桿 + R3 4 dropdown 的 enable/disable 同步。
     syncR3ColorUIEnable();
+    rebuildActiveLightLUT('applyPanelConfig');
 }
 
 // R3-2-fix01b：依 currentPanelConfig 同步 R3 4 dropdown 的 enable/disable。
@@ -383,7 +401,7 @@ function applyPanelConfig(config) {
 // Config 3   = 吸頂燈撤場（UI 已無滑桿）→ R3 dropdown enable。
 function syncR3ColorUIEnable() {
     const isConfig3 = (currentPanelConfig === 3);
-    const r3Ctrls = [cloudColorCtrl, trackColorCtrl, trackLumensCtrl, trackWideColorSouthCtrl, trackWideColorNorthCtrl];
+    const r3Ctrls = [cloudColorCtrl, trackColorCtrl, trackLumensCtrl, trackWideColorSouthCtrl, trackWideColorNorthCtrl, trackWideLumensCtrl];
     r3Ctrls.forEach(function (c) {
         if (!c || !c.enable) return;
         if (isConfig3) c.enable(); else c.disable();
@@ -445,7 +463,14 @@ let trackColorCtrl           = null;
 let trackLumensCtrl          = null;
 let trackWideColorSouthCtrl  = null;
 let trackWideColorNorthCtrl  = null;
+let trackWideLumensCtrl      = null;  // CONFIG 1/2 lock 需模組級可見
 let brightnessCtrl           = null;  // Config 3 自動壓 0 需模組級可見
+
+// R3-6.5 S5：rollback checkbox state + active light count display state（listen+updateDisplay 雙保險）
+var r3DynamicState = { dynamicPool: true };
+var r3DynamicCtrl = null;
+var activeLightCountState = { N: 1 };
+var activeLightCountDisplay = null;
 
 // ---------------- R3-1 Photometry Pipeline ----------------
 /**
@@ -1089,20 +1114,38 @@ function initSceneData() {
     ] };
 
     // R2-15 廣角燈頭（2 盞矮胖圓柱，半徑 5cm、長 7.2cm）
-    // pivot = 支架底 y=2.845；tilt 20° 朝房間中心方向傾
-    // 形狀撈自舊專案 Path Tracking 260412a 5.4 Clarity.html
-    var _wideSin = Math.sin(20 * Math.PI / 180);
-    var _wideCos = Math.cos(20 * Math.PI / 180);
+    // pivot = 支架底 y=2.845；形狀撈自舊專案 Path Tracking 260412a 5.4 Clarity.html
+    // R3-6.5 post-verify：還原舊專案最後配置（tilt 南 +15°、北 -25°，雙燈朝外打，非對稱非對打）
+    // 舊專案 L422-423：trackWideTiltSouth=15, trackWideTiltNorth=-25
+    // 修正 R2-15 重建時誤設為對打（南朝北、北朝南），導致光線被 GIK 吸音板遮擋造成北牆陰影
+    var _wideSinS = Math.sin( 15 * Math.PI / 180);
+    var _wideCosS = Math.cos( 15 * Math.PI / 180);
+    var _wideSinN = Math.sin(-25 * Math.PI / 180);
+    var _wideCosN = Math.cos(-25 * Math.PI / 180);
     pathTracingUniforms.uTrackWideLampPos = { value: [
         new THREE.Vector3(0.0, 2.845,  2.100), // 南 (z=2.1)
         new THREE.Vector3(0.0, 2.845, -1.100)  // 北 (z=-1.1)
     ] };
     pathTracingUniforms.uTrackWideLampDir = { value: [
-        new THREE.Vector3(0, -_wideCos, -_wideSin), // 南燈向北（房中）傾
-        new THREE.Vector3(0, -_wideCos,  _wideSin)  // 北燈向南（房中）傾
+        new THREE.Vector3(0, -_wideCosS,  _wideSinS), // 南燈 +15° 朝南打（Z 正向）
+        new THREE.Vector3(0, -_wideCosN,  _wideSinN)  // 北燈 -25° 朝北打（Z 負向）
     ] };
 
+    // R3-6.5 Dynamic Light Pool uniforms
+    pathTracingUniforms.uActiveLightCount = { value: 1 };
+    pathTracingUniforms.uActiveLightIndex = { value: new Int32Array(ACTIVE_LIGHT_POOL_MAX).fill(ACTIVE_LIGHT_LUT_SENTINEL), type: 'iv' };
+    pathTracingUniforms.uActiveLightIndex.value[0] = 0; // CONFIG 1 ceiling 獨佔
+    pathTracingUniforms.uR3DynamicPoolEnabled = { value: 1.0 };
+    pathTracingUniforms.uR3ProbeSentinel = { value: 1.0 }; // R3-6.5 S2.5 DCE debug-only sentinel（正常恆為 1.0；手動改 -200 觸發 DCE guard 活體驗證）
+
+    // R3-6.5 throw-first assertion：LUT 型別 / 長度
+    if (!(pathTracingUniforms.uActiveLightIndex.value instanceof Int32Array) ||
+        pathTracingUniforms.uActiveLightIndex.value.length !== ACTIVE_LIGHT_POOL_MAX) {
+        throw new Error('[R3-6.5] uActiveLightIndex 型別 / 長度錯誤');
+    }
+
     computeLightEmissions();
+    rebuildActiveLightLUT('init');
 
     // R3-6：MIS Phase-1 ready log（一次性，於 initSceneData uniform setup 完畢後輸出；驗 throw-first 已通過）
     console.log('[R3-6] MIS ready', {
@@ -1255,6 +1298,49 @@ function computeLightEmissions() {
     });
 }
 
+// R3-6.5 S3：Dynamic light pool LUT 重建（full logic）。config 1/2 → ceiling-only；config 3 → track/wide/cloud checkbox-gated slots。
+// LUT-first write order：先 fill LUT[0..10]，最後才單次寫 uActiveLightCount.value。
+// computeLightEmissions 不觸發 rebuild（只改 emission 量級不改 pool 成員）；若未來加入 0-emission=off 邏輯，此註解需更新並補呼叫。
+function rebuildActiveLightLUT(source) {
+    // uniforms 尚未宣告（applyPanelConfig 在 initSceneData 中段被提前呼叫）→ 靜默略過，init 路徑會補呼叫
+    if (!pathTracingUniforms || !pathTracingUniforms.uActiveLightIndex) return;
+
+    const lut = pathTracingUniforms.uActiveLightIndex.value;
+    lut.fill(ACTIVE_LIGHT_LUT_SENTINEL);
+    let count = 0;
+
+    const config = (typeof currentPanelConfig !== 'undefined') ? currentPanelConfig : 1;
+    const trackOn = !!(pathTracingUniforms.uTrackLightEnabled && pathTracingUniforms.uTrackLightEnabled.value > 0.5);
+    const wideOn = !!(pathTracingUniforms.uWideTrackLightEnabled && pathTracingUniforms.uWideTrackLightEnabled.value > 0.5);
+    const cloudOn = !!(pathTracingUniforms.uCloudLightEnabled && pathTracingUniforms.uCloudLightEnabled.value > 0.5);
+
+    if (config === 1 || config === 2) {
+        // ceiling-only panel setups；track/wide/cloud checkbox 於 CONFIG 1/2 不納入 pool（由 CONFIG 3 統一接管）
+        lut[count++] = 0;
+    } else if (config === 3) {
+        // CONFIG 3：ceiling 撤場，依 checkbox gate 加入 track / wide / cloud slots
+        if (trackOn) { lut[count++] = 1; lut[count++] = 2; lut[count++] = 3; lut[count++] = 4; }
+        if (wideOn)  { lut[count++] = 5; lut[count++] = 6; }
+        if (cloudOn) { lut[count++] = 7; lut[count++] = 8; lut[count++] = 9; lut[count++] = 10; }
+    }
+
+    pathTracingUniforms.uActiveLightCount.value = count;
+
+    needClearAccumulation = true;
+    cameraIsMoving = true;
+    cameraSwitchFrames = 3;
+
+    // R3-6.5 S5：Active N 顯示雙保險（listen 已綁但 updateDisplay 兜底，避免 lil-gui listen 漏同步）
+    if (typeof activeLightCountState !== 'undefined' && activeLightCountState) {
+        activeLightCountState.N = count;
+        if (activeLightCountDisplay && activeLightCountDisplay.updateDisplay) {
+            activeLightCountDisplay.updateDisplay();
+        }
+    }
+
+    console.log('[R3-6.5] active pool rebuild', { count, LUT: Array.from(lut), source });
+}
+
 // CMD (或 Ctrl) + 左鍵點擊滑桿即重設為預設值
 function attachMetaClickReset(ctrl, defaultValue) {
     if (!ctrl || !ctrl.domElement) return ctrl;
@@ -1361,6 +1447,7 @@ function setupGUI() {
         if (pathTracingUniforms && pathTracingUniforms.uTrackLightEnabled) {
             pathTracingUniforms.uTrackLightEnabled.value = value ? 1.0 : 0.0;
         }
+        rebuildActiveLightLUT('trackCheckbox');
         wakeRender();
     });
 
@@ -1370,6 +1457,7 @@ function setupGUI() {
         if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
             pathTracingUniforms.uWideTrackLightEnabled.value = value ? 1.0 : 0.0;
         }
+        rebuildActiveLightLUT('wideCheckbox');
         wakeRender();
     });
 
@@ -1380,6 +1468,7 @@ function setupGUI() {
         if (pathTracingUniforms && pathTracingUniforms.uCloudLightEnabled) {
             pathTracingUniforms.uCloudLightEnabled.value = value ? 1.0 : 0.0;
         }
+        rebuildActiveLightLUT('cloudCheckbox');
         wakeRender();
     });
 
@@ -1397,6 +1486,18 @@ function setupGUI() {
     });
     brightnessCtrl.name('吸頂主燈');
     attachMetaClickReset(brightnessCtrl, 900);
+
+    // R3-6.5 S5：動態池 rollback checkbox（關閉 → 走 legacy sampleStochasticLight11 路徑；預設 ON）
+    r3DynamicCtrl = lightFolder.add(r3DynamicState, 'dynamicPool').name('R3-6.5 動態池啟用').onChange(function (value) {
+        if (pathTracingUniforms && pathTracingUniforms.uR3DynamicPoolEnabled) {
+            pathTracingUniforms.uR3DynamicPoolEnabled.value = value ? 1.0 : 0.0;
+        }
+        needClearAccumulation = true;
+        wakeRender();
+    });
+
+    // R3-6.5 S5：目前 Active N 顯示（read-only；listen 自動更新 + rebuildActiveLightLUT updateDisplay 雙保險）
+    activeLightCountDisplay = lightFolder.add(activeLightCountState, 'N').name('目前 Active N').listen().disable();
 
     // R3-2-fix01b：吸頂燈色溫 UI 移除（房間現況固定 4000K 自然光，內部 colorTemperature=4000 常數維持）。
     // R3 4 dropdown 直掛 lightFolder，與 brightness 同級（不再作為 subfolder）。
@@ -1477,7 +1578,7 @@ function setupGUI() {
         });
 
     // R3-5a：廣角燈光通量滑桿（2 盞同值，0 ~ 商品規格最大 2500 lm，預設最大）
-    const trackWideLumensCtrl = lightFolder
+    trackWideLumensCtrl = lightFolder
         .add({ l: trackWideLumens }, 'l', 0, TRACK_WIDE_LAMP_LUMENS_MAX, 10)
         .name('南北廣角燈 lm')
         .onChange(function (v) {
