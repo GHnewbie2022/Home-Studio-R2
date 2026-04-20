@@ -24,7 +24,7 @@
 |------|------|------|
 | R4-0 | 舊專案 UI 盤點 + 新 R3 控件整合策略 | ✅ |
 | R4-1 | UI 骨架復刻（HTML panel + CSS + createS 工廠 + DOM adapter；丟棄 lil-gui；含 InitCommon.js 改造） | ✅ |
-| R4-2 | 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除） | ⬜ |
+| R4-2 | 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除） | ✅ |
 | R4-3 | 控件接線（CONFIG 1/2/3、A/B radio、色溫 radio、lumens slider、GIK 色控、light checkbox） | ⬜ |
 | R4-4 | 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型；BVH 兩層更新策略） | ⬜ |
 | R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ⬜ |
@@ -218,7 +218,7 @@
 
 ---
 
-## R4-2 鷹架移除 ⬜
+## R4-2 鷹架移除 ✅
 
 ### 目標
 
@@ -273,7 +273,11 @@
 
 ### 控件清單
 
-1. **CONFIG 1/2/3 radio**：💡燈光設定頂端，3 個 `.action-btn`（active = `glow-white`）→ `applyPanelConfig(n)`
+1. **CONFIG 1/2/3 radio**：🔧配置區塊，3 個 `.config-radio` → `applyPanelConfig(n)`
+   - **配色連動邏輯**：
+     - **C1**：3 片吸音板（東西北各一）。預設全灰，可切換全灰/全白。
+     - **C2**：9 片吸音板。北牆（3片）預設全灰，可選全灰/全白。東西牆（6片）預設全白，可選全白/全灰/全紅。
+     - **C3**：9 片吸音板 + 6 片 Cloud。牆面吸音板同 C2。Cloud（6片）必須全同色，預設全白，可選全白/全灰/全紅。
 2. **A/B 趨近真實/快速預覽 radio**：⚙️光追設定，2 個 `.action-btn` → 切換 `activeGroup`，覆寫 bounces/clamp/mult 預設值（邏輯從舊專案 L2097-2109 搬入）
 3. **色溫 radio button 群組**：
    - Cloud：3 button（暖 3000K / 自然 4000K / 白光 6500K）→ `glow-orange` / `glow-white` / `glow-blue`

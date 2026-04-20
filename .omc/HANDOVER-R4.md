@@ -1,8 +1,8 @@
 # Handover: R4-1 ✅ → R4-2 execution entry
 
 **Branch**: `r3-light`
-**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅ (2026-04-21).
-**Next task**: R4-2 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除）
+**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅ (2026-04-21).
+**Next task**: R4-3 控件接線（CONFIG 1/2/3, A/B radio, 色溫 radio, GIK minimap 等 UI 狀態與 uniform 的實際綁定）
 
 ---
 
@@ -30,10 +30,22 @@
 
 ---
 
+## R4-2 completion summary
+
+### What was done
+- GLSL: Flattened 12 `uR3DynamicPoolEnabled` branches, deleted `sampleStochasticLight11` function (~120 lines).
+- GLSL: Flattened 5 `uR3MisEnabled` branches, removed DCE sentinel.
+- GLSL/JS: Removed 3 uniform declarations (`uR3MisEnabled`, `uR3MisPickMode`, `uR3DynamicPoolEnabled`) and JS throw-first guards.
+- HTML/CSS/JS: Implemented CONFIG 1/2/3 radio buttons UI, replacing the old system and successfully connecting to `applyPanelConfig()`.
+- Verified step-by-step compilation and checked scene rendering.
+
+---
+
 ## Completed commits on this branch (latest → oldest)
 
 | Commit | Scope |
 |---|---|
+| *(pending)* | R4-2 DONE: 12 shader branches flattened, sampleLight11 removed, 3 uniforms removed, CONFIG radio UI implemented |
 | *(pending)* | R4-1 DONE: UI skeleton + CSS + createS + DOM adapters + lil-gui removal + fix01-fix06 |
 | `4eb2187` | R4-0 HANDOVER update |
 | `a9c0fe6` | R4-0 revision — cavity-panel + post-panel removed |
@@ -70,7 +82,7 @@
 | Phase | Goal | Key risk |
 |---|---|---|
 | R4-1 | HTML panel skeleton + CSS + createS + DOM adapters; drop lil-gui + modify InitCommon.js | ✅ DONE |
-| R4-2 | 12-point shader flattening + sampleStochasticLight11 deletion + 3 uniform removal | Step-by-step compile verification; DCE sentinel at L2027 |
+| R4-2 | 12-point shader flattening + sampleStochasticLight11 deletion + 3 uniform removal | ✅ DONE |
 | R4-3 | CONFIG 1/2/3, A/B radio, color-temp radios, lumens, GIK minimap, light checkboxes | A/B group display toggle + CONFIG interaction |
 | R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | Beam→candela coupling; sceneBoxes mutation cost |
 | R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | Low risk |

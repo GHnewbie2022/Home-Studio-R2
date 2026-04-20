@@ -383,6 +383,14 @@ function applyPanelConfig(config) {
     // R3-2-fix01：Config 切換 → 吸頂燈滑桿 + R3 4 dropdown 的 enable/disable 同步。
     syncR3ColorUIEnable();
     rebuildActiveLightLUT('applyPanelConfig');
+    // R4-2 CONFIG radio: 同步 DOM radio 狀態 + 描述文字
+    var configRadio = document.getElementById('btnConfig' + config);
+    if (configRadio) configRadio.checked = true;
+    var descEl = document.getElementById('config-desc');
+    if (descEl) {
+        var descs = { 1: '吸頂燈 + 牆面吸音板', 2: '吸頂燈 + 牆面吸音板（配色 2）', 3: '全吸音處理（Cloud + 軌道燈 + 廣角燈）' };
+        descEl.textContent = descs[config] || '';
+    }
 }
 
 // R4-1：依 currentPanelConfig 同步燈光 slider enable/disable。
@@ -1024,11 +1032,6 @@ function initSceneData() {
     // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。
     pathTracingUniforms.uLegacyGain = { value: 1.5 };
 
-    // R3-6：MIS Phase-1 全局閘門（ceiling quadLight idx 0 + Cloud 4 rod idx 7-10 = 5 DIFF-emitters）
-    //   uR3MisEnabled = 1.0 → 套 power heuristic β=2 MIS；= 0.0 → shader bypass MIS 回 R3-5b 路徑（AC-M5 rollback）
-    //   uR3MisPickMode = 0.0 → uniform 1/11 pick（甲案）；= 1.0 → power-proportional CDF（乙案 R3-7 預留空殼）
-    pathTracingUniforms.uR3MisEnabled  = { value: 1.0 };
-    pathTracingUniforms.uR3MisPickMode = { value: 0.0 };
 
     // ---- R3-1 emission pipeline（R3-3 起 Cloud 接通 emissive Lambertian）----
     pathTracingUniforms.uCloudEmission      = { value: [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()] };
@@ -1101,7 +1104,7 @@ function initSceneData() {
     pathTracingUniforms.uActiveLightCount = { value: 1 };
     pathTracingUniforms.uActiveLightIndex = { value: new Int32Array(ACTIVE_LIGHT_POOL_MAX).fill(ACTIVE_LIGHT_LUT_SENTINEL), type: 'iv' };
     pathTracingUniforms.uActiveLightIndex.value[0] = 0; // CONFIG 1 ceiling 獨佔
-    pathTracingUniforms.uR3DynamicPoolEnabled = { value: 1.0 };
+
     pathTracingUniforms.uR3ProbeSentinel = { value: 1.0 }; // R3-6.5 S2.5 DCE debug-only sentinel（正常恆為 1.0；手動改 -200 觸發 DCE guard 活體驗證）
 
     // R3-6.5 throw-first assertion：LUT 型別 / 長度
@@ -1113,28 +1116,14 @@ function initSceneData() {
     computeLightEmissions();
     rebuildActiveLightLUT('init');
 
-    // R3-6：MIS Phase-1 ready log（一次性，於 initSceneData uniform setup 完畢後輸出；驗 throw-first 已通過）
-    console.log('[R3-6] MIS ready', {
-        misEnabled: pathTracingUniforms.uR3MisEnabled.value,
-        pickMode: pathTracingUniforms.uR3MisPickMode.value === 0.0 ? 'uniform' : 'cdf-stretch-R3-7',
-        neePoolSize: 11,
-        misScope: 'ceiling (idx 0) + Cloud 4 rod (idx 7-10) = 5 DIFF-emitters',
-        lightPickPdf: 1 / 11,
-        heuristic: 'power β=2'
-    });
+
 
     // R4-1：initUI replaces setupGUI (lil-gui removed; HTML panel system)
     initUI();
 }
 
+
 function computeLightEmissions() {
-    // R3-6 throw-first：MIS uniform 必須存在。若缺（忘加 JS uniform 宣告），rollback AC-M5 無法執行 → shader 永遠跑 MIS 分支。
-    if (typeof pathTracingUniforms.uR3MisEnabled === 'undefined') {
-        throw new Error('[R3-6] uR3MisEnabled uniform missing — JS uniform 宣告遺漏');
-    }
-    if (typeof pathTracingUniforms.uR3MisPickMode === 'undefined') {
-        throw new Error('[R3-6] uR3MisPickMode uniform missing — R3-7 乙案 forward-compat hook 遺漏');
-    }
     // R3-4：throw-first assertion 兩層守門（uniform 存在 + 值比對），避免 short-circuit 靜默通過 R3-3 CLOUD_BOX_IDX_BASE 同型陷阱
     if (!pathTracingUniforms.uTrackLampIdBase) {
         throw new Error('[R3-4] uTrackLampIdBase uniform missing — computeLightEmissions called before initSceneData uniform setup');
@@ -1515,13 +1504,12 @@ function initUI() {
     createS('slider-track-wide-tilt-north', '北側傾斜角', -70, 70, 1, -25, function(v) { wakeRender(); return v; });
     createS('slider-track-wide-z', '距Cloud邊距', 0.10, 1.30, 0.01, 0.10, function(v) { wakeRender(); return v; });
 
-    // Config 1/2/3 buttons (HTML already has action-btn elements)
-    var btnConfig1 = document.getElementById('btnConfig1');
-    var btnConfig2 = document.getElementById('btnConfig2');
-    var btnConfig3 = document.getElementById('btnConfig3');
-    if (btnConfig1) btnConfig1.onclick = function() { applyPanelConfig(1); };
-    if (btnConfig2) btnConfig2.onclick = function() { applyPanelConfig(2); };
-    if (btnConfig3) btnConfig3.onclick = function() { applyPanelConfig(3); };
+    // CONFIG radio group
+    document.querySelectorAll('input[name="panelConfig"]').forEach(function(radio) {
+        radio.addEventListener('change', function() {
+            applyPanelConfig(parseInt(this.value));
+        });
+    });
 
     // Button group visual toggle — glow-white only groups
     ['groupGikPresets', 'groupTrackMeshColor', 'groupTrackWideMeshColor'].forEach(function(gid) {
