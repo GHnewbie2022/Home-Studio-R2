@@ -19,3 +19,6 @@
 
 # OS
 Thumbs.db
+
+# Snapshot captures（驗收期間的渲染截圖，純本機用途、體積大）
+snapshot/
