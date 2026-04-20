@@ -1148,3 +1148,65 @@ JS L1058 引入，shader 10 處 `mask *= weight * uLegacyGain` 套用於 NEE dis
 1. **別把「Phase 2」當時限標籤看待**：SOP 早期寫「Phase 2 2-bounce truncation」給人一種「之後 Phase 3 會解」的錯覺；實則這是 erichlof 框架固定行為，不會自動升級
 2. **`max_bounces` 與「漫射能量累加深度」是兩件事**：前者是所有射線類型的總迴圈上限，後者被 `diffuseCount == 1` 單掛旗鎖在 2 層
 3. **渲染器的驗收標準是使用者眼睛，不是物理公式**：1.7 是對齊真實空間的校準產物；R2-18 定案時已經通過此門檻
+
+---
+
+## R4-1｜UI 骨架復刻（lil-gui → 自製 HTML panel）
+
+### 症狀群（使用者 Brave 瀏覽器肉眼驗收回報 6 輪 fix）
+
+fix01-02：面板完全不可見 / Stats.js FPS 計數器殘留
+fix03：色溫 radio 按鈕點擊無視覺切換
+fix04-05：隱藏 UI 後無法還原（pointer lock 搶走點擊）；視角按鈕觸發 pointer lock
+fix06：軌道燈色溫同時多顆發光；廣角燈南北 checkbox 無獨立控制；面板與快照縮圖重疊
+
+### 根本原因與修法
+
+#### 1. 外部資源 cache-buster 必須全覆蓋
+
+CSS `<link>` 和所有 `<script>` 都必須帶 `?v=` query。只改 JS 不改 CSS → Brave 繼續服務舊 CSS → `position:fixed` 缺失 → 整個 `#ui-container` 被 canvas 蓋住。
+
+**通則**：每次修改任何外部資源檔，同步遞增對應 `<link>` / `<script>` tag 的 `?v=` 值。遺漏一個就有一個快取地雷。
+
+#### 2. pointer-lock 守門三件套（所有互動 UI 元素必備）
+
+InitCommon.js 的 `document.body.addEventListener("click", ...)` 會檢查 `ableToEngagePointerLock` 再呼叫 `requestPointerLock()`。任何浮動 UI 若少了以下三步，點擊就會觸發視角旋轉鎖定：
+
+```
+element.addEventListener('mouseenter', () => { ableToEngagePointerLock = false; });
+element.addEventListener('mouseleave', () => { ableToEngagePointerLock = true; });
+element.addEventListener('click', e => { e.stopPropagation(); });
+```
+
+R4-1 受害元素：`#ui-container`、`#bottom-right-group`、`#top-right-group`。日後新增任何 fixed/absolute UI 都必須補齊。
+
+#### 3. 色溫 glow class 不可用通用 glow-white 代替
+
+舊專案的色溫 radio 每組有專屬 glow 映射：
+- Cloud / Wide（暖/自然/冷）：`glow-orange` / `glow-white` / `glow-blue`
+- Track（全暖/全冷/北暖南冷/北冷南暖）：`glow-orange` / `glow-blue` / `glow-gradient-ob` / `glow-gradient-bo`
+
+若統一用 `glow-white` 切換，會造成：(a) 舊 gradient class 未移除 → 多顆同時發光；(b) 暖冷色視覺無區別。
+
+**通則**：按鈕切換 handler 的 `classList.remove(...)` 必須列舉該組所有可能的 glow class，不能只移除 `glow-white`。
+
+#### 4. 單一 uniform 控制多光源的陷阱
+
+`uWideTrackLightEnabled` 是一個 float 同時 gate 南北兩盞廣角燈。checkbox 用 `anyOn` 邏輯保持 uniform=1.0 → shader 對兩側一視同仁 → 取消勾選一側仍雙側發光。
+
+R4-1 解法：`syncWideEmissions()` 在 checkbox 切換時呼叫 `computeLightEmissions()` 重算後，將未勾選側的 `uTrackWideEmission.value[i]` 歸零。LUT 也依各自 checkbox 狀態獨立加入 slot 5/6。
+
+**殘留限制**：未勾選側的燈具外殼（housing mesh）仍在 BVH 中以暗色可見，完全隱藏需 R4-3 加入逐側 shader uniform 或場景重建。
+
+#### 5. slider 預設值必須對齊 shader uniform 初始值
+
+`createS()` 的 `init` 參數決定 slider 啟始位置，但不會回寫 shader uniform——uniform 在 `initSceneData()` 中獨立賦值。若 slider init ≠ uniform default，畫面與 UI 顯示不一致。
+
+R4-1 命中案例：
+- `slider-wall-albedo` init=0.8 vs `uWallAlbedo`=1.0 → 改 init=1.0
+- `slider-emissive-clamp` init=250 vs `uEmissiveClamp`=50 → 改 init=50
+- `slider-pixel-res` init=0.5 vs 使用者期望 1.0 → 改 init=1.0
+
+#### 6. Dark Reader 瀏覽器擴充功能會干擾驗收
+
+Brave 的 Dark Reader 會反轉 CSS 色彩，導致 glow 效果和 GIK 色塊外觀錯誤。驗收 UI 色彩相關功能時必須先關閉 Dark Reader。
