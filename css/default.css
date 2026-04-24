@@ -291,3 +291,17 @@ button.action-btn.glow-gradient-bo {
 .gik-color-btn[data-val="2"] { background: #1e3a8a; }
 .gik-color-btn[data-val="3"] { background: #7f1d1d; }
 .gik-color-btn[data-val="mixed"] { background: linear-gradient(135deg, #ffffff 50%, #3a3a3a 50%); box-shadow: 0 0 5px rgba(255,255,255,0.3); }
+
+
+/* R4-4-fix10: 未勾選 checkbox 的 section 子內容灰階 + 不可點（checkbox 本身保持可點） */
+.light-section.inactive .sub-panel {
+	filter: grayscale(1) brightness(0.7);
+	opacity: 0.5;
+	pointer-events: none;
+}
+.light-section.inactive .sub-panel label {
+	pointer-events: auto;  /* Wide 的南/北 checkbox 在 sub-panel 內，保留可點 */
+}
+.light-section.inactive .control-row .label-text {
+	opacity: 0.55;
+}

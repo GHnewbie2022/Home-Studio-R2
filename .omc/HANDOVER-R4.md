@@ -1,8 +1,8 @@
-# Handover: R4-3-追加 ✅ → R4-4 execution entry
+# Handover: R4-4 ✅ → R4-5 execution entry
 
 **Branch**: `r3-light`
-**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21), R4-3-追加 ✅ (2026-04-24).
-**Next task**: R4-4 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型啟用；BVH 兩層更新策略）
+**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21), R4-3-追加 ✅ (2026-04-24), R4-4 ✅ (2026-04-24).
+**Next task**: R4-5 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading）
 
 ---
 
@@ -119,12 +119,83 @@ Cache-buster：`?v=uncap-test`
 
 ---
 
+## R4-4 completion summary（2026-04-24 DONE）
+
+R4-4 以 11 個 fix 漸進交付。量綱鎖死、甜蜜點校正、UX 打磨三軸獨立迭代，物理正確性優先於舊基準連續性。詳見 `docs/SOP/R4：UI控制層.md` 的 `R4-4 甜蜜點 UI ✅ → ### 完工紀錄（2026-04-24 DONE）` 段。
+
+### fix 序列摘要
+
+| fix | 主題 | 關鍵改動 |
+|---|---|---|
+| fix01 | 原子實作 | 10 滑桿 + `trackLampCandela()` 反冪律 + 4 recompute 輔助 + BVH pointer 策略 + 光束角互鎖 |
+| fix01-idx | sceneBoxes index 錯位修正 | 4 具名索引 `TRACK_BASE_IDX=53` / `TRACK_STAND_IDX=57` / `TRACK_WIDE_BASE_IDX=61` / `TRACK_WIDE_STAND_IDX=63` + load-time `fixtureGroup` throw-first 守門 |
+| fix02-radiance | **量綱修正（物理正確優先）** | `computeTrackRadiance` cd 路徑 `cd/(K·π·A)` → `cd/(K·A)` 移除多餘 /π（cd 已是 per-steradian，不需再做 Lambertian 分攤）；舊路徑 Φ/(K·π·A) 的 /π 保留 |
+| fix03-presets | 甜蜜點預設校正 | Cloud 1600 lm/m、Track 2000 lm、Wide tilt 0/-30、trackWideZ 0.20 |
+| fix04-tilt | 南側 tilt 校正 | 0°→30°（避 Cam 3 視野高光點） |
+| fix05-config4 | CONFIG 3 拆 3/4 | CONFIG 3 = 全吸音 + 僅 Cloud（工作）；CONFIG 4 = 全吸音 + 軌道+廣角（氣氛）；CONFIG 4 Cloud 預設關可手動補光 |
+| fix06-beam | beam 角度微調 | Track 30/55 → 40/60；Wide 95/120 → 90/120 |
+| fix07-ui-gate | Section disable | checkbox-gated section `opacity:0.35 + pointer-events:none` |
+| fix08-hide | Section 隱藏 | `display:none` 替代 disable；CONFIG 4 Cloud 保留顯示 |
+| fix09-tight | 緊湊版面 | 2 divider 移入 section 內；slider-brightness 在 CONFIG 3/4 display:none |
+| fix10-reorder-grayscale | 面板順序 + checkbox 灰階 | UI 順序 `🔧 配置 → 💡 燈光設定 → ⚙️ 光追設定`；未勾 checkbox → section 內容灰階 + disable（Wide 南/北 checkbox 保持可點） |
+| fix11-gik-panel | GIK 獨立面板 | `🎨 吸音板顏色` 拆為頂層獨立面板（第 2 位），預設折疊 |
+
+### 量綱修正（fix02 核心）
+
+使用者肉眼察覺「整體刷白、冷暖對比淡化、桌子偏暗」，systematic-debugging 四階段根因定位為 `computeTrackRadiance` 的 cd 路徑**多除一個 π**：
+
+```
+錯：L = cd / (K · π · A)  ← 把已是 per-steradian 的 cd 當作總 Φ 做 Lambertian /π 分攤
+對：L = cd / (K · A)      ← cd 已含方向性強度，只需 /A 歸面積、/K 轉 radiometric
+```
+
+修後投射燈 radiance 從舊 Lambertian 基準的 87% 回升至 273.5%（π 倍），採購視覺基準重設。I5 驗證 `cd(2000,15°)/cd(2000,60°) = 3.0001` 精確維持（規格書 4800/1600 cd）。
+
+### 第 10 條滑桿（wide-z）公式裁決
+
+SOP L700 Plan v5 `trackWideZ = 1.20 + v`（對稱於 z=0）與 R2-15 非對稱 uniform 預設 2.1/-1.1 矛盾。佐證 `SOP/R2：所有幾何物件.md:882` 註記「新 R2 以絕對座標替代」。裁決採**選項 C 真字面「距 Cloud 邊距」**：
+
+```
+南軌 z = 1.698 + v    (Cloud 南邊緣 + 距離)
+北軌 z = -0.702 - v   (Cloud 北邊緣 - 距離)
+範圍 0.05 ~ 1.15（上界讓北軌 z=-1.852 距北牆 22mm 安全邊界）
+預設 0.40（對應舊 uniform ±2mm）
+```
+
+### CONFIG 拆分決策（fix05）
+
+原 Plan v5 CONFIG 3 將 Cloud + 軌道 + 廣角三光源 checkbox-gated 共存，使用者發現工作光源需求（全亮）與氣氛光源需求（冷暖對比）難以共用 scope。裁決為：
+
+- CONFIG 3 = **全吸音 + 僅 Cloud 漫射燈**（全亮好工作）
+- CONFIG 4 = **全吸音 + 軌道+廣角燈**（冷暖有氣氛）
+
+CONFIG 4 下 Cloud 區 UI 仍可見但 `chkCloud` 預設未勾，使用者可手動補光（Cloud 重構 R5 之前的暫行方案）。
+
+### User decisions（SOP Plan v5 之外）
+
+- CONFIG 3 拆 3/4（fix05）
+- 面板順序重排 + 🎨 吸音板顏色獨立頂層面板（fix10/fix11）
+- 量綱修正（fix02，Plan v5 L640-646 與本專案 kelvinToLuminousEfficacy 量綱體系不合；實作以物理正確性收斂）
+
+### Known carry-forward to R5
+
+- **F5 Cloud 光源重構（R5 主任務）**：4 rod → 1 大 panel 長方體 + 16mm 內縮遮擋箱 + face-selective emission。Φ=13,338 lm / A=0.267 m² / L=49.67 W/(sr·m²) 三項與現況精確等效（計算驗證 0.34% 偏差）。pool 4→1 可望 CONFIG 3 收斂加速 ~4×。需 shader 改動（stochastic NEE 採樣邏輯重寫），獨立階段前先 ralplan。
+- **F6 A/B 模式去留評估**：使用者提「視覺偏差太大考慮拿掉」；R5 開頭一併裁決。
+- **stochastic NEE pool size 收斂問題**：MC variance ∝ pool size，CONFIG 3 pool=4 需 ~4× SPP 才達 pool=1 噪點水準。shader 端採樣策略（全展開 vs stochastic pick）需在 R5 shader 改動時一併驗證。
+
+### Brave 指紋保護觸發兼容問題（2026-04-24）
+
+使用者反映 Brave 瀏覽器於 R4-4-fix11 突然失效，切 Chrome 正常。可能與 Brave 指紋保護策略更新有關（與 memory 記錄的「R4-1 桌面 ontouchstart 誤判 mouseControl」同類）。非 R4-4 blocker，留作後續排查。
+
 ---
 
 ## Completed commits on this branch (latest → oldest)
 
 | Commit | Scope |
 |---|---|
+| `<this commit>` | R4-4 DONE: 10 滑桿 + 反冪律 + BVH pointer 策略 + 量綱修正（cd/(K·A)）+ 甜蜜點預設校正 + CONFIG 3 拆 3/4 + UI 面板順序重排 + 🎨 吸音板顏色獨立 + checkbox 未勾灰階（11 fix 漸進交付） |
+| `fafc740` | docs: R4-4 Plan v5 決策紀錄寫入 SOP + 敘述中文化 + 品牌名統一 |
+| `36b20cc` | docs: R4-3-追加 通過後處置（SOP ✅ 雙標 + HANDOVER 完工紀錄 + 演算法基準小節）|
 | `0594f00` | R4-3-追加 DONE: 解除漫射反射上限 + ceiling NEE bug 修復（accumCol = → +=）+ A/B 預設值（A=14/1.0/0.85, B=4/2.5/1.0）+ 桌面參考塊 + cache-buster ?v=uncap-test |
 | `03e0454` | R4-3 DONE: 控件接線（UI 事件全面綁定，GIK Minimap 索引修正與舊版視角參數復刻）|
 | `f0be38b` | R4-2 DONE: 12 shader branches flattened, sampleLight11 removed, 3 uniforms removed, CONFIG radio UI implemented |
@@ -168,5 +239,6 @@ Cache-buster：`?v=uncap-test`
 | R4-2 | 12-point shader flattening + sampleStochasticLight11 deletion + 3 uniform removal | ✅ DONE |
 | R4-3 | CONFIG 1/2/3, A/B radio, color-temp radios, lumens, GIK minimap, light checkboxes | ✅ DONE |
 | R4-3-追加 | Uncap diffuse bounce + ceiling NEE bug fix + A/B 預設值（14/1.0/0.85 vs 4/2.5/1.0）| ✅ DONE |
-| R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | Beam→candela coupling; sceneBoxes mutation cost |
+| R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | ✅ DONE (2026-04-24) |
+| R4-4 追加 | CONFIG 3 拆 3/4 + UI 面板順序 + 🎨 吸音板顏色獨立 + checkbox 未勾灰階 | ✅ DONE (2026-04-24，含在 R4-4 commit 內) |
 | R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | Low risk |

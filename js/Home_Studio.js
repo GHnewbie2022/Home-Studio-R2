@@ -199,7 +199,7 @@ addBox([-0.09, 0.758, 0.337], [0.09, 0.759, 0.517], z3, [0.5, 0.5, 0.5], 1, 0, 0
 // R3-3：商品規格 D-35NA12V4DR1 軟條燈 480 lm/m。
 // R3-5b (2-face 甲案): Φ_rod = 480 × L；faceArea = 0.016 × L（+Y 頂 + 外長側 2 面；−Y 被 Cloud 板擋、內長面 + 兩短端本階段不發光 ≈ 0.66% 能量損失登錄 ADR）。
 // 順序 [0]=E [1]=W [2]=S [3]=N 對齊 uCloudEmission / uCloudFaceArea。
-const CLOUD_ROD_LUMENS    = [480 * 2.4, 480 * 2.4, 480 * 1.768, 480 * 1.768];
+const CLOUD_ROD_LUMENS    = [1600 * 2.4, 1600 * 2.4, 1600 * 1.768, 1600 * 1.768];
 const CLOUD_ROD_FACE_AREA = [0.016 * 2.4, 0.016 * 2.4, 0.016 * 1.768, 0.016 * 1.768];
 
 // R3-5b: Cloud 2-face stochastic NEE (甲案)
@@ -347,52 +347,57 @@ function updateBoxDataTexture() {
 
 function applyPanelConfig(config) {
     sceneBoxes.length = BASE_BOX_COUNT;
-    // R2-18 fix22：Config 1/2/3 三者互斥
-    // fix25：Config 3 = 全 GIK（9 片牆 + 6 片天花 Cloud + 燈條 + 軌道燈），表示「完整吸音處理」
+    // R4-4-fix05：CONFIG 3 拆成「3=只 Cloud 漫射燈」+「4=只 軌道+廣角燈」；兩者吸音環境相同（全吸音）
+    // 1: 吸頂燈 + 牆面吸音板（3 片）
+    // 2: 吸頂燈 + 牆面吸音板（9 片配色 2）
+    // 3: 全吸音 + Cloud 燈條（全亮好工作）
+    // 4: 全吸音 + 軌道+廣角燈（冷暖有氣氛）
     if (config === 1) {
         panelConfig1.forEach(function (p) {
             addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
         });
-    } else if (config === 2 || config === 3) {
+    } else if (config === 2 || config === 3 || config === 4) {
         panelConfig2.forEach(function (p) {
             addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
         });
     }
-    // Cloud 聯動：config 3 時開 Cloud 板+燈條+吸頂燈北移；否則關
-    // fix24：軌道燈（投射/廣角）亦隨 Config 3 連動（Config 1/2 關、Config 3 開）
-    var cloudOn = (config === 3);
+    // Cloud 吊頂板 + 吸頂燈撤場：config 3/4 同樣處理（全吸音環境）
+    var fullAbsorb = (config === 3 || config === 4);
+    var cloudLampOn = (config === 3);  // 只 CONFIG 3 開 Cloud 燈條
+    var trackLampOn = (config === 4);  // 只 CONFIG 4 開軌道+廣角燈
     if (pathTracingUniforms && pathTracingUniforms.uCloudPanelEnabled) {
-        pathTracingUniforms.uCloudPanelEnabled.value = cloudOn ? 1.0 : 0.0;
+        pathTracingUniforms.uCloudPanelEnabled.value = fullAbsorb ? 1.0 : 0.0;
     }
     if (pathTracingUniforms && pathTracingUniforms.uCloudLightEnabled) {
-        pathTracingUniforms.uCloudLightEnabled.value = cloudOn ? 1.0 : 0.0;
+        pathTracingUniforms.uCloudLightEnabled.value = cloudLampOn ? 1.0 : 0.0;
     }
     if (pathTracingUniforms && pathTracingUniforms.uTrackLightEnabled) {
-        pathTracingUniforms.uTrackLightEnabled.value = cloudOn ? 1.0 : 0.0;
+        pathTracingUniforms.uTrackLightEnabled.value = trackLampOn ? 1.0 : 0.0;
     }
     if (pathTracingUniforms && pathTracingUniforms.uWideTrackLightEnabled) {
-        pathTracingUniforms.uWideTrackLightEnabled.value = cloudOn ? 1.0 : 0.0;
+        pathTracingUniforms.uWideTrackLightEnabled.value = trackLampOn ? 1.0 : 0.0;
     }
     if (pathTracingUniforms && pathTracingUniforms.uCeilingLampPos) {
-        pathTracingUniforms.uCeilingLampPos.value.z = cloudOn ? 100.0 : 0.591; // CONFIG 3: push outside room (z_max=3.056) so CylinderIntersect never hits
+        pathTracingUniforms.uCeilingLampPos.value.z = fullAbsorb ? 100.0 : 0.591; // CONFIG 3/4: push outside room
     }
-    // R3-4 fix06：Config 3 吸頂燈預設壓 0（軌道燈+Cloud 燈撐場景），Config 1/2 回 900
-    // R4-1：DOM adapter 取代 lil-gui API
-    basicBrightness = cloudOn ? 0 : 900;
-    if (config === 3) {
+    // 吸頂燈：config 1/2 開（900 lm），config 3/4 拆除（0 lm 且整段 DOM 隱藏）
+    basicBrightness = fullAbsorb ? 0 : 900;
+    var brightnessDiv = document.getElementById('slider-brightness');
+    if (brightnessDiv) {
+        brightnessDiv.style.display = fullAbsorb ? 'none' : '';
+    }
+    if (fullAbsorb) {
         setSliderValue('slider-brightness', 0);
-        setSliderEnabled('slider-brightness', false);
-        setSliderLabel('slider-brightness', '吸頂主燈（CONFIG 3 已拆除）');
     } else {
         setSliderEnabled('slider-brightness', true);
         setSliderLabel('slider-brightness', '吸頂主燈');
         setSliderValue('slider-brightness', 900);
     }
-    // GUI checkbox 同步
-    setCheckboxChecked('chkTrack', cloudOn);
-    setCheckboxChecked('chkTrackWideSouth', cloudOn);
-    setCheckboxChecked('chkTrackWideNorth', cloudOn);
-    setCheckboxChecked('chkCloud', cloudOn);
+    // GUI checkbox 同步：config 3 只勾 Cloud；config 4 只勾 track/wide；config 1/2 全不勾
+    setCheckboxChecked('chkCloud', cloudLampOn);
+    setCheckboxChecked('chkTrack', trackLampOn);
+    setCheckboxChecked('chkTrackWideSouth', trackLampOn);
+    setCheckboxChecked('chkTrackWideNorth', trackLampOn);
     syncWideEmissions();
     currentPanelConfig = config;
     buildSceneBVH();
@@ -414,7 +419,12 @@ function applyPanelConfig(config) {
     if (configRadio) configRadio.checked = true;
     var descEl = document.getElementById('config-desc');
     if (descEl) {
-        var descs = { 1: '吸頂燈 + 牆面吸音板', 2: '吸頂燈 + 牆面吸音板（配色 2）', 3: '全吸音處理（Cloud + 軌道燈 + 廣角燈）' };
+        var descs = {
+            1: '吸頂燈 + 牆面吸音板',
+            2: '吸頂燈 + 牆面吸音板（配色 2）',
+            3: '全吸音 + 僅 Cloud 漫射燈（全亮好工作）',
+            4: '全吸音 + 軌道+廣角燈（冷暖有氣氛）'
+        };
         descEl.textContent = descs[config] || '';
     }
 
@@ -431,7 +441,7 @@ function applyPanelConfig(config) {
             var e = document.getElementById(id);
             if (e) e.style.display = '';
         });
-    } else if (config === 3) {
+    } else if (config === 3 || config === 4) {
         var elCeil = document.getElementById('row-ceil'); if (elCeil) elCeil.style.display = 'flex';
         ['blk-n1', 'blk-n3', 'blk-e1', 'blk-e3', 'blk-w1', 'blk-w3'].forEach(function(id) {
             var e = document.getElementById(id);
@@ -444,13 +454,38 @@ function applyPanelConfig(config) {
     }
 }
 
-// R4-1：依 currentPanelConfig 同步燈光 slider enable/disable。
-// Config 1/2 = 吸頂燈撐場景 → 燈光 slider disable。Config 3 = enable。
+// R4-1 / R4-4-fix05 / R4-4-fix08：依 currentPanelConfig 同步燈光面板顯隱。
+// Config 1/2: 吸頂燈 → 燈光 section 全隱藏
+// Config 3: 只 Cloud 顯示（軌道/廣角隱藏）
+// Config 4: 三段全顯示（Cloud 預設 chkCloud=0 可手動補光）
+function setSectionVisible(sectionId, visible) {
+    var sec = document.getElementById(sectionId);
+    if (!sec) return;
+    sec.style.display = visible ? '' : 'none';
+}
 function syncR3ColorUIEnable() {
-    var isConfig3 = (currentPanelConfig === 3);
-    ['slider-lumens', 'slider-track-lumens', 'slider-track-wide-lumens'].forEach(function(id) {
-        setSliderEnabled(id, isConfig3);
-    });
+    var cfg = currentPanelConfig;
+    var cloudSectionVisible = (cfg === 3 || cfg === 4);
+    var trackSectionVisible = (cfg === 4);
+    setSectionVisible('cloud-section', cloudSectionVisible);
+    setSectionVisible('track-section', trackSectionVisible);
+    setSectionVisible('wide-section',  trackSectionVisible);
+    syncSectionInactiveState();
+}
+
+// R4-4-fix10：未勾 checkbox 時 section 子內容套 inactive class（CSS 灰階 + pointer-events disable）
+function syncSectionInactiveState() {
+    var cl = document.getElementById('chkCloud');
+    var tr = document.getElementById('chkTrack');
+    var ws = document.getElementById('chkTrackWideSouth');
+    var wn = document.getElementById('chkTrackWideNorth');
+    var cloudSec = document.getElementById('cloud-section');
+    var trackSec = document.getElementById('track-section');
+    var wideSec  = document.getElementById('wide-section');
+    if (cloudSec) cloudSec.classList.toggle('inactive', !(cl && cl.checked));
+    if (trackSec) trackSec.classList.toggle('inactive', !(tr && tr.checked));
+    var anyWide = (ws && ws.checked) || (wn && wn.checked);
+    if (wideSec) wideSec.classList.toggle('inactive', !anyWide);
 }
 
 // R2-6 旋轉物件定義（center, halfSize, rotY, color）
@@ -577,17 +612,48 @@ const TRACK_BEAM_COS_INNER = Math.cos(TRACK_BEAM_INNER_HALF_DEG * Math.PI / 180)
 const TRACK_BEAM_COS_OUTER = Math.cos(TRACK_BEAM_OUTER_HALF_DEG * Math.PI / 180); // ≈ 0.8660
 
 /**
- * R3-4 fix07：軌道投射燈 emitter radiance W/(sr·m²)。
- * 公式 L = Φ / (K · π · A)：lm→W 除 K(T)、Lambertian 等效除 π、除發光面積 A。
- * 量綱對齊 computeCloudRadiance（radiometric，直接餵 Reinhard tonemap）；
- * 舊版 Φ/(Ω · A) 實為 photometric cd/m²，誤餵 radiometric tonemap → ~1200× overshoot。
- * beam 形狀由 shader smoothstep(cos_outer, cos_inner, cos_ax) 承擔，不影響 radiance 量綱。
- * beamFullDeg 保留簽名避免 call-site churn；R3-5 MIS 升級時可併入 disk area 採樣契約。
+ * R4-4 Plan v5：投射燈中心 candela 反冪律擬合（飛利明Varilumi 22W COB 軌道燈）。
+ * 規格來源 docs/R3_燈具產品規格.md L79：15° → 4800 cd / 60° → 1600 cd @ 2000 lm（比例精確 3x）。
+ * 擬合公式 cd(θ) = a × θ^b：b = log(1/3) / log(4) = -0.7925；a = 4800 × 15^0.7925 ≈ 41696。
+ * 線性比例推廣到任意光通量：cd(θ, 光通量) = a × θ^b × (光通量 / 2000)。
+ * 量綱說明：輸出僅含 candela（lm/sr），不含面積 / π 因子；由 computeTrackRadiance 轉換成 radiance。
+ * 驗算：trackLampCandela(2000, 15) / trackLampCandela(2000, 60) ≈ 3.00 ✓（I5 斷言）。
+ */
+function trackLampCandela(lumens, beamFullDeg) {
+    const a = 41696, b = -0.7925;
+    const theta = Math.max(1e-3, beamFullDeg);
+    return a * Math.pow(theta, b) * (lumens / 2000);
+}
+
+/**
+ * R3-4 fix07 / R4-4-fix02：軌道投射燈 emitter radiance W/(sr·m²)。
+ *
+ * 兩條路徑，**量綱各自嚴格對齊**，勿混：
+ *
+ *   [cd 路徑，主]   L = cd / (K · A)
+ *     cd = trackLampCandela(lm, beamFullDeg)  單位 [lm/sr]（已是方向性強度）
+ *     /K    ：[lm/sr] · [W/lm] = [W/sr]      （光視效率 photometric→radiometric）
+ *     /A    ：[W/sr] / [m²]    = [W/(sr·m²)] （除發光面積得 radiance）
+ *     **不除 π**：cd 已是 per-steradian 的方向強度，不是 Lambertian 面光源總 Φ。
+ *
+ *   [Φ 路徑，fallback]  L = Φ / (K · π · A)
+ *     用於 beamFullDeg 無效時（採 Lambertian 面光源模型：Φ_total 均分到半球各方向）。
+ *     /π：Lambertian 積分常數（Φ = π · A · L 的反算）。
+ *
+ * 歷史教訓（R4-4-fix01）：cd 路徑誤寫 `cd/(K·π·A)` 多除 π，投射燈暗 12.9%（整體刷白、
+ * 冷暖對比淡化、桌子偏暗）。cd 路徑不得加 /π，否則量綱錯（多做一次 Lambertian 分攤）。
+ *
+ * beam 形狀 smoothstep 由 shader 承擔；本函式僅輸出中心軸 radiance。
  */
 function computeTrackRadiance(lm, T_K, A_m2, beamFullDeg) {
     if (!Number.isFinite(lm) || lm <= 0) return 0;
     const K = kelvinToLuminousEfficacy(T_K);
     const A = Math.max(A_m2, 1e-8);
+    if (Number.isFinite(beamFullDeg) && beamFullDeg > 0) {
+        const cd = trackLampCandela(lm, beamFullDeg);
+        return cd / (K * A);  // cd 路徑：不除 π
+    }
+    // Φ 路徑 fallback：Lambertian 面光源模型（舊 R3-4 基準）
     return lm / (K * Math.PI * A);
 }
 // ---------------- /R3-4 Track spot lamp constants & radiance ----------------
@@ -619,6 +685,67 @@ function computeTrackWideRadiance(lm, T_K, A_m2, beamFullDeg) {
 }
 // ---------------- /R3-5a Track wide lamp constants & radiance ----------------
 // ---------------- /R3-1 Photometry Pipeline ----------------
+
+// ---------------- R4-4 甜蜜點 UI 狀態變數 + sceneBoxes 具名索引 ----------------
+// Plan v5 定案：守則 1 介面 1:1 對齊舊專案；這 10 個狀態變數由 initUI 滑桿即時寫入，
+// recomputeTrack*/Wide* 函式搬運至 uniform / sceneBoxes。光束角為全角 deg（shader cos 由 JS 算）。
+//
+// 公式備註（SOP L690/L700）：
+//   trackBaseX  = 0.90 + v（v=0.05~0.90，預設 0.05 → 0.95）
+//   trackWideZ  = v（v=0.05~1.15，預設 0.40）「距 Cloud 邊距」語義（選項 C 定案）：
+//                 使用者原話「讓設計師或師傅現場施工時比較好抓距離」。
+//                 南軌 z = z_cloud_south + v = 1.698 + v
+//                 北軌 z = z_cloud_north - v = -0.702 - v
+//                 v=0.40 預設 → 南軌 z=2.098 / 北軌 z=-1.102（保 R2-15 採購視覺基準）
+//                 v=1.15 上界 → 北軌 z=-1.852（距北牆內面 z=-1.874 安全邊界 22mm）
+let trackBeamInner       = 40;     // 投射燈光束角（內）全角 deg — R4-4-fix06：30→40（COB 硬邊照明典型內緣）
+let trackBeamOuter       = 60;     // 投射燈光束角（外）全角 deg — R4-4-fix06：55→60（貼齊商規 1600 cd 基準 + cd(2000,60)=1625）
+let trackTilt            = 45;     // 投射燈傾斜角 deg（由軌道中心往外側傾斜）
+let trackSpacing         = 150;    // 投射燈 N-S 間距 cm（中心 z_mid=0.498 半距 d=spacing/200 m）
+let trackBaseX           = 0.95;   // 投射燈軌道 x 絕對位置（滑桿值 v=0.05 對應 0.90 + 0.05）
+let trackWideBeamInner   = 90;     // 廣角燈光束角（內）全角 deg — R4-4-fix06：95→90（散光柔和內緣）
+let trackWideBeamOuter   = 120;    // 廣角燈光束角（外）全角 deg — 廠商規格書固定 120°，不進反冪律
+let trackWideTiltSouth   = 30;     // 廣角燈南側傾斜角 deg（R4-4-fix04：避 Cam3 視野高光點）
+let trackWideTiltNorth   = -30;    // 廣角燈北側傾斜角 deg（R4-4-fix03 甜蜜點：-25→-30）
+let trackWideZ           = 0.20;   // 廣角燈距 Cloud 邊距 m（R4-4-fix03 甜蜜點：0.40→0.20，貼近 Cloud 邊緣）
+
+// sceneBoxes 具名索引：避免硬編碰撞桌面參考塊與未來新增幾何
+// R4-4 fix：原誤寫 37/41/45/47（邏輯 ID，對應舊 plan 註解）→ 實際 sceneBoxes index 為 53/57/61/63
+// 錯因：plan 註解「37 西軌底座北半」屬邏輯編號，但 addBox 實押 sceneBoxes index 受複合物件影響
+//       （0a/0c/0d.. 地面 7 片、1a/1c/1d.. 天花板 7 片、2a/2b 北牆裂塊、6a/6b 南牆裂塊等每子塊各 push 一次）
+// 實證計數（見本檔 L76-197 addBox 序列）：
+//   idx [0..6]   地面 7 片        idx [7..13]  天花板 7 片
+//   idx [14..18] 北牆 5 片         idx [19]     東牆
+//   idx [20..24] 南牆 5 片         idx [25..27] 西牆 3 片
+//   idx [28..31] 樑 / 角柱 4 片    idx [32..36] 傢俱 5 片
+//   idx [37..40] 西南抽屜 4 格     idx [41..43] 門 + 窗景 3 片
+//   idx [44]     KH750 超低音      idx [45..50] 插座 6 片
+//   idx [51..52] 冷氣 2 片
+//   idx [53..56] 投射燈軌道底座（fixtureGroup=1）→ TRACK_BASE_IDX = 53
+//   idx [57..60] 投射燈支架（fixtureGroup=1）    → TRACK_STAND_IDX = 57
+//   idx [61..62] 廣角燈軌道（fixtureGroup=2）    → TRACK_WIDE_BASE_IDX = 61
+//   idx [63..64] 廣角燈支架（fixtureGroup=2）    → TRACK_WIDE_STAND_IDX = 63
+//   idx [65..70] Cloud 吸音板 6 片
+//   idx [71..74] Cloud 燈條 4 支 ← CLOUD_BOX_IDX_BASE = 71 之基準
+//   idx [75]     桌面參考塊
+const TRACK_BASE_IDX       = 53;
+const TRACK_STAND_IDX      = 57;
+const TRACK_WIDE_BASE_IDX  = 61;
+const TRACK_WIDE_STAND_IDX = 63;
+// throw-first assertion：任何未來新增幾何插入中段時索引錯位立即爆炸（對齊 L187 CLOUD_BOX_IDX_BASE 守護模式）
+if (sceneBoxes[TRACK_BASE_IDX].fixtureGroup !== 1) {
+    throw new Error('[R4-4] TRACK_BASE_IDX 錯位；sceneBoxes[' + TRACK_BASE_IDX + '] 期望 Track 底座 fixtureGroup=1，實得 ' + sceneBoxes[TRACK_BASE_IDX].fixtureGroup);
+}
+if (sceneBoxes[TRACK_STAND_IDX].fixtureGroup !== 1) {
+    throw new Error('[R4-4] TRACK_STAND_IDX 錯位；sceneBoxes[' + TRACK_STAND_IDX + '] 期望 Track 支架 fixtureGroup=1，實得 ' + sceneBoxes[TRACK_STAND_IDX].fixtureGroup);
+}
+if (sceneBoxes[TRACK_WIDE_BASE_IDX].fixtureGroup !== 2) {
+    throw new Error('[R4-4] TRACK_WIDE_BASE_IDX 錯位；sceneBoxes[' + TRACK_WIDE_BASE_IDX + '] 期望 Wide 軌道 fixtureGroup=2，實得 ' + sceneBoxes[TRACK_WIDE_BASE_IDX].fixtureGroup);
+}
+if (sceneBoxes[TRACK_WIDE_STAND_IDX].fixtureGroup !== 2) {
+    throw new Error('[R4-4] TRACK_WIDE_STAND_IDX 錯位；sceneBoxes[' + TRACK_WIDE_STAND_IDX + '] 期望 Wide 支架 fixtureGroup=2，實得 ' + sceneBoxes[TRACK_WIDE_STAND_IDX].fixtureGroup);
+}
+// ---------------- /R4-4 ----------------
 
 let wallAlbedo = 0.85;
 
@@ -1135,20 +1262,19 @@ function initSceneData() {
 
     // R2-15 廣角燈頭（2 盞矮胖圓柱，半徑 5cm、長 7.2cm）
     // pivot = 支架底 y=2.845；形狀撈自舊專案 Path Tracking 260412a 5.4 Clarity.html
-    // R3-6.5 post-verify：還原舊專案最後配置（tilt 南 +15°、北 -25°，雙燈朝外打，非對稱非對打）
-    // 舊專案 L422-423：trackWideTiltSouth=15, trackWideTiltNorth=-25
-    // 修正 R2-15 重建時誤設為對打（南朝北、北朝南），導致光線被 GIK 吸音板遮擋造成北牆陰影
-    var _wideSinS = Math.sin( 15 * Math.PI / 180);
-    var _wideCosS = Math.cos( 15 * Math.PI / 180);
-    var _wideSinN = Math.sin(-25 * Math.PI / 180);
-    var _wideCosN = Math.cos(-25 * Math.PI / 180);
+    // R4-4-fix04 甜蜜點：tilt 南 +30°（朝南外傾避 Cam3 高光點）、北 -30°（朝北外傾對稱）
+    // 距 Cloud 邊距 0.20 m → 南軌 z=1.898、北軌 z=-0.902
+    var _wideSinS = Math.sin( 30 * Math.PI / 180);
+    var _wideCosS = Math.cos( 30 * Math.PI / 180);
+    var _wideSinN = Math.sin(-30 * Math.PI / 180);
+    var _wideCosN = Math.cos(-30 * Math.PI / 180);
     pathTracingUniforms.uTrackWideLampPos = { value: [
-        new THREE.Vector3(0.0, 2.845,  2.100), // 南 (z=2.1)
-        new THREE.Vector3(0.0, 2.845, -1.100)  // 北 (z=-1.1)
+        new THREE.Vector3(0.0, 2.845,  1.898), // 南 (1.698 + 0.20)
+        new THREE.Vector3(0.0, 2.845, -0.902)  // 北 (-0.702 - 0.20)
     ] };
     pathTracingUniforms.uTrackWideLampDir = { value: [
-        new THREE.Vector3(0, -_wideCosS,  _wideSinS), // 南燈 +15° 朝南打（Z 正向）
-        new THREE.Vector3(0, -_wideCosN,  _wideSinN)  // 北燈 -25° 朝北打（Z 負向）
+        new THREE.Vector3(0, -_wideCosS,  _wideSinS), // 南燈 0° 垂直朝下
+        new THREE.Vector3(0, -_wideCosN,  _wideSinN)  // 北燈 -30° 朝北打
     ] };
 
     // R3-6.5 Dynamic Light Pool uniforms
@@ -1226,19 +1352,22 @@ function computeLightEmissions() {
         const trackRLin = Math.pow(trackSrgb.r, 2.2);
         const trackGLin = Math.pow(trackSrgb.g, 2.2);
         const trackBLin = Math.pow(trackSrgb.b, 2.2);
+        // R4-4：beamFullDeg 從硬編 TRACK_BEAM_FULL_DEG 改為動態 trackBeamOuter（滑桿可變）
         const radiance = computeTrackRadiance(
             trackLumens,
             trackKelvin[i],
             TRACK_LAMP_EMITTER_AREA,
-            TRACK_BEAM_FULL_DEG
+            trackBeamOuter
         );
         pathTracingUniforms.uTrackEmission.value[i].set(
             radiance * trackRLin,
             radiance * trackGLin,
             radiance * trackBLin
         );
-        // beam 四盞共值（per-lamp 升級空間留 R3-5），重寫保 onChange 後 GPU 端同步
-        pathTracingUniforms.uTrackBeamCos.value[i].set(TRACK_BEAM_COS_INNER, TRACK_BEAM_COS_OUTER);
+        // R4-4：beam cos 由 trackBeamInner / trackBeamOuter（全角 deg）即時算，取代 R3-4 靜態 const
+        const trackCosInner = Math.cos((trackBeamInner * 0.5) * Math.PI / 180);
+        const trackCosOuter = Math.cos((trackBeamOuter * 0.5) * Math.PI / 180);
+        pathTracingUniforms.uTrackBeamCos.value[i].set(trackCosInner, trackCosOuter);
         trackRadianceDebug.push({ r: +(radiance * trackRLin).toFixed(4), g: +(radiance * trackGLin).toFixed(4), b: +(radiance * trackBLin).toFixed(4) });
     }
 
@@ -1250,6 +1379,8 @@ function computeLightEmissions() {
         const wideRLin = Math.pow(wideSrgb.r, 2.2);
         const wideGLin = Math.pow(wideSrgb.g, 2.2);
         const wideBLin = Math.pow(wideSrgb.b, 2.2);
+        // R4-4：廣角燈無變焦（廠商規格書僅 120° 固定），computeTrackWideRadiance 保留 L=Φ/(K·π·A) 量綱；
+        // beamFullDeg 仍傳靜態 TRACK_WIDE_BEAM_FULL_DEG（120°）維持簽名相容。
         const radiance = computeTrackWideRadiance(
             trackWideLumens,
             trackWideKelvin[i],
@@ -1261,7 +1392,10 @@ function computeLightEmissions() {
             radiance * wideGLin,
             radiance * wideBLin
         );
-        pathTracingUniforms.uTrackWideBeamCos.value[i].set(TRACK_WIDE_BEAM_COS_INNER, TRACK_WIDE_BEAM_COS_OUTER);
+        // R4-4：廣角 cos 由 trackWideBeamInner / trackWideBeamOuter 即時算（僅影響邊緣 smoothstep 柔和度，不改中心亮度）
+        const wideCosInner = Math.cos((trackWideBeamInner * 0.5) * Math.PI / 180);
+        const wideCosOuter = Math.cos((trackWideBeamOuter * 0.5) * Math.PI / 180);
+        pathTracingUniforms.uTrackWideBeamCos.value[i].set(wideCosInner, wideCosOuter);
         trackWideRadianceDebug.push({ r: +(radiance * wideRLin).toFixed(4), g: +(radiance * wideGLin).toFixed(4), b: +(radiance * wideBLin).toFixed(4) });
     }
 
@@ -1292,12 +1426,15 @@ function computeLightEmissions() {
         trackMode: trackColorMode,
         trackKelvin: trackKelvin.slice(),
         trackLumens: trackLumens,
-        trackBeamFullDeg: TRACK_BEAM_FULL_DEG,
+        trackBeamInner: trackBeamInner,      // R4-4：動態全角（內）
+        trackBeamOuter: trackBeamOuter,      // R4-4：動態全角（外，入 trackLampCandela）
+        trackCandelaCenter: +trackLampCandela(trackLumens, trackBeamOuter).toFixed(1),  // R4-4 I5 監控
         trackRadiance: trackRadianceDebug,
         trackLampIdBase: pathTracingUniforms.uTrackLampIdBase.value,
         trackWideKelvin: trackWideKelvin.slice(),
         trackWideLumens: trackWideLumens,
-        trackWideBeamFullDeg: TRACK_WIDE_BEAM_FULL_DEG,
+        trackWideBeamInner: trackWideBeamInner,   // R4-4：動態全角（內）
+        trackWideBeamOuter: trackWideBeamOuter,   // R4-4：動態全角（外，廠商 120° 固定）
         trackWideRadiance: trackWideRadianceDebug,
         trackWideLampIdBase: pathTracingUniforms.uTrackWideLampIdBase.value,
     });
@@ -1322,8 +1459,9 @@ function rebuildActiveLightLUT(source) {
     if (config === 1 || config === 2) {
         // ceiling-only panel setups；track/wide/cloud checkbox 於 CONFIG 1/2 不納入 pool（由 CONFIG 3 統一接管）
         lut[count++] = 0;
-    } else if (config === 3) {
-        // CONFIG 3：ceiling 撤場，依 checkbox gate 加入 track / wide / cloud slots
+    } else if (config === 3 || config === 4) {
+        // CONFIG 3（只 Cloud）/ 4（只 軌道+廣角）：ceiling 撤場，依 checkbox gate 動態加入 slots
+        // applyPanelConfig 會依 config 預設 checkbox（3→只 Cloud 勾；4→只 軌道+廣角 勾）
         if (trackOn) { lut[count++] = 1; lut[count++] = 2; lut[count++] = 3; lut[count++] = 4; }
         var wideSouthChk = document.getElementById('chkTrackWideSouth');
         var wideNorthChk = document.getElementById('chkTrackWideNorth');
@@ -1401,6 +1539,204 @@ function setCheckboxChecked(checkboxId, checked) {
 function wakeRender() {
     sceneParamsChanged = true;
 }
+
+// ---------------- R4-4 甜蜜點 UI recompute 輔助 ----------------
+// 幾何常數（對齊 L150-167 addBox 初值，半寬 = FULL size / 2）
+const R4_4_TRACK_BASE_HALF_X       = 0.0175;   // 軌道底座半寬 x（FULL=0.035）
+const R4_4_TRACK_BASE_Y_MIN        = 2.885;    // 軌道底座 y 下緣（固定）
+const R4_4_TRACK_BASE_Y_MAX        = 2.905;    // 軌道底座 y 上緣（固定）
+const R4_4_TRACK_BASE_Z_MIN_OFFSET = -0.502;   // 軌道底座 z 範圍（相對 z=0）— 2m 軌道長度
+const R4_4_TRACK_BASE_Z_MAX_OFFSET =  1.498;
+const R4_4_TRACK_STAND_HALF_X      = 0.01;     // 支架半寬 x（FULL=0.02）
+const R4_4_TRACK_STAND_HALF_Z      = 0.01;     // 支架半寬 z（FULL=0.02）
+const R4_4_TRACK_STAND_Y_MIN       = 2.819;    // 支架 y 下緣（pivot）
+const R4_4_TRACK_STAND_Y_MAX       = 2.884;    // 支架 y 上緣
+const R4_4_TRACK_Z_MID             = 0.498;    // 軌道中心 z_mid（見 L150-153 底座 z 範圍 [-0.502, 1.498]）
+const R4_4_WIDE_BASE_HALF_X        = 1.000;    // 廣角軌道半寬 x（FULL=2.0）
+const R4_4_WIDE_BASE_HALF_Z        = 0.0175;   // 廣角軌道半寬 z（FULL=0.035）
+const R4_4_WIDE_BASE_Y_MIN         = 2.885;
+const R4_4_WIDE_BASE_Y_MAX         = 2.905;
+const R4_4_WIDE_STAND_HALF_X       = 0.010;
+const R4_4_WIDE_STAND_HALF_Z       = 0.010;
+const R4_4_WIDE_STAND_Y_MIN        = 2.845;
+const R4_4_WIDE_STAND_Y_MAX        = 2.885;
+const R4_4_WIDE_Z_MID              = 0.500;    // 廣角軌道中心對稱軸 z_mid（南 +trackWideZ、北 -trackWideZ 時此為基準）
+
+/**
+ * R4-4：投射燈光束角 / 傾斜角 → uTrackLampDir + uTrackBeamCos（由 computeLightEmissions 承擔 cos）。
+ * 僅更新 uniform，零 BVH / sceneBoxes 改動。tilt 以軌道中心為 pivot，signX= -1(W) / +1(E)。
+ */
+function recomputeTrackGeometry() {
+    const s = Math.sin(trackTilt * Math.PI / 180);
+    const c = Math.cos(trackTilt * Math.PI / 180);
+    pathTracingUniforms.uTrackLampDir.value[0].set(-s, -c, 0); // NW 向西外傾
+    pathTracingUniforms.uTrackLampDir.value[1].set( s, -c, 0); // NE 向東外傾
+    pathTracingUniforms.uTrackLampDir.value[2].set(-s, -c, 0); // SW
+    pathTracingUniforms.uTrackLampDir.value[3].set( s, -c, 0); // SE
+    computeLightEmissions(); // 同步 uTrackBeamCos + uTrackEmission（反冪律變數含 beamOuter）
+    console.log('[R4-4] uniform-only update trackGeometry', {
+        trackTilt: trackTilt,
+        trackBeamInner: trackBeamInner,
+        trackBeamOuter: trackBeamOuter
+    });
+}
+
+/**
+ * R4-4：投射燈 N-S 間距 / 軌道 x 位置 → sceneBoxes 37..44 + uTrackLampPos。
+ * 更新 sceneBoxes 後呼叫 updateBoxDataTexture()；BVH 重建由呼叫端依指針策略決定（拖動期不重建）。
+ */
+function recomputeTrackPositions() {
+    // 護欄：防止未來新增幾何把索引推飄時誤改桌面參考塊（index 75）或 Cloud 幾何（65-74）
+    if (sceneBoxes[TRACK_BASE_IDX].fixtureGroup !== 1) {
+        throw new Error('[R4-4] recomputeTrackPositions: TRACK_BASE_IDX drift, expected fg=1');
+    }
+    if (sceneBoxes[TRACK_STAND_IDX].fixtureGroup !== 1) {
+        throw new Error('[R4-4] recomputeTrackPositions: TRACK_STAND_IDX drift, expected fg=1');
+    }
+    const d = trackSpacing / 200;           // cm → m 半距（spacing=150 → d=0.75）
+    const z_mid = R4_4_TRACK_Z_MID;
+    const z_N = z_mid - d;
+    const z_S = z_mid + d;
+    const x_W = -trackBaseX;
+    const x_E =  trackBaseX;
+
+    // 軌道底座 37..40：z 範圍固定（非對稱 -0.502..1.498），僅 x 隨 trackBaseX
+    // 對位 L150-153：37 西北半 / 38 西南半 / 39 東北半 / 40 東南半
+    const baseHX = R4_4_TRACK_BASE_HALF_X;
+    const bases = [
+        { x: x_W, zMin: z_mid, zMax: R4_4_TRACK_BASE_Z_MAX_OFFSET }, // 37 西軌底座北半
+        { x: x_W, zMin: R4_4_TRACK_BASE_Z_MIN_OFFSET, zMax: z_mid }, // 38 西軌底座南半
+        { x: x_E, zMin: z_mid, zMax: R4_4_TRACK_BASE_Z_MAX_OFFSET }, // 39 東軌底座北半
+        { x: x_E, zMin: R4_4_TRACK_BASE_Z_MIN_OFFSET, zMax: z_mid }, // 40 東軌底座南半
+    ];
+    for (let i = 0; i < 4; i++) {
+        const box = sceneBoxes[TRACK_BASE_IDX + i];
+        box.min[0] = bases[i].x - baseHX; box.max[0] = bases[i].x + baseHX;
+        box.min[1] = R4_4_TRACK_BASE_Y_MIN; box.max[1] = R4_4_TRACK_BASE_Y_MAX;
+        box.min[2] = bases[i].zMin; box.max[2] = bases[i].zMax;
+    }
+
+    // 支架 41..44：NW / NE / SW / SE
+    // 對位 L156-159：41 NW / 42 NE / 43 SW / 44 SE
+    const standHX = R4_4_TRACK_STAND_HALF_X, standHZ = R4_4_TRACK_STAND_HALF_Z;
+    const stands = [
+        { x: x_W, z: z_N }, // 41 NW
+        { x: x_E, z: z_N }, // 42 NE
+        { x: x_W, z: z_S }, // 43 SW
+        { x: x_E, z: z_S }, // 44 SE
+    ];
+    for (let i = 0; i < 4; i++) {
+        const box = sceneBoxes[TRACK_STAND_IDX + i];
+        box.min[0] = stands[i].x - standHX; box.max[0] = stands[i].x + standHX;
+        box.min[1] = R4_4_TRACK_STAND_Y_MIN; box.max[1] = R4_4_TRACK_STAND_Y_MAX;
+        box.min[2] = stands[i].z - standHZ; box.max[2] = stands[i].z + standHZ;
+        // uTrackLampPos 四盞順序 NW / NE / SW / SE 對齊 L1123-1128
+        pathTracingUniforms.uTrackLampPos.value[i].set(stands[i].x, R4_4_TRACK_STAND_Y_MIN, stands[i].z);
+    }
+    updateBoxDataTexture();
+    console.log('[R4-4] uniform+sceneBoxes update trackPositions', {
+        trackSpacing: trackSpacing,
+        trackBaseX: trackBaseX
+    });
+}
+
+/**
+ * R4-4：廣角燈南北傾斜角 → uTrackWideLampDir + uTrackWideBeamCos（由 computeLightEmissions 承擔 cos）。
+ * 廣角 beam 全角 120° 固定，反冪律不適用；僅更新 uniform。
+ */
+function recomputeWideGeometry() {
+    const sS = Math.sin(trackWideTiltSouth * Math.PI / 180);
+    const cS = Math.cos(trackWideTiltSouth * Math.PI / 180);
+    const sN = Math.sin(trackWideTiltNorth * Math.PI / 180);
+    const cN = Math.cos(trackWideTiltNorth * Math.PI / 180);
+    pathTracingUniforms.uTrackWideLampDir.value[0].set(0, -cS,  sS); // 南燈 +朝南（Z 正向）
+    pathTracingUniforms.uTrackWideLampDir.value[1].set(0, -cN,  sN); // 北燈 -朝北（Z 負向）
+    computeLightEmissions(); // 同步 uTrackWideBeamCos + uTrackWideEmission
+    console.log('[R4-4] uniform-only update wideGeometry', {
+        trackWideTiltSouth: trackWideTiltSouth,
+        trackWideTiltNorth: trackWideTiltNorth,
+        trackWideBeamInner: trackWideBeamInner,
+        trackWideBeamOuter: trackWideBeamOuter
+    });
+}
+
+/**
+ * R4-4：廣角燈「距 Cloud 邊距」→ sceneBoxes 45..48（= TRACK_WIDE_*_IDX + 0..1）+ uTrackWideLampPos。
+ * 選項 C 語義（使用者原話「讓設計師或師傅現場施工時比較好抓距離」）：
+ *   南軌 z = z_cloud_south + trackWideZ（Cloud 南邊緣 1.698 + v）
+ *   北軌 z = z_cloud_north - trackWideZ（Cloud 北邊緣 -0.702 - v）
+ * 範圍 v=0.05~1.15：v=0.40 預設對應 +2.098/-1.102；v=1.15 上界 → 北軌 z=-1.852 距北牆 22mm。
+ */
+function recomputeWidePositions() {
+    // 護欄：防止未來新增幾何把索引推飄時誤改桌面參考塊（index 75）或 Cloud 燈條（71-74）
+    if (sceneBoxes[TRACK_WIDE_BASE_IDX].fixtureGroup !== 2) {
+        throw new Error('[R4-4] recomputeWidePositions: TRACK_WIDE_BASE_IDX drift, expected fg=2');
+    }
+    if (sceneBoxes[TRACK_WIDE_STAND_IDX].fixtureGroup !== 2) {
+        throw new Error('[R4-4] recomputeWidePositions: TRACK_WIDE_STAND_IDX drift, expected fg=2');
+    }
+    const z_cloud_south =  1.698;  // Cloud 南邊緣（sceneBoxes 52/53/54 bmax.z，見 L176-178）
+    const z_cloud_north = -0.702;  // Cloud 北邊緣（sceneBoxes 49/50/51 bmin.z，見 L173-175）
+    const z_S = z_cloud_south + trackWideZ;
+    const z_N = z_cloud_north - trackWideZ;
+    const baseHX = R4_4_WIDE_BASE_HALF_X, baseHZ = R4_4_WIDE_BASE_HALF_Z;
+    const standHX = R4_4_WIDE_STAND_HALF_X, standHZ = R4_4_WIDE_STAND_HALF_Z;
+    // 45 南軌、46 北軌、47 南支架、48 北支架（見 L164-167）
+    const south = sceneBoxes[TRACK_WIDE_BASE_IDX + 0];
+    south.min[0] = -baseHX; south.max[0] =  baseHX;
+    south.min[1] = R4_4_WIDE_BASE_Y_MIN; south.max[1] = R4_4_WIDE_BASE_Y_MAX;
+    south.min[2] = z_S - baseHZ; south.max[2] = z_S + baseHZ;
+    const north = sceneBoxes[TRACK_WIDE_BASE_IDX + 1];
+    north.min[0] = -baseHX; north.max[0] =  baseHX;
+    north.min[1] = R4_4_WIDE_BASE_Y_MIN; north.max[1] = R4_4_WIDE_BASE_Y_MAX;
+    north.min[2] = z_N - baseHZ; north.max[2] = z_N + baseHZ;
+    const standS = sceneBoxes[TRACK_WIDE_STAND_IDX + 0];
+    standS.min[0] = -standHX; standS.max[0] =  standHX;
+    standS.min[1] = R4_4_WIDE_STAND_Y_MIN; standS.max[1] = R4_4_WIDE_STAND_Y_MAX;
+    standS.min[2] = z_S - standHZ; standS.max[2] = z_S + standHZ;
+    const standN = sceneBoxes[TRACK_WIDE_STAND_IDX + 1];
+    standN.min[0] = -standHX; standN.max[0] =  standHX;
+    standN.min[1] = R4_4_WIDE_STAND_Y_MIN; standN.max[1] = R4_4_WIDE_STAND_Y_MAX;
+    standN.min[2] = z_N - standHZ; standN.max[2] = z_N + standHZ;
+    // uTrackWideLampPos 順序 [0]=南 / [1]=北（對齊 L1204 uniform 定義；此處 Y=2.845 支架底 = stand min.y）
+    pathTracingUniforms.uTrackWideLampPos.value[0].set(0.0, R4_4_WIDE_STAND_Y_MIN, z_S);
+    pathTracingUniforms.uTrackWideLampPos.value[1].set(0.0, R4_4_WIDE_STAND_Y_MIN, z_N);
+    updateBoxDataTexture();
+    console.log('[R4-4] uniform+sceneBoxes update widePositions', {
+        trackWideZ: trackWideZ,
+        z_S: z_S,
+        z_N: z_N
+    });
+}
+
+// R4-4：BVH 指針按下鎖 + 指針放開 + 50 ms 尾端防抖策略
+// 拖動期間：sceneBoxes 位置即時更新但 BVH 不重建（陰影暫時滯留 1 幀級）
+// 放開瞬間：50 ms 防抖觸發 buildSceneBVH()，陰影對齊回正確位置
+let r4_4_rebuildLock = false;
+let r4_4_rebuildTimer = null;
+function attachBVHPointerStrategy(sliderId) {
+    const c = document.getElementById(sliderId);
+    if (!c) return;
+    const r = c.querySelector('input[type=range]');
+    if (!r) return;
+    r.addEventListener('pointerdown', function() {
+        r4_4_rebuildLock = true;
+    });
+    const release = function() {
+        r4_4_rebuildLock = false;
+        if (r4_4_rebuildTimer) clearTimeout(r4_4_rebuildTimer);
+        r4_4_rebuildTimer = setTimeout(function() {
+            const t0 = performance.now();
+            buildSceneBVH();
+            const dt = performance.now() - t0;
+            console.log('[R4-4] BVH rebuild ' + dt.toFixed(1) + 'ms (sliderId=' + sliderId + ')');
+            wakeRender();
+        }, 50);
+    };
+    r.addEventListener('pointerup', release);
+    r.addEventListener('pointerleave', release); // 後備：指針被其他介面吞的保險
+}
+// ---------------- /R4-4 甜蜜點 UI recompute 輔助 ----------------
 
 function initUI() {
     // Panel header toggle
@@ -1517,6 +1853,7 @@ function initUI() {
             pathTracingUniforms.uCloudLightEnabled.value = e.target.checked ? 1.0 : 0.0;
         }
         rebuildActiveLightLUT('cloudCheckbox');
+        syncSectionInactiveState();
         wakeRender();
     };
 
@@ -1527,6 +1864,7 @@ function initUI() {
             pathTracingUniforms.uTrackLightEnabled.value = e.target.checked ? 1.0 : 0.0;
         }
         rebuildActiveLightLUT('trackCheckbox');
+        syncSectionInactiveState();
         wakeRender();
     };
 
@@ -1540,6 +1878,7 @@ function initUI() {
         }
         syncWideEmissions();
         rebuildActiveLightLUT('wideCheckbox');
+        syncSectionInactiveState();
         wakeRender();
     };
 
@@ -1553,11 +1892,12 @@ function initUI() {
         }
         syncWideEmissions();
         rebuildActiveLightLUT('wideCheckbox');
+        syncSectionInactiveState();
         wakeRender();
     };
 
     // Cloud lumens
-    createS('slider-lumens', '光通量 (lm/m)', 0, 4000, 1, 800, function(v) {
+    createS('slider-lumens', '光通量 (lm/m)', 0, 4000, 1, 1600, function(v) {
         CLOUD_ROD_LUMENS[0] = v * 2.4;
         CLOUD_ROD_LUMENS[1] = v * 2.4;
         CLOUD_ROD_LUMENS[2] = v * 1.768;
@@ -1568,19 +1908,58 @@ function initUI() {
     });
 
     // Track lumens
-    createS('slider-track-lumens', '光通量 (單盞)', 0, 3000, 50, 500, function(v) {
+    createS('slider-track-lumens', '光通量 (單盞)', 0, 3000, 50, 2000, function(v) {
         trackLumens = v;
         computeLightEmissions();
         wakeRender();
         return v;
     });
 
-    // Track sweet-spot sliders (R4-4 will wire real logic; R4-1 = wakeRender shell)
-    createS('slider-track-beam-inner', '光束角(內)', 1, 90, 1, 30, function(v) { wakeRender(); return v; });
-    createS('slider-track-beam-outer', '光束角(外)', 15, 90, 1, 55, function(v) { wakeRender(); return v; });
-    createS('slider-track-tilt', '傾斜角', 0, 90, 1, 45, function(v) { wakeRender(); return v; });
-    createS('slider-track-space', '間距 (cm)', 0, 180, 1, 150, function(v) { wakeRender(); return v; });
-    createS('slider-track-x', '距Cloud邊距', 0.05, 0.90, 0.01, 0.05, function(v) { wakeRender(); return v; });
+    // R4-4 投射燈甜蜜點滑桿（5 條）— 接線至反冪律 radiance + 動態 cos + sceneBoxes 位置
+    // 光束角互鎖：卡自己（v5 規格 L704-707），非推對側
+    createS('slider-track-beam-inner', '光束角(內)', 1, 90, 1, 40, function(v) {
+        v = Math.min(v, trackBeamOuter); // 卡自己：內緣最高 = 當時外緣值
+        trackBeamInner = v;
+        recomputeTrackGeometry();
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-beam-outer', '光束角(外)', 15, 90, 1, 60, function(v) {
+        v = Math.max(v, trackBeamInner); // 卡自己：外緣最低 = 當時內緣值
+        trackBeamOuter = v;
+        recomputeTrackGeometry();
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-tilt', '傾斜角', 0, 90, 1, 45, function(v) {
+        trackTilt = v;
+        recomputeTrackGeometry();
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-space', '間距 (cm)', 0, 180, 1, 150, function(v) {
+        trackSpacing = v;
+        recomputeTrackPositions();
+        // BVH 重建：拖動期 r4_4_rebuildLock=true 時跳過；鍵盤 / number input 類無指針事件即時重建
+        if (!r4_4_rebuildLock) {
+            const t0 = performance.now();
+            buildSceneBVH();
+            console.log('[R4-4] BVH rebuild ' + (performance.now() - t0).toFixed(1) + 'ms (no-pointer, slider-track-space)');
+        }
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-x', '距Cloud邊距', 0.05, 0.90, 0.01, 0.05, function(v) {
+        trackBaseX = 0.90 + v;
+        recomputeTrackPositions();
+        if (!r4_4_rebuildLock) {
+            const t0 = performance.now();
+            buildSceneBVH();
+            console.log('[R4-4] BVH rebuild ' + (performance.now() - t0).toFixed(1) + 'ms (no-pointer, slider-track-x)');
+        }
+        wakeRender();
+        return v;
+    });
 
     // Wide lumens
     createS('slider-track-wide-lumens', '光通量 (單盞)', 0, 4000, 50, 2500, function(v) {
@@ -1590,12 +1969,49 @@ function initUI() {
         return v;
     });
 
-    // Wide sweet-spot sliders
-    createS('slider-track-wide-beam-inner', '廣角束角(內)', 10, 160, 1, 95, function(v) { wakeRender(); return v; });
-    createS('slider-track-wide-beam-outer', '廣角束角(外)', 60, 160, 1, 120, function(v) { wakeRender(); return v; });
-    createS('slider-track-wide-tilt-south', '南側傾斜角', -70, 70, 1, 15, function(v) { wakeRender(); return v; });
-    createS('slider-track-wide-tilt-north', '北側傾斜角', -70, 70, 1, -25, function(v) { wakeRender(); return v; });
-    createS('slider-track-wide-z', '距Cloud邊距', 0.10, 1.30, 0.01, 0.10, function(v) { wakeRender(); return v; });
+    // R4-4 廣角燈甜蜜點滑桿（4 條接線 + 1 條停手）
+    // 光束角互鎖：卡自己（v5 規格 L704-707）；廣角 120° 固定無變焦，不進反冪律
+    createS('slider-track-wide-beam-inner', '廣角束角(內)', 10, 160, 1, 90, function(v) {
+        v = Math.min(v, trackWideBeamOuter);
+        trackWideBeamInner = v;
+        recomputeWideGeometry();
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-wide-beam-outer', '廣角束角(外)', 60, 160, 1, 120, function(v) {
+        v = Math.max(v, trackWideBeamInner);
+        trackWideBeamOuter = v;
+        recomputeWideGeometry();
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-wide-tilt-south', '南側傾斜角', -70, 70, 1, 30, function(v) {
+        trackWideTiltSouth = v;
+        recomputeWideGeometry();
+        wakeRender();
+        return v;
+    });
+    createS('slider-track-wide-tilt-north', '北側傾斜角', -70, 70, 1, -30, function(v) {
+        trackWideTiltNorth = v;
+        recomputeWideGeometry();
+        wakeRender();
+        return v;
+    });
+    // R4-4 第 10 條滑桿「距 Cloud 邊距」（選項 C 語義）：
+    //   v = 軌道外緣到 Cloud 最近邊緣的直線距離（使用者原話：現場施工好抓距離）
+    //   南軌 z = z_cloud_south(1.698) + v；北軌 z = z_cloud_north(-0.702) - v
+    //   範圍 0.05 ~ 1.15：v=0.40 預設 → ±2.098/-1.102（保 R2-15 視覺基準）；v=1.15 → 北軌 z=-1.852 距北牆 22mm
+    createS('slider-track-wide-z', '距Cloud邊距', 0.05, 1.15, 0.01, 0.20, function(v) {
+        trackWideZ = v;
+        recomputeWidePositions();
+        if (!r4_4_rebuildLock) {
+            const t0 = performance.now();
+            buildSceneBVH();
+            console.log('[R4-4] BVH rebuild ' + (performance.now() - t0).toFixed(1) + 'ms (no-pointer, slider-track-wide-z)');
+        }
+        wakeRender();
+        return v;
+    });
 
     // GIK Minimap state & logic
     var gikColors = [0, 0, 0, 0, 0, 0, 0, 0, 0]; // 9 wall panels (W1, W2, W3, E1, E2, E3, N1, N2, N3 mapping to index 0-8)
@@ -1871,6 +2287,12 @@ function initUI() {
         topRightGroup.addEventListener('click', function(e) { e.stopPropagation(); }, false);
     }
 
+
+    // R4-4：BVH 指針策略綁定（拖動期鎖 + 指針放開 50 ms 防抖）
+    // 投射燈間距 / 投射燈軌道 x / 廣角燈距 Cloud 邊距 3 條接 BVH
+    attachBVHPointerStrategy('slider-track-space');
+    attachBVHPointerStrategy('slider-track-x');
+    attachBVHPointerStrategy('slider-track-wide-z');
 
     // Sync initial state
     syncR3ColorUIEnable();

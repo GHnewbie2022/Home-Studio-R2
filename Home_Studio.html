@@ -4,7 +4,7 @@
 		<title>three.js PathTracing Renderer - Home Studio</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
-		<link href="css/default.css?v=r4-3-fix12" rel="stylesheet"/>
+		<link href="css/default.css?v=r4-4-fix10-grayscale" rel="stylesheet"/>
 
 		<script type="importmap">
 		{
@@ -81,25 +81,6 @@
 		<div id="ui-container">
 			<div class="panel-group">
 
-				<!-- ⚙️ 光追設定 -->
-				<div id="ray-header" class="panel-header">⚙️ 光追設定</div>
-				<div id="ray-panel" class="panel-content collapsed">
-					<div style="display:flex; gap:8px; margin-bottom:12px;">
-						<button id="btnGroupA" class="action-btn glow-white">趨近真實</button>
-						<button id="btnGroupB" class="action-btn">快速預覽</button>
-					</div>
-					<div id="slider-pixel-res"></div>
-					<div id="slider-bounces"></div>
-					<div class="item-divider" style="margin:12px 0;"></div>
-					<div id="group-a-controls">
-						<div id="slider-mult-a"></div>
-					</div>
-					<div id="group-b-controls" style="display:none;">
-						<div id="slider-mult-b"></div>
-					</div>
-					<div id="slider-wall-albedo"></div>
-				</div>
-
 				<!-- 🔧 配置 -->
 				<div id="config-header" class="panel-header item-divider">🔧 配置</div>
 				<div id="config-panel" class="panel-content">
@@ -116,43 +97,50 @@
 							<input type="radio" name="panelConfig" value="3" id="btnConfig3">
 							<span class="config-radio-label">3</span>
 						</label>
+						<label class="config-radio">
+							<input type="radio" name="panelConfig" value="4" id="btnConfig4">
+							<span class="config-radio-label">4</span>
+						</label>
 					</div>
 					<div id="config-desc" class="config-description">吸頂燈 + 牆面吸音板</div>
-					<div class="panel-header item-divider" style="font-size: 11px; padding-left: 0; margin-top: 8px;">吸音板顏色</div>
-					<div class="panel-content collapsed" style="padding-left: 0; padding-bottom: 0;">
-						<div class="gik-minimap" style="margin-top: 8px;">
-							<div class="gik-row" id="row-all">
-								<div class="gik-label">全部</div>
-								<div class="gik-blocks"><div class="gik-block" data-idx="all" data-color="0"></div></div>
+				</div>
+
+
+					<!-- 🎨 吸音板顏色 -->
+					<div id="gik-header" class="panel-header item-divider">🎨 吸音板顏色</div>
+					<div id="gik-panel" class="panel-content collapsed">
+					<div class="gik-minimap" style="margin-top: 8px;">
+						<div class="gik-row" id="row-all">
+							<div class="gik-label">全部</div>
+							<div class="gik-blocks"><div class="gik-block" data-idx="all" data-color="0"></div></div>
+						</div>
+						<div class="gik-row" id="row-north">
+							<div class="gik-label">北牆</div>
+							<div class="gik-blocks">
+								<div class="gik-block" id="blk-n3" data-idx="8" data-color="0"></div>
+								<div class="gik-block" id="blk-n2" data-idx="7" data-color="0"></div>
+								<div class="gik-block" id="blk-n1" data-idx="6" data-color="0"></div>
 							</div>
-							<div class="gik-row" id="row-north">
-								<div class="gik-label">北牆</div>
-								<div class="gik-blocks">
-									<div class="gik-block" id="blk-n3" data-idx="8" data-color="0"></div>
-									<div class="gik-block" id="blk-n2" data-idx="7" data-color="0"></div>
-									<div class="gik-block" id="blk-n1" data-idx="6" data-color="0"></div>
-								</div>
+						</div>
+						<div class="gik-row" id="row-east">
+							<div class="gik-label">東牆</div>
+							<div class="gik-blocks">
+								<div class="gik-block" id="blk-e1" data-idx="3" data-color="0"></div>
+								<div class="gik-block" id="blk-e2" data-idx="4" data-color="0"></div>
+								<div class="gik-block" id="blk-e3" data-idx="5" data-color="0"></div>
 							</div>
-							<div class="gik-row" id="row-east">
-								<div class="gik-label">東牆</div>
-								<div class="gik-blocks">
-									<div class="gik-block" id="blk-e1" data-idx="3" data-color="0"></div>
-									<div class="gik-block" id="blk-e2" data-idx="4" data-color="0"></div>
-									<div class="gik-block" id="blk-e3" data-idx="5" data-color="0"></div>
-								</div>
+						</div>
+						<div class="gik-row" id="row-west">
+							<div class="gik-label">西牆</div>
+							<div class="gik-blocks">
+								<div class="gik-block" id="blk-w1" data-idx="0" data-color="0"></div>
+								<div class="gik-block" id="blk-w2" data-idx="1" data-color="0"></div>
+								<div class="gik-block" id="blk-w3" data-idx="2" data-color="0"></div>
 							</div>
-							<div class="gik-row" id="row-west">
-								<div class="gik-label">西牆</div>
-								<div class="gik-blocks">
-									<div class="gik-block" id="blk-w1" data-idx="0" data-color="0"></div>
-									<div class="gik-block" id="blk-w2" data-idx="1" data-color="0"></div>
-									<div class="gik-block" id="blk-w3" data-idx="2" data-color="0"></div>
-								</div>
-							</div>
-							<div class="gik-row" id="row-ceil">
-								<div class="gik-label">天花板</div>
-								<div class="gik-blocks"><div class="gik-block" data-idx="ceil" data-color="0"></div></div>
-							</div>
+						</div>
+						<div class="gik-row" id="row-ceil">
+							<div class="gik-label">天花板</div>
+							<div class="gik-blocks"><div class="gik-block" data-idx="ceil" data-color="0"></div></div>
 						</div>
 					</div>
 				</div>
@@ -163,6 +151,7 @@
 
 
 					<!-- Cloud -->
+					<div id="cloud-section" class="light-section">
 					<div class="control-row" style="margin-bottom:8px;">
 						<div class="label-group"><input type="checkbox" id="chkCloud" checked><span class="label-text">Cloud 漫射燈</span></div>
 					</div>
@@ -174,10 +163,11 @@
 						</div>
 						<div id="slider-lumens"></div>
 					</div>
-
-					<div class="item-divider" style="margin:12px 0;"></div>
+					</div>
 
 					<!-- Track -->
+					<div id="track-section" class="light-section">
+						<div class="item-divider" style="margin:12px 0;"></div>
 					<div class="control-row" style="margin-bottom:8px;">
 						<div class="label-group"><input type="checkbox" id="chkTrack" checked><span class="label-text">軌道燈</span></div>
 					</div>
@@ -201,10 +191,11 @@
 						<div id="slider-track-space"></div>
 						<div id="slider-track-x"></div>
 					</div>
-
-					<div class="item-divider" style="margin:12px 0;"></div>
+					</div>
 
 					<!-- Wide -->
+					<div id="wide-section" class="light-section">
+						<div class="item-divider" style="margin:12px 0;"></div>
 					<div class="control-row" style="margin-bottom:8px;">
 						<div class="label-group"><span class="label-text">廣角燈</span></div>
 					</div>
@@ -243,6 +234,26 @@
 						</div>
 						<div id="slider-track-wide-z"></div>
 					</div>
+					</div>
+				</div>
+
+				<!-- ⚙️ 光追設定 -->
+				<div id="ray-header" class="panel-header">⚙️ 光追設定</div>
+				<div id="ray-panel" class="panel-content collapsed">
+					<div style="display:flex; gap:8px; margin-bottom:12px;">
+						<button id="btnGroupA" class="action-btn glow-white">趨近真實</button>
+						<button id="btnGroupB" class="action-btn">快速預覽</button>
+					</div>
+					<div id="slider-pixel-res"></div>
+					<div id="slider-bounces"></div>
+					<div class="item-divider" style="margin:12px 0;"></div>
+					<div id="group-a-controls">
+						<div id="slider-mult-a"></div>
+					</div>
+					<div id="group-b-controls" style="display:none;">
+						<div id="slider-mult-b"></div>
+					</div>
+					<div id="slider-wall-albedo"></div>
 				</div>
 
 			</div>
@@ -255,7 +266,7 @@
 		<script defer src="js/BVH_Acc_Structure_Iterative_Fast_Builder.js"> </script>
 		<script defer src="js/InitCommon.js?v=r4-1-skeleton"> </script>
 
-		<script defer src="js/Home_Studio.js?v=r4-1-fix06"> </script>
+		<script defer src="js/Home_Studio.js?v=r4-4-fix11-gik-panel"> </script>
 
 	</body>
 </html>
