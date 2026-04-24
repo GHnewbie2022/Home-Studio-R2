@@ -193,7 +193,7 @@ CONFIG 4 下 Cloud 區 UI 仍可見但 `chkCloud` 預設未勾，使用者可手
 
 | Commit | Scope |
 |---|---|
-| `<this commit>` | R4-4 DONE: 10 滑桿 + 反冪律 + BVH pointer 策略 + 量綱修正（cd/(K·A)）+ 甜蜜點預設校正 + CONFIG 3 拆 3/4 + UI 面板順序重排 + 🎨 吸音板顏色獨立 + checkbox 未勾灰階（11 fix 漸進交付） |
+| `bb83f94` | R4-4 DONE: 10 滑桿 + 反冪律 + BVH pointer 策略 + 量綱修正（cd/(K·A)）+ 甜蜜點預設校正 + CONFIG 3 拆 3/4 + UI 面板順序重排 + 🎨 吸音板顏色獨立 + checkbox 未勾灰階（11 fix 漸進交付） |
 | `fafc740` | docs: R4-4 Plan v5 決策紀錄寫入 SOP + 敘述中文化 + 品牌名統一 |
 | `36b20cc` | docs: R4-3-追加 通過後處置（SOP ✅ 雙標 + HANDOVER 完工紀錄 + 演算法基準小節）|
 | `0594f00` | R4-3-追加 DONE: 解除漫射反射上限 + ceiling NEE bug 修復（accumCol = → +=）+ A/B 預設值（A=14/1.0/0.85, B=4/2.5/1.0）+ 桌面參考塊 + cache-buster ?v=uncap-test |
