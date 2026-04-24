@@ -506,6 +506,31 @@
 - [ ] RECORD-1 量化偏移量表產出（9 筆值）寫入 `Debug_Log.md`
 - [ ] 判定通過 / 失敗 → 走對應分叉
 
+### ultrawork 執行紀律
+
+**嚴禁（任何情況，違者即停手並回報使用者）**：
+- `git push` — 本地獨立實驗，不推遠端
+- `git rebase` / `git commit --amend` — 不改歷史
+- `git merge` 回 `r3-light` — 合回屬驗收後使用者授權動作，非實驗範圍
+- `--force` 任何旗標
+- `git reset --hard` — 自動化情境絕不執行；若需回退停手回報使用者
+- `git branch -D` — 不自動刪分支
+- 動 `r3-light` 分支任何檔案（僅操作 `experiment/r4-uncap-test`）
+- 動 R3 相關文件：`docs/SOP/R3：*.md`、R3-7 `Debug_Log.md` 條目
+- 動 Obsidian LLM Wiki 任何檔案
+- 拆多個 commit（五改動 + patch + cache-buster 為原子單元）
+- 升級 MIS 完整方案（commit 階段鎖保守，PASS-8 fail 才另次 commit 處理）
+
+**失敗停手觸發點（停手、回報、由使用者決定下一步）**：
+- shader compile error >3 次
+- grep 發現實際行號與 SOP 不一致（shader 檔案偏移）→ 先 re-grep 確認、不盲改
+- 任何 uniform 初值改動後 console throw
+- 任何涉及上述「嚴禁」項的需求
+
+**正常回報節點**：
+- 五改動 + patch + cache-buster 完工 → commit hash 回報
+- 每個失敗停手觸發點 → 即時回報現況 + 建議選項
+
 ---
 
 ## R4-4 甜蜜點 UI ⬜
