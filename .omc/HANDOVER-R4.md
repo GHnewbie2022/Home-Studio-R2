@@ -1,8 +1,8 @@
-# Handover: R4-4 ✅ → R4-5 execution entry
+# Handover: R4 全階段 ✅ → R5 execution entry
 
 **Branch**: `r3-light`
-**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21), R4-3-追加 ✅ (2026-04-24), R4-4 ✅ (2026-04-24).
-**Next task**: R4-5 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading）
+**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21), R4-3-追加 ✅ (2026-04-24), R4-4 ✅ (2026-04-24), R4-5 ✅ (2026-04-24).
+**Next task**: R5 Cloud 光源重構（4 rod → 1 panel + 遮擋箱 + face-selective emission；需先 ralplan 取共識）
 
 ---
 
@@ -189,10 +189,51 @@ CONFIG 4 下 Cloud 區 UI 仍可見但 `chkCloud` 預設未勾，使用者可手
 
 ---
 
+## R4-5 completion summary（2026-04-24 DONE）
+
+R4-5 SOP 8 項中 6 項先前已由 R4-1/R4-3/R4-4 跨階段完成；R4-5 本階段以 2 個 fix 收尾。
+
+### 8 項對照
+
+| # | SOP | 狀態 | 階段 |
+|---|---|---|---|
+| 1 | Panel 折疊預設 | ✅（config 按使用者裁決展開；ray/light/gik collapsed）| R4-1 + R4-4-fix11 |
+| 2 | Cam 1/2/3 | ✅ | R4-3 |
+| 3 | X-ray toggle | ✅（使用者裁決僅保留 uXrayEnabled=1 功能、無 UI）| R2-13 |
+| 4 | Hide UI | ✅（R4-5-fix01 擴展含左下 cameraInfo + snapshot-bar 同步隱藏）| R4-3 + fix01 |
+| 5 | Help hover | ✅ | R4-1 |
+| 6 | FPS + sample counter | ✅（cameraInfo 加 FPS 前綴、0.5s 平滑累積器、斜線分隔）| fix01 |
+| 7 | Snapshot milestone+bar+下載 | ✅（bottom 50→28px、thumb 60→45px、label 2 行）| R4-1 + fix01 |
+| 8 | Loading screen | ✅（使用者裁決不需進度環，本地載入快）| - |
+
+### R4-5 fix 序列
+
+| fix | 主題 | 改動 |
+|---|---|---|
+| fix01-polish | UI 打磨 | 移除頂白字標題（DOM 刪）/ FPS 補入 / snapshot 縮圖+位置調整 / Hide UI 擴展 |
+| fix02-infodom | bug 修復 | fix01 移除 `#info` DOM 導致 InitCommon.js:114 `null.style` 崩。修法：保留 DOM 改 `display:none`（framework 共用檔嚴禁刪除其引用的 id） |
+
+### User decisions（本階段）
+
+- config-panel 保持展開（非全 collapsed）— CONFIG radio 入口太常用
+- X-ray 不加 UI checkbox — 功能保留即可
+- Loading screen 不做進度環 — 本地載入快
+
+### Carry-forward（R4 全結，移交 R5）
+
+- **F5 Cloud 光源重構**（R5 主任務，R4-4 已評估可行）：4 rod → 1 大 panel 長方體 + 16mm 內縮遮擋箱 + face-selective emission。Φ=13,338 lm / A=0.267 m² / L=49.67 W/(sr·m²) 與現況精確等效（0.34% 偏差）。pool 4→1 預估 CONFIG 3 收斂加速 ~4×。需 shader 改動。R5 前先 ralplan 取共識。
+- **F6 A/B 模式去留評估**：使用者提「視覺偏差太大考慮拿掉」；R5 開頭裁決。
+- **stochastic NEE pool size MC variance**：CONFIG 3 pool=4 需 ~4× SPP 才達 pool=1 噪點。R5 shader 改動時一併驗證 stochastic pick vs 全展開策略。
+- **Brave 兼容**：Brave 於 r4-4-fix11 崩，Chrome 正常。Brave 指紋保護更新所致，R5 前或 R5 中排查。
+
+---
+
 ## Completed commits on this branch (latest → oldest)
 
 | Commit | Scope |
 |---|---|
+| `<this commit>` | R4-5 DONE: FPS counter + snapshot 調整（位置/縮圖/分行）+ Hide UI 擴展（左下+snapshot）+ 移除頂白字標題 + #info DOM 保留改 display:none（fix01-polish、fix02-infodom）|
+| `c7362f0` | docs: HANDOVER-R4 commit hash 回填（R4-4 DONE = bb83f94）|
 | `bb83f94` | R4-4 DONE: 10 滑桿 + 反冪律 + BVH pointer 策略 + 量綱修正（cd/(K·A)）+ 甜蜜點預設校正 + CONFIG 3 拆 3/4 + UI 面板順序重排 + 🎨 吸音板顏色獨立 + checkbox 未勾灰階（11 fix 漸進交付） |
 | `fafc740` | docs: R4-4 Plan v5 決策紀錄寫入 SOP + 敘述中文化 + 品牌名統一 |
 | `36b20cc` | docs: R4-3-追加 通過後處置（SOP ✅ 雙標 + HANDOVER 完工紀錄 + 演算法基準小節）|
@@ -241,4 +282,4 @@ CONFIG 4 下 Cloud 區 UI 仍可見但 `chkCloud` 預設未勾，使用者可手
 | R4-3-追加 | Uncap diffuse bounce + ceiling NEE bug fix + A/B 預設值（14/1.0/0.85 vs 4/2.5/1.0）| ✅ DONE |
 | R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | ✅ DONE (2026-04-24) |
 | R4-4 追加 | CONFIG 3 拆 3/4 + UI 面板順序 + 🎨 吸音板顏色獨立 + checkbox 未勾灰階 | ✅ DONE (2026-04-24，含在 R4-4 commit 內) |
-| R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | Low risk |
+| R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | ✅ DONE (2026-04-24) |

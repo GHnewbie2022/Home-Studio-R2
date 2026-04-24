@@ -806,8 +806,8 @@ function buildSnapshotBar() {
 
         const img = document.createElement('img');
         img.src = snap.src;
-        img.width = 60;
-        img.height = Math.round(60 * (window.innerHeight / window.innerWidth));
+        img.width = 45;
+        img.height = Math.round(45 * (window.innerHeight / window.innerWidth));
         img.style.cssText = 'display:block; cursor:pointer;';
 
         img.onmouseenter = function () {
@@ -836,8 +836,8 @@ function buildSnapshotBar() {
         imgWrap.appendChild(saveBtn);
 
         const label = document.createElement('div');
-        label.style.cssText = 'color:#fff; font-size:8px; text-shadow:0 0 3px #000;';
-        label.textContent = snap.samples.toLocaleString() + ' spp';
+        label.style.cssText = 'color:#fff; font-size:8px; text-shadow:0 0 3px #000; line-height:1.1; text-align:center;';
+        label.innerHTML = snap.samples.toLocaleString() + '<br>spp';
 
         wrap.appendChild(imgWrap);
         wrap.appendChild(label);
@@ -2271,6 +2271,11 @@ function initUI() {
             if (uiContainer) uiContainer.style.display = d;
             if (topRightGroup) topRightGroup.style.display = d;
             if (helpWrapper) helpWrapper.style.display = d;
+            // R4-5：隱藏 UI 時同步隱藏左下角資訊 + 快照列
+            var cameraInfoEl = document.getElementById('cameraInfo');
+            var snapshotBarEl = document.getElementById('snapshot-bar');
+            if (cameraInfoEl) cameraInfoEl.style.display = d;
+            if (snapshotBarEl) snapshotBarEl.style.display = d;
         };
     }
 
@@ -2352,7 +2357,16 @@ function updateVariablesAndUniforms() {
         cameraControlsObject.position.z
     );
 
-    cameraInfoElement.innerHTML = "FOV: " + worldCamera.fov + " / Samples: " + sampleCounter + (sampleCounter >= MAX_SAMPLES ? " (休眠)" : "");
+    // R4-5：FPS 累積器（每秒重算）
+    if (typeof window._fpsAcc === 'undefined') { window._fpsAcc = { frames: 0, lastT: performance.now(), fps: 0 }; }
+    window._fpsAcc.frames++;
+    var _nowT = performance.now();
+    if (_nowT - window._fpsAcc.lastT >= 500) {
+        window._fpsAcc.fps = Math.round(window._fpsAcc.frames * 1000 / (_nowT - window._fpsAcc.lastT));
+        window._fpsAcc.frames = 0;
+        window._fpsAcc.lastT = _nowT;
+    }
+    cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + sampleCounter + (sampleCounter >= MAX_SAMPLES ? " (休眠)" : "");
 
     if (sampleCounter < lastSnapshotCheck) {
         snapshots.length = 0;

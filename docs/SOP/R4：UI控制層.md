@@ -28,7 +28,7 @@
 | R4-3 | 控件接線（CONFIG 1/2/3、A/B 單選按鈕、色溫 radio、lumens slider、GIK 色控、light checkbox） | ✅ |
 | R4-3-追加 | 解除漫射反射上限實驗（拆 erichlof 2-bounce 截斷 + 補償魔數歸一） | ✅ |
 | R4-4 | 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型；BVH 兩層更新策略） | ✅ |
-| R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ⬜ |
+| R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ✅ |
 
 ---
 
@@ -974,7 +974,7 @@ CONFIG 4 允許使用者**手動**勾 chkCloud 補光（checkbox 預設關但 UI
 
 ---
 
-## R4-5 互動打磨 ⬜
+## R4-5 互動打磨 ✅
 
 ### 目標
 
@@ -999,6 +999,57 @@ CONFIG 4 允許使用者**手動**勾 chkCloud 補光（checkbox 預設關但 UI
 
 - 使用者直接操作每個固定控件確認反應正確
 - 可折疊、可隱藏、可截圖、loading 正常
+
+### 完工紀錄（2026-04-24 DONE）
+
+R4-5 8 項中 6 項先前已由 R4-1/R4-3/R4-4 跨階段完成，R4-5 本階段以 2 個 fix 收尾：
+
+#### SOP 8 項對照
+
+| # | SOP 要求 | 交付狀態 | 完成階段 |
+|---|---|---|---|
+| 1 | Panel 折疊預設 | ✅（config 按使用者裁決保持展開；ray/light/gik collapsed）| R4-1 + R4-4-fix11 |
+| 2 | Cam 1/2/3 按鈕 | ✅ | R4-3 |
+| 3 | X-ray toggle | ✅（使用者裁決僅保留 `uXrayEnabled=1` 功能，不加 UI checkbox）| R2-13 功能 |
+| 4 | Hide UI | ✅（R4-5-fix01 擴展含左下 cameraInfo + snapshot-bar 同步隱藏）| R4-3 + R4-5-fix01 |
+| 5 | Help hover | ✅（純 CSS `#help-wrapper:hover`）| R4-1 |
+| 6 | FPS + sample counter | ✅（R4-5-fix01 實作：cameraInfo 加 FPS 前綴 `FPS: N / FOV: 55 / Samples: 1000` 斜線分隔；0.5 秒平滑累積器）| R4-5-fix01 |
+| 7 | Snapshot milestone+bar+下載 | ✅（R4-5-fix01 調整：bar bottom 50px→28px、thumb 60px→45px、label 分 2 行）| R4-1 + R4-5-fix01 |
+| 8 | Loading screen | ✅（使用者裁決不需 SVG 進度環，本地資源載入快）| - |
+
+#### R4-5-fix01 polish
+
+- HTML：移除畫面頂白字標題 `<div id="info">` 視覺顯示
+- JS：`cameraInfo` innerHTML 重寫加入 FPS 前綴，以 `window._fpsAcc` 0.5s 平滑累積器避免跳動
+- JS：`buildSnapshotBar()` img.width 60→45、label `innerHTML = samples + '<br>spp'`
+- JS：`hideBtn.onclick` 擴展隱藏範圍（+ `cameraInfo` + `snapshot-bar`）
+- CSS：`#snapshot-bar { bottom: 28px }` 更貼近畫面底
+
+#### R4-5-fix02 infodom
+
+fix01 後首次載入黑畫面 + console 錯：
+
+```
+InitCommon.js:115 Cannot read properties of null (reading 'style')
+InitCommon.js:440 Cannot access 'mouseControl' before initialization
+InitCommon.js:320 Cannot read properties of undefined (reading 'setPixelRatio')
+```
+
+根因：fix01 移除 `<div id="info">` DOM，但 `js/InitCommon.js:114` `let infoElement = document.getElementById('info');` + L115 `infoElement.style.cursor = "default";` 將 null 當物件讀 → init 中斷連鎖崩。
+
+修法：`#info` DOM 保留但 `style="display:none;"`（視覺不顯示、JS 引用可取得）。
+
+**教訓登錄 memory**：framework 共用檔（`InitCommon.js` 等）引用的 DOM id 嚴禁刪除，只能 `display:none` 隱藏。
+
+#### User decisions
+
+- config-panel 保持展開（非 SOP 要求的全 collapsed）— 使用者裁決 CONFIG radio 是主要入口，每次展開成本不划算
+- X-ray 不做 UI checkbox — 使用者裁決功能保留即可
+- Loading screen 不做進度環 — 使用者裁決本地資源載入快，非必要
+
+#### 無遺留項
+
+R4-5 無 carry-forward；R4 整階段（R4-0~R4-5）至此全部完成。
 
 ---
 
