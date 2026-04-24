@@ -26,9 +26,46 @@
 | R4-1 | UI 骨架復刻（HTML panel + CSS + createS 工廠 + DOM adapter；丟棄 lil-gui；含 InitCommon.js 改造） | ✅ |
 | R4-2 | 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除） | ✅ |
 | R4-3 | 控件接線（CONFIG 1/2/3、A/B radio、色溫 radio、lumens slider、GIK 色控、light checkbox） | ✅ |
-| R4-3-追加 | 解除漫射反射上限實驗（拆 erichlof 2-bounce 截斷 + 補償魔數歸一） | ⬜ |
+| R4-3-追加 | 解除漫射反射上限實驗（拆 erichlof 2-bounce 截斷 + 補償魔數歸一） | ✅ |
 | R4-4 | 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型；BVH 兩層更新策略） | ⬜ |
 | R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ⬜ |
+
+---
+
+## 演算法基準（2026-04-24 R4-3-追加 之後，R4-4+ 必讀）
+
+R4-3-追加（commit `0594f00`）後，渲染管線演算法基準與 R3 時代完全不同，後續 R4-4 / R4-5 所有滑桿預設值、光度計算、光強度調整皆以此基準為準。
+
+### Shader 行為變更
+
+| 項目 | R3 時代 | R4-3-追加 之後 |
+|---|---|---|
+| 漫射反彈層數 | 2 層截斷（`diffuseCount == 1` gate 鎖死） | 1~14 可調（`float(diffuseCount) < uMaxBounces`） |
+| MIS BSDF cache | 鎖第 1 次漫射命中 | 每層漫射命中都更新 |
+| swap handler diffuseCount | `= 1`（強制 reset） | `++`（累計） |
+| ceiling NEE accumCol | `= ...`（覆寫，潛伏 bug） | `+= ...`（正確累加，L1021/1029/1033） |
+| `uIndirectMultiplier` | 1.7（補償 2-bounce 截斷） | 1.0（歸一） |
+| `uLegacyGain` | 1.5（補償 NEE throughput） | 1.0（歸一） |
+
+### UI 預設值基準
+
+| 模式 | bounces | 補償 mult | 牆面反射率 |
+|---|---|---|---|
+| A 趨近真實（載入預設） | 14 | 1.0 | 0.85 |
+| B 快速預覽 | 4 | 2.5 | 1.0 |
+
+### 對 R4-4 / R4-5 的影響
+
+1. **光度量測模型（R4-4）**：所有 lumens → candela / radiance 換算以 `uIndirectMultiplier = 1.0 / uLegacyGain = 1.0` 為基準。任何新增滑桿的預設值必須在此基準下肉眼校準，不得假設歷史 1.7 / 1.5 魔數仍存在。
+2. **甜蜜點滑桿預設（R4-4）**：Track / Wide 滑桿預設值調校時，需在 A 模式（14 bounces + 0.85 反射率）下驗收，因為這是使用者主要使用情境。
+3. **新加光源的 NEE 分支**：若後續增加新 emitter type 的 NEE 命中處理，**務必用 `accumCol += ...`** 不用 `accumCol = ...`（TRACK_LIGHT / CLOUD_LIGHT 是正確範例，ceiling 是 R3 以來的 outlier 已修復）。
+4. **Path tracing 陰影銳利度**：近貼光源（幾公分）的遮擋物陰影邊界會極窄，視覺上可能感覺「沒陰影」，這是物理正確行為，非 bug（R4-3-追加 debug 驗證：Cloud E/W rod ↔ Track 5.8cm 與 Cloud S/N rod ↔ Wide 41cm 的陰影落差為距離差異）。
+
+### 歷史參照
+
+- 未歸一的 R3 時代補償魔數原委：`docs/SOP/Debug_Log.md` 「Phase 2 漫射能量 2-bounce truncation 說明（R3-7 寫入）」章節 + 該章末尾「2026-04-24 追記」
+- R4-3-追加 實驗詳細經過：本檔「R4-3-追加 解除漫射反射上限實驗 ✅」小節
+- Commit diff：`git show 0594f00`
 
 ---
 
@@ -297,7 +334,7 @@
 
 ---
 
-## R4-3-追加 解除漫射反射上限實驗 ⬜
+## R4-3-追加 解除漫射反射上限實驗 ✅
 
 > Ralplan 共識：2026-04-24 兩輪 Planner+Architect+Critic 迭代 APPROVE。本節為修訂版，替代原初版。
 

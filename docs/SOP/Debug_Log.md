@@ -1149,6 +1149,23 @@ JS L1058 引入，shader 10 處 `mask *= weight * uLegacyGain` 套用於 NEE dis
 2. **`max_bounces` 與「漫射能量累加深度」是兩件事**：前者是所有射線類型的總迴圈上限，後者被 `diffuseCount == 1` 單掛旗鎖在 2 層
 3. **渲染器的驗收標準是使用者眼睛，不是物理公式**：1.7 是對齊真實空間的校準產物；R2-18 定案時已經通過此門檻
 
+### 2026-04-24 追記（R4-3-追加 實驗後續進化，歷史註解）
+
+本章撰寫於 R3-7 時點，描述「1.7 / 1.5 為 erichlof 框架補償魔數、不建議歸一」。
+**R4-3-追加 實驗（experiment/r4-uncap-test，commit 0594f00 合回 r3-light）已推翻本章結論**：
+
+- `uIndirectMultiplier` 1.7 → **1.0（歸一）**
+- `uLegacyGain` 1.5 → **1.0（歸一）**
+- shader 10 處漫射閘門 `if (diffuseCount == 1)` → `if (float(diffuseCount) < uMaxBounces)`
+- shader 7 處 swap handler `diffuseCount = 1` → `diffuseCount++`
+- 實驗同時發現並修復 ceiling NEE 潛伏 bug：L1021 / L1029 / L1033 三處 `accumCol =` → `accumCol +=`（原版 2-bounce 截斷下覆寫等效於累加，解除截斷後 bug 暴露為「多層反而變暗」）
+
+**進化後行為**：shader 已為 N-bounce 可調（uMaxBounces slider 1~14），不再需要框架補償。
+A 模式（趨近真實）= 14 bounces、補償 1.0、牆面反射率 0.85；
+B 模式（快速預覽）= 4 bounces、補償 2.5、牆面反射率 1.0。
+
+本章「不值得為歸一投入工程量」的結論僅適用於 R3-7 時點之框架現況；R4-3-追加 以單一 commit 原子完成了歸一 + 結構修復 + bug fix。R3 git 歷史不動，R3 仍為「2-bounce 截斷 + 魔數補償」版本紀錄。
+
 ---
 
 ## R4-1｜UI 骨架復刻（lil-gui → 自製 HTML panel）

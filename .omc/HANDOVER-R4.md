@@ -1,7 +1,7 @@
-# Handover: R4-3 ✅ → R4-4 execution entry
+# Handover: R4-3-追加 ✅ → R4-4 execution entry
 
 **Branch**: `r3-light`
-**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21).
+**Status**: R3-0 ~ R3-7 ✅, R4-0 ✅, R4-1 ✅, R4-2 ✅, R4-3 ✅ (2026-04-21), R4-3-追加 ✅ (2026-04-24).
 **Next task**: R4-4 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型啟用；BVH 兩層更新策略）
 
 ---
@@ -66,12 +66,58 @@
   - Root cause: `uCeilingLampPos.value.z = -1.5` 落在房間內（北牆 z=-1.874）；`CylinderIntersect` 無條件執行，emission=0 → 黑色幾何體可見
   - Fix: `applyPanelConfig` L373 改為 `cloudOn ? 100.0 : 0.591`（房間 z_max=3.056，100.0 確保光線永不命中）
 
-### Pending research — 打破間接漫射 2 層截斷（使用者已確認列入待辦）
-- **背景**: erichlof 框架在每個漫射材質分支以 `if (diffuseCount == 1)` 存間接反彈路徑，第 2 次漫射命中後停止存檔 → 無論 `uMaxBounces` 設多高，間接漫射最多 2 層
-- **使用者需求**: 實驗真實 8 bounce 渲染（移除截斷） + 快速預覽 4 bounce 預設；想確認視覺差異
-- **執行方式**: 把 shader 裡 10+ 處 `if (diffuseCount == 1)` 的 `willNeedDiffuseBounceRay = TRUE` 條件改為每次漫射命中都觸發，或抽共用函式
-- **風險**: 多點 shader 改動，影響所有材質渲染路徑 → **建議先 `/ralplan` 取共識再執行**
-- **附帶**: 同時設定 slider-bounces A 預設值 8、B 預設值 4（快速預覽）
+---
+
+## R4-3-追加 completion summary（2026-04-24 DONE，commit `0594f00`）
+
+### What was done（原子 commit，single atomic unit）
+
+Shader（`shaders/Home_Studio_Fragment.glsl`）：
+- 10 處漫射閘門 `if (diffuseCount == 1)` → `if (float(diffuseCount) < uMaxBounces)`
+- MIS cache 三行（`misBsdfBounceNl / misBsdfBounceOrigin / misPBsdfStashed`）跟著閘門一起放寬，每層 diffuse hit 更新
+- 7 處 swap handler `diffuseCount = 1` → `diffuseCount++`（L986/1059/1101/1139/1183/1203/1731）
+- **ceiling NEE 潛伏 bug 發現與修復**（L1021/1029/1033）：`accumCol = ...` → `accumCol += ...`
+  - 原版 `== 1` 閘門下每條路徑最多 1 次 ceiling NEE hit，`=` 與 `+=` 等效 → bug 潛伏
+  - 解除截斷後多層 NEE hit 互相覆寫，留最深層（最弱）貢獻 → bounces 越多畫面越暗（反向症狀）
+  - fix 後對齊 TRACK_LIGHT / CLOUD_LIGHT 分支既有 `+=` 慣例
+
+JS 補償魔數歸一（`js/Home_Studio.js`）：
+- `uIndirectMultiplier` 1.7 → 1.0
+- `uLegacyGain` 1.5 → 1.0
+- `slider-mult-a/b` createS default 1.7 → 1.0
+
+A/B 預設值更新：
+- A 趨近真實：bounces=14、補償 mult=1.0、牆面反射率 0.85
+- B 快速預覽：bounces=4、補償 mult=2.5、牆面反射率 1.0
+- 載入預設 A 模式（HTML btnGroupA 已 glow-white）
+- `uMaxBounces` uniform 初值 4.0 → 14.0（`js/InitCommon.js`）
+- `wallAlbedo` JS 初值 1.0 → 0.85；`C_WALL` 系列初值 × 0.85
+- 新增 `applyWallAlbedo(v)` helper，A/B onclick 同步 slider + C_WALL
+
+桌面參考塊：
+- 中央工作桌正中央 18×18×0.1cm 50% 灰 DIFF patch（`sceneBoxes` index 59）
+- `bmin=[-0.09, 0.758, 0.337]`、`bmax=[0.09, 0.759, 0.517]`
+- 微抬法 y=+1mm 防 Z-fighting
+
+Cache-buster：`?v=uncap-test`
+
+### 驗收紀錄
+
+- bounces 4/8/12/14 逐格肉眼驗收：單調變亮，符合拋物線趨緩預期
+- A 模式畫面比對使用者實體錄音室光影，符合真實印象
+- CONFIG 3 軌道陰影不對稱疑問：驗證後確認**非 bug**，是 Cloud 燈條距離差異導致的陰影銳利度物理差（E/W rod ↔ Track 5.8cm vs S/N rod ↔ Wide 41cm）
+
+### 過程中走過的錯路（systematic-debugging 紀律下定位根因）
+
+1. 解法 A（gate 拆 block、MIS cache 鎖 `== 1`）→ 多層變暗 → 撤回
+2. 解法 B（gate + MIS cache 一起放寬）→ 多層仍變暗 → 撤回
+3. 走 `/systematic-debugging` 四階段，讀全 shader 發現 ceiling 分支 `=` 而非 `+=` → 才是 R3 以來潛伏的 root cause
+
+### Ralplan 迭代路徑
+- 2026-04-20 初版：Option B + 單 commit + 場景 patch 錨點（APPROVE）
+- 2026-04-24 兩輪迭代修訂：補加 `diffuseCount` reset `++`、桌面 patch 錨點、Pre-mortem S4 結構性無效情境
+
+---
 
 ---
 
@@ -79,6 +125,7 @@
 
 | Commit | Scope |
 |---|---|
+| `0594f00` | R4-3-追加 DONE: 解除漫射反射上限 + ceiling NEE bug 修復（accumCol = → +=）+ A/B 預設值（A=14/1.0/0.85, B=4/2.5/1.0）+ 桌面參考塊 + cache-buster ?v=uncap-test |
 | `03e0454` | R4-3 DONE: 控件接線（UI 事件全面綁定，GIK Minimap 索引修正與舊版視角參數復刻）|
 | `f0be38b` | R4-2 DONE: 12 shader branches flattened, sampleLight11 removed, 3 uniforms removed, CONFIG radio UI implemented |
 | `7d754cb` | docs: R4-1 Debug_Log 經驗紀錄 + HANDOVER 交接訊息 |
@@ -111,7 +158,7 @@
 - **R4-0 removal decisions**: `#cavity-panel` removed, `#post-panel` removed.
 - **No cache-buster bump** for doc-only commits.
 - **CONFIG 3 path-tracing noise** deferred to later denoising stage.
-- **uLegacyGain = 1.5** stays framework-compensation uniform, not UI-exposed.
+- ~~**uLegacyGain = 1.5** stays framework-compensation uniform, not UI-exposed.~~ **作廢（R4-3-追加 commit 0594f00 已歸一 1.0）**。shader 已進化為 N-bounce 可調，補償魔數不再需要。
 
 ## R4 sub-phase summary
 
@@ -120,5 +167,6 @@
 | R4-1 | HTML panel skeleton + CSS + createS + DOM adapters; drop lil-gui + modify InitCommon.js | ✅ DONE |
 | R4-2 | 12-point shader flattening + sampleStochasticLight11 deletion + 3 uniform removal | ✅ DONE |
 | R4-3 | CONFIG 1/2/3, A/B radio, color-temp radios, lumens, GIK minimap, light checkboxes | ✅ DONE |
+| R4-3-追加 | Uncap diffuse bounce + ceiling NEE bug fix + A/B 預設值（14/1.0/0.85 vs 4/2.5/1.0）| ✅ DONE |
 | R4-4 | Track 5 + Wide 5 sweet-spot sliders; photometric model; BVH debounce | Beam→candela coupling; sceneBoxes mutation cost |
 | R4-5 | Fold defaults, Cam buttons, Help, Hide, FPS/sample, snapshot, loading | Low risk |
