@@ -26,6 +26,7 @@
 | R4-1 | UI 骨架復刻（HTML panel + CSS + createS 工廠 + DOM adapter；丟棄 lil-gui；含 InitCommon.js 改造） | ✅ |
 | R4-2 | 鷹架移除（12 處 shader 分支扁平化 + sampleStochasticLight11 刪除 + 3 uniform 移除） | ✅ |
 | R4-3 | 控件接線（CONFIG 1/2/3、A/B radio、色溫 radio、lumens slider、GIK 色控、light checkbox） | ✅ |
+| R4-3-追加 | 解除漫射反射上限實驗（拆 erichlof 2-bounce 截斷 + 補償魔數歸一） | ⬜ |
 | R4-4 | 甜蜜點 UI（Track 5 + Wide 5 slider；光度量測模型；BVH 兩層更新策略） | ⬜ |
 | R4-5 | 互動打磨（折疊預設、Cam 按鈕、Help、Hide、FPS/sample、snapshot、loading） | ⬜ |
 
@@ -293,6 +294,217 @@
 
 - 每組控件接線後即時測試：slider 拖曳可見渲染效果、radio 切換可見色溫 / 配置變化
 - CONFIG 1/2/3 切換：燈具顯示/隱藏正確、checkbox 連動同步
+
+---
+
+## R4-3-追加 解除漫射反射上限實驗 ⬜
+
+> Ralplan 共識：2026-04-24 兩輪 Planner+Architect+Critic 迭代 APPROVE。本節為修訂版，替代原初版。
+
+### 背景與動機
+
+- R3-7 已文件化：`uIndirectMultiplier = 1.7` + `uLegacyGain = 1.5` 為 erichlof 框架「漫射間接反射第 2 次命中就停」截斷之補償魔數，定性為近似版物理模型之永久補償。
+- 本實驗驗證：拆掉該截斷 + 補償歸一後，視覺是否更接近真實物理，供使用者評估錄音室燈光採購時能看到更真實之參考。
+- 本實驗為 R4 階段之分支探索；**R3 git 歷史與 R3 文件絕不動**（R3 就是兩次反射近似的物理模型紀錄，即使實驗通過亦不回頭改寫 R3 定性）。
+
+### 範圍限定（使用者採購決策場景務必先讀）
+
+本實驗的架構本質是「erichlof 框架的 swap 迴圈上限解除」，**不是教科書定義的純 N 層全域照明**。意即「更真實感」來自多次 swap + single-stored indirect ray 的累積效果，而非逐層 Lambertian bounce 的物理積分。採購決策時須意識此限制。
+
+### 分支策略
+
+- 主分支：`r3-light` 保持不動（R4-4 隨時可回）
+- 實驗分支：`experiment/r4-uncap-test` 從 `r3-light` 開
+- 通過 → 合回 `r3-light`、本節補完工紀錄、R4-4 依新基準進
+- 失敗 → 分支丟棄、`Debug_Log.md` 留案、R4-4 照現況進
+- **已評估拒絕 shader fork 路線**：fork 屬分支維度非 commit 維度，維護雙份 shader 成本過高；side-by-side 視覺需求由「實驗分支內場景參考 patch」替代（見驗收客觀錨點段）。
+
+### 交付物
+
+`shaders/Home_Studio_Fragment.glsl`、`js/InitCommon.js`（uniform 初值）、`js/Home_Studio.js`（如需配套 + 中央桌 patch geometry）
+
+### 改動清單（同一個 commit，不得拆步）
+
+**五改動為強耦合原子單元**。拆 commit 會產生不可編譯中間態或視覺爆錯；commit message 鎖「五改動 + PASS-8 N=2 誤差 <3% 基線」。
+
+1. **shader gate 放寬**：10 處 `if (diffuseCount == 1)` 改為跟隨 `uMaxBounces`
+   - 精確行號：L1254 / L1292 / L1341 / L1392 / L1500 / L1539 / L1600 / L1645 / L1754 / L1807
+   - 現有 `slider-bounces` 1~14 UI 控制，使用者拉動即時看效果
+2. **`uIndirectMultiplier` 歸一**：1.7 → 1.0
+   - 作用點：6 處 SPEC→DIFF swap（L978 / L1051 / L1093 / L1131 / L1176 / L1724）
+   - 實際只乘 1 次 stored indirect ray（Architect R2 確認），非 N 次疊乘
+3. **`uLegacyGain` 歸一**：1.5 → 1.0
+   - 作用點：10 處 NEE dispatch `mask *= weight * uLegacyGain`（L1265 / L1303 / L1351 / L1403 / L1511 / L1550 / L1611 / L1656 / L1765 / L1818）
+   - 作用於 NEE throughput，與 bounce 深度無直接關係
+4. **reset 改寫**（Ralplan 迭代 2 補，原漏列）：7 處 `diffuseCount = 1` → `diffuseCount++`
+   - 精確行號：L986 / L1059 / L1101 / L1139 / L1183 / L1203 / L1731
+   - 理由：若只解除截斷但計數器仍強制重設為 1，實驗等於沒做（對應 Pre-mortem S4 結構性無效）
+5. **MIS cache 單層策略保留**（commit 設計鎖定）：`if (diffuseCount == 1)` 分支寫入 `misBsdfBounceNl / misBsdfBounceOrigin / misPBsdfStashed` 不動
+   - 理由：Veach 1997 MIS 基線，commit 階段不擴展為 N 層完整方案
+   - 檢核：以 PASS-8 N=2 vs N=1 差 <3% 作客觀驗證
+   - 若 PASS-8 fail：升級完整方案為另次 commit 處理
+
+**五者缺一即壞視覺**：
+- 缺 1：截斷仍在，無法驗證
+- 缺 2：`uIndirectMultiplier` 偏多 stored indirect ray → 過曝
+- 缺 3：`uLegacyGain` NEE throughput 偏高 → 整體過亮
+- 缺 4：`diffuseCount` reset 停在 1 → 結構性無效（S4）
+- 缺 5：MIS 策略擴展引入 pdf 重加權 → Veach 1997 基線失守 → N=2 誤差可能超 3%
+
+### Pre-mortem 四情境
+
+**S1 間接光過曝**
+- 觸發：`uIndirectMultiplier` = 1.0 + N=3 + Cloud 800 lumens，Cloud 實驗分支比 `r3-light` 亮 40%+
+- 緩解：配合場景參考 patch 量測定值（見驗收客觀錨點）
+
+**S2 量綱失配**
+- 觸發：解除 gate 後 `uLegacyGain` 仍保 1.5
+- 症狀：亮度與 lumens 解耦，色溫失效
+- 緩解：合回前 `uLegacyGain` 必歸 1.0（Architect C5 反向修訂）
+
+**S3 效能塌陷**
+- 觸發：N=3 + 複雜 BVH + 1080p viewport
+- 依據：`r3-light` N=1 實測 4800~5200 spp @ 1080p（Cam 2 / 自然 4000K / CONFIG 1）
+  - N=2 推估成本 +30~50% → 2500~3500 spp
+  - N=3 推估 2000~2800 spp
+- 保守區間：2000~5000 spp；下限觸發退回 N=2
+
+**S4 結構性無效**（Ralplan 迭代 2 新增核心顧慮）
+- 本質：erichlof swap 解除 ≠ 真 N 層累積
+- 觸發：只改 gate 沒改 reset，`diffuseCount` 停在 1
+- 症狀：N=1/2/3 輸出肉眼無差異，實驗結論失效
+- 緩解鏈：
+  - (a) 改動 4（reset 7 處 `++`）不可省，commit 原子性
+  - (b) PASS-8 場景參考 patch N=2 vs N=1 差 >3% 作結構有效證據
+  - (c) 實測失敗（<3%）即判本次實驗結構性無效，回滾 commit
+
+### 進分支後查證（低優先，僅失敗時處置）
+
+**主迴圈 NEE / bounce 換軌節奏**
+- erichlof「NEE shadow ray ↔ 漫射 bounce ray」交替跑，原設計僅容 1 層間接
+- 若 `diffuseCount >= 2` 時 `willNeedDiffuseBounceRay` swap 失靈 → 畫面黑塊 / 某方向完全無光
+- 處置：調整 swap 時機或 `willNeedDiffuseBounceRay` reset 條件
+- 備註：若 PASS-8 fail 可能指向此問題，升級 MIS 完整方案前先排除 swap 時序
+
+### 驗收方式
+
+**主觀判讀**（照 R4 SOP「使用者直接操作 UX」原則）：
+- 使用者自由操作 `slider-bounces`（1~14）逐格拉動
+- 切換 Cam 1 / Cam 2 / Cam 3 + CONFIG 1 / 2 / 3
+- 房間走動、切色溫、開關燈、觀察間接反射分佈
+- **無 A/B 截圖對比**
+
+**客觀錨點**（Ralplan 迭代 2 新增，對抗 S4）：
+- 實驗分支**中央工作桌桌面正中央**新增 **15~20 cm 見方** 50% 灰 Lambertian 參考 patch
+- 法線 +Y 朝天花板，對應 Cloud / Track 主要入射角
+- 生命週期：實驗分支永久存在（commit 進 `experiment/r4-uncap-test`），分支丟棄即消失
+- patch 不改 `r3-light` geometry 主體
+- 用途：使用者拉滑桿時讀 patch RGB 值作客觀判讀基礎，類比音訊工程用 1kHz 測試信號校對系統
+
+### 通過 / 失敗判準
+
+**通過條件**（全部滿足）：
+- **PASS-1**  shader compile 無 error（browser console 驗）
+- **PASS-2**  N=1 實驗分支輸出 ≈ `r3-light` HEAD 輸出（patch 輻射亮度差 <1%，回歸驗證）
+- **PASS-3**  N=2 vs N=1 patch 輻射亮度差在 **3%~15%** 區間（有累積 + 未過曝）
+- **PASS-4**  N=3 vs N=2 patch 輻射亮度差 <8%（收斂跡象，避免發散）
+- **PASS-5**  `uLegacyGain` = 1.0 時色溫 2700 / 4000 / 6500K 色比漂移 <2%
+- **PASS-6**  spp 不低於 2000 @ 1080p（Cam 2 基準）
+- **PASS-7**  Cloud / Track / Wide 獨立開關無誤（GUI 對稱）
+- **PASS-8**  加強選項（Architect inline 條件）：
+  - 基準：CONFIG 1 / Cam 2 / 自然 4000K / Cloud 800 lumens
+  - N=2 vs N=1 patch 差 **>3%** 且 **<20%**（結構有效下限 + 非爆錯上限）
+  - 量測 spp **≥ 512**（雜訊壓得下 3% 訊號）
+  - 與 `r3-light` HEAD 同 patch 比對，差值落在 0%~15% 物理預估區間
+- **RECORD-1**  合回 `r3-light` 前必要條件：
+  - 基準條件下量測 Cloud / Track / Wide 三組等效亮度偏移量（N=1/2/3 × 3 光源 = 9 筆值）
+  - 寫入 R4-4 預設值調整表（`.omc/R4-4-baseline.md` 或 `Debug_Log.md`）
+
+**失敗條件**（任一觸發即回滾 commit）：
+- **FAIL-1**  N=2 vs N=1 patch 差 <3%（結構性無效 S4）
+- **FAIL-2**  N=3 發散（patch 差 >30%）
+- **FAIL-3**  spp <2000（效能塌陷 S3）
+- **FAIL-4**  `uLegacyGain` = 1.0 時色比漂移 >5%（量綱失配 S2）
+- **FAIL-5**  shader compile error >3 次（Architect inline 條件，防無限試錯）
+- **FAIL-6**  5000 spp 仍 noisy 到無法判讀
+- **FAIL-7**  半日內無解
+
+**通過後處置**：
+- 合回 `r3-light`
+- 合回時：`uLegacyGain` 與 `uIndirectMultiplier` 同歸 1.0（Architect C5 反向修訂）
+- `R3-7` `Debug_Log.md` 條目加註解：「1.7 / 1.5 魔數定性僅描述歷史，`r3-light` HEAD shader 已進化為 N-bounce 可調」
+- 本節補完工紀錄 + ✅ 雙標（階段總覽表 + 本小節 ### 標題）
+- R4 工作手冊新增「演算法基準：解除反射上限」小節
+- R4-4 甜蜜點滑桿預設值依 RECORD-1 重調
+- R3 文件、R3 git 歷史、R3-7 魔數定性紀錄**絕不回頭改**（僅 `Debug_Log.md` 加註歷史說明）
+
+**失敗後處置**：
+- 分支丟棄
+- `Debug_Log.md` 留案（失敗原因 + 驗證條件 + patch RGB 數值）
+- `.omc/HANDOVER-R4.md` pending 段改寫為「已驗證不採用」
+- R4-4 直接進
+
+### Observability
+
+每個驗收 checkpoint 在 `Debug_Log.md` 記錄：
+
+```
+[R4-3-exp][N=?][YYYY-MM-DD][Cam ?][color ?K][lumens ?][spp ?]
+  patch(center 50%gray @ desk): R=0.??? G=0.??? B=0.???
+```
+
+指標監控：
+- **sample-counter**：累加正常、單張 2000 spp 時間 basis 記錄
+- **fps-counter**：N=14 時不低於 10 fps；<5 fps → shader 卡死徵兆
+- **browser console**：零 GLSL error / warning / context lost
+- **GPU frame time**：N=2 vs N=8 應接近線性 4×；8× 以上有 swap 機制 bug
+- **GPU context lost 緊急處置**：降 N 到 8、reload，不強續跑（macOS Brave + Metal 已知風險）
+
+### Ralplan 共識 ADR（2026-04-24 兩輪迭代 APPROVE）
+
+- **Decision**：Option B 修訂版 — 五改動同 commit + 場景參考 patch 錨點 + branch 路線
+- **Drivers**：
+  - D1 結構性有效性（reset `++` 是實驗能否真正生效的關鍵）
+  - D2 回滾成本低（單 commit + 分支 + 量化紀錄）
+  - D3 R4-4 需要量化偏移量基準才能續做預設值調整
+- **Alternatives Considered**：
+  - Option A（僅三改動）→ 否決（結構性無效 S4 風險）
+  - Option C（shader 全重構）→ 延後至 R5+
+  - Option D（shader fork）→ 否決（fork 屬分支維度，已用 branch + 場景 patch 替代）
+- **Why Chosen**：五改動同 commit 確保結構有效性 + 量綱一致性 + Veach 1997 MIS 基線三層保護同時到位，缺一即破
+- **Consequences**：
+  - 實驗分支可量化驗證 N 層漫射累積
+  - `R3-7` `Debug_Log.md` 加註解（歷史補償描述）
+  - `uLegacyGain` 成為後續 R4+ shader 層標準補償開關
+  - `Debug_Log.md` 多一類紀錄格式
+- **Follow-ups**：
+  - F1 產出 Cloud / Track / Wide 等效亮度偏移量表（9 筆值）
+  - F2 R4-4 預設值調整表引用 F1 數值
+  - F3 實驗通過合回時 `uLegacyGain` / `uIndirectMultiplier` 同歸 1.0
+  - F4 `R3-7` `Debug_Log.md` 條目加註解
+
+### OMC 工具路徑
+
+- 計畫階段：`/oh-my-claudecode:ralplan`（已完成 2 輪迭代 APPROVE）
+- 執行階段：`/oh-my-claudecode:ultrawork`
+
+### 執行檢查清單
+
+- [ ] `git checkout r3-light && git checkout -b experiment/r4-uncap-test`
+- [ ] shader 五改動（同一 commit，不得拆步）：
+  - [ ] 改動 1：10 處 `if (diffuseCount == 1)` gate 放寬跟 `uMaxBounces`
+  - [ ] 改動 2：`uIndirectMultiplier` 1.7 → 1.0
+  - [ ] 改動 3：`uLegacyGain` 1.5 → 1.0
+  - [ ] 改動 4：7 處 `diffuseCount = 1` → `diffuseCount++`
+  - [ ] 改動 5：MIS cache 單層策略註解鎖定（實際不動 code，commit message 明記）
+- [ ] 中央工作桌桌面中央新增 15~20 cm 見方 50% 灰 Lambertian patch（sceneBoxes + shader hitType 對應）
+- [ ] cache-buster 更新：`shaders/Home_Studio_Fragment.glsl?v=uncap-test`
+- [ ] shader 編譯通過 + 瀏覽器 console 零 error
+- [ ] 使用者拉 `slider-bounces` / 切視角 / 切 CONFIG / 走房間肉眼審查
+- [ ] PASS-8 客觀錨點量測：基準條件下 patch RGB 值記錄
+- [ ] N=2 vs N=1 patch 差檢核：>3% 且 <20%（spp ≥ 512）
+- [ ] RECORD-1 量化偏移量表產出（9 筆值）寫入 `Debug_Log.md`
+- [ ] 判定通過 / 失敗 → 走對應分叉
 
 ---
 
