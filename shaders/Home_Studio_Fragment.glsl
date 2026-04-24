@@ -983,7 +983,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				bounceIsSpecular = FALSE;
 				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
-				diffuseCount = 1;
+				diffuseCount++;
 				continue;
 			}
 
@@ -1018,7 +1018,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			if (bounceIsSpecular == TRUE)
 			{
 				// SPEC chain / primary-ray 直接命中 ceiling：MIS 不套（Dirac delta BSDF，Veach §9.2.4），直接累加。
-				accumCol = mask * hitEmission;
+				accumCol += mask * hitEmission;
 			}
 			else if (sampleLight == TRUE)
 			{
@@ -1026,11 +1026,11 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				if (lastNeePickedIdx == 0)
 				{
 					float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
-					accumCol = mask * hitEmission * wNee;
+					accumCol += mask * hitEmission * wNee;
 				}
 				else
 				{
-					accumCol = mask * hitEmission;
+					accumCol += mask * hitEmission;
 				}
 			}
 			else if (diffuseCount >= 1 && misPBsdfStashed > 0.0)
@@ -1056,7 +1056,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				bounceIsSpecular = FALSE;
 				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
-				diffuseCount = 1;
+				diffuseCount++;
 				continue;
 			}
 
@@ -1098,7 +1098,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				bounceIsSpecular = FALSE;
 				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
-				diffuseCount = 1;
+				diffuseCount++;
 				continue;
 			}
 
@@ -1136,7 +1136,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				bounceIsSpecular = FALSE;
 				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
-				diffuseCount = 1;
+				diffuseCount++;
 				continue;
 			}
 
@@ -1180,7 +1180,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					bounceIsSpecular = FALSE;
 					misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 					sampleLight = FALSE;
-					diffuseCount = 1;
+					diffuseCount++;
 					continue;
 				}
 				break;
@@ -1200,7 +1200,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				bounceIsSpecular = FALSE;
 				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 				sampleLight = FALSE;
-				diffuseCount = 1;
+				diffuseCount++;
 				continue;
 			}
 
@@ -1251,7 +1251,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1289,7 +1289,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1338,7 +1338,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1) {
+			if (float(diffuseCount) < uMaxBounces) {
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
 				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
@@ -1389,7 +1389,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1497,7 +1497,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1536,7 +1536,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1597,7 +1597,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1642,7 +1642,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1728,7 +1728,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 						bounceIsSpecular = FALSE;
 						misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 						sampleLight = FALSE;
-						diffuseCount = 1;
+						diffuseCount++;
 						continue;
 					}
 					break;
@@ -1751,7 +1751,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			bounceIsSpecular = FALSE;
 			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
 			rayOrigin = x + nl * uEPS_intersect;
-			if (diffuseCount == 1)
+			if (float(diffuseCount) < uMaxBounces)
 			{
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;
@@ -1804,7 +1804,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 			rayOrigin = x + nl * uEPS_intersect;
 
-        if (diffuseCount == 1)
+        if (float(diffuseCount) < uMaxBounces)
         {
 				diffuseBounceMask = mask;
 				diffuseBounceRayOrigin = rayOrigin;

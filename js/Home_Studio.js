@@ -9,10 +9,10 @@ const MIN_Z = -2.074;
 const MAX_Z = 3.256;
 
 // R2-2 顏色常量
-const C_WALL = [1.0, 0.984, 0.949];
-const C_WALL_L = [1.0, 0.984, 0.949];
-const C_WALL_R = [1.0, 0.984, 0.949];
-const C_WALL_S = [1.0, 0.984, 0.949];
+const C_WALL = [0.85, 0.8364, 0.80665];
+const C_WALL_L = [0.85, 0.8364, 0.80665];
+const C_WALL_R = [0.85, 0.8364, 0.80665];
+const C_WALL_S = [0.85, 0.8364, 0.80665];
 const C_BEAM = [1.0, 0.984, 0.949];
 const C_FLOOR = [0.55, 0.47, 0.41];
 const C_WOOD = [0.55, 0.35, 0.17];
@@ -191,6 +191,10 @@ addBox([ 0.884, 2.787, -0.702], [ 0.900, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0
 addBox([-0.900, 2.787, -0.702], [-0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 56 西燈條
 addBox([-0.884, 2.787,  1.682], [ 0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 57 南燈條（沿 x 1.768m；比照東西短軸 1.6cm）
 addBox([-0.884, 2.787, -0.702], [ 0.884, 2.803, -0.686], z3, C_CLOUD_LIGHT, 14, 0, 1, 4); // 58 北燈條
+// R4-3-追加 exp：中央工作桌桌面正中央 Lambertian 參考塊（index 59）
+// 微抬法：底面 y = 桌面 max.y(0.757) + 0.001，避 Z-fighting
+// PASS-8 客觀亮度錨點；生命週期：experiment/r4-uncap-test 永久，分支丟棄即消失
+addBox([-0.09, 0.758, 0.337], [0.09, 0.759, 0.517], z3, [0.5, 0.5, 0.5], 1, 0, 0, 0, 1.0, 0.0); // 59 桌面參考塊 50%灰 DIFF
 
 // R3-3：商品規格 D-35NA12V4DR1 軟條燈 480 lm/m。
 // R3-5b (2-face 甲案): Φ_rod = 480 × L；faceArea = 0.016 × L（+Y 頂 + 外長側 2 面；−Y 被 Cloud 板擋、內長面 + 兩短端本階段不發光 ≈ 0.66% 能量損失登錄 ADR）。
@@ -616,7 +620,7 @@ function computeTrackWideRadiance(lm, T_K, A_m2, beamFullDeg) {
 // ---------------- /R3-5a Track wide lamp constants & radiance ----------------
 // ---------------- /R3-1 Photometry Pipeline ----------------
 
-let wallAlbedo = 1.0;
+let wallAlbedo = 0.85;
 
 // acousticPanelVisibility 已被 R2-8 Config 1/Config 2 切換取代
 
@@ -829,7 +833,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=' + Date.now();
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=uncap-test';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -1073,11 +1077,11 @@ function initSceneData() {
     // R2-18 fix19 / R3-7：間接光補償（erichlof 框架 diffuseCount==1 單掛旗 → 2-diffuse-bounce 截斷）
     // 本係數補償第 3 次以後永遠不再累加的間接反彈能量；非臨時值。提 max_bounces 4→8 肉眼無差（R3-7 驗）。
     // 詳見 docs/SOP/Debug_Log.md「Phase 2 漫射能量 2-bounce truncation 說明」章節。
-    pathTracingUniforms.uIndirectMultiplier = { value: 1.7 };
+    pathTracingUniforms.uIndirectMultiplier = { value: 1.0 };
 
     // R3-0 / R3-7：NEE 直接光補償（shader 10 處 `mask *= weight * uLegacyGain`）。
     // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。
-    pathTracingUniforms.uLegacyGain = { value: 1.5 };
+    pathTracingUniforms.uLegacyGain = { value: 1.0 };
 
 
     // ---- R3-1 emission pipeline（R3-3 起 Cloud 接通 emissive Lambertian）----
@@ -1423,7 +1427,7 @@ function initUI() {
         return v;
     }, false);
 
-    createS('slider-bounces', '彈跳次數', 1, 14, 1, 4, function(v) {
+    createS('slider-bounces', '彈跳次數', 1, 14, 1, 14, function(v) {
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) {
             pathTracingUniforms.uMaxBounces.value = v;
         }
@@ -1431,25 +1435,36 @@ function initUI() {
         return v;
     });
 
-    createS('slider-mult-a', '間接光補償', 0.1, 5.0, 0.1, 1.7, function(v) { 
+    createS('slider-mult-a', '間接光補償', 0.1, 5.0, 0.1, 1.0, function(v) {
         if (btnA && btnA.classList.contains('glow-white') && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = v;
-        wakeRender(); return v; 
+        wakeRender(); return v;
     });
-    createS('slider-mult-b', '間接光補償', 0.1, 5.0, 0.1, 1.7, function(v) { 
+    createS('slider-mult-b', '間接光補償', 0.1, 5.0, 0.1, 2.5, function(v) {
         if (btnB && btnB.classList.contains('glow-white') && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = v;
-        wakeRender(); return v; 
+        wakeRender(); return v;
     });
 
     // A/B radio
     var btnA = document.getElementById('btnGroupA'), btnB = document.getElementById('btnGroupB');
     var ctrlA = document.getElementById('group-a-controls'), ctrlB = document.getElementById('group-b-controls');
+    function applyWallAlbedo(v) {
+        setSliderValue('slider-wall-albedo', v);
+        wallAlbedo = v;
+        var r = 1.0 * v, g = 0.984 * v, b = 0.949 * v;
+        C_WALL[0] = r; C_WALL[1] = g; C_WALL[2] = b;
+        C_WALL_L[0] = r; C_WALL_L[1] = g; C_WALL_L[2] = b;
+        C_WALL_R[0] = r; C_WALL_R[1] = g; C_WALL_R[2] = b;
+        C_WALL_S[0] = r; C_WALL_S[1] = g; C_WALL_S[2] = b;
+        updateBoxDataTexture();
+    }
     if (btnA) btnA.onclick = function() {
         btnA.className = 'action-btn glow-white'; btnB.className = 'action-btn';
         if (ctrlA) ctrlA.style.display = 'block';
         if (ctrlB) ctrlB.style.display = 'none';
-        setSliderValue('slider-bounces', 8);
-        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 8;
+        setSliderValue('slider-bounces', 14);
+        if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 14;
         if (pathTracingUniforms && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = getSliderValue('slider-mult-a');
+        applyWallAlbedo(0.85);
         wakeRender();
     };
     if (btnB) btnB.onclick = function() {
@@ -1459,11 +1474,12 @@ function initUI() {
         setSliderValue('slider-bounces', 4);
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 4;
         if (pathTracingUniforms && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = getSliderValue('slider-mult-b');
+        applyWallAlbedo(1.0);
         wakeRender();
     };
 
 
-    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 1.0, function(v) { 
+    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 0.85, function(v) {
         wallAlbedo = v;
         var r = 1.0 * v, g = 0.984 * v, b = 0.949 * v;
         C_WALL[0] = r; C_WALL[1] = g; C_WALL[2] = b;

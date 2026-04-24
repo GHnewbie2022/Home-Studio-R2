@@ -688,7 +688,7 @@ function initTHREEjs()
 	pathTracingUniforms.uWallAlbedo = { type: "f", value: 1.0 };
 
 	// R2-UI: 最大反彈次數 runtime 可調（硬性上限 14 寫死在 shader for 迴圈編譯期）
-	pathTracingUniforms.uMaxBounces = { type: "f", value: 4.0 };
+	pathTracingUniforms.uMaxBounces = { type: "f", value: 14.0 };
 
 	pathTracingDefines = {
 		//NUMBER_OF_TRIANGLES: total_number_of_triangles
