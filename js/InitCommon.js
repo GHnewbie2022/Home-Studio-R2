@@ -18,11 +18,6 @@ let pathTracingMaterial, pathTracingMesh;
 let screenCopyMaterial, screenCopyMesh;
 let screenOutputMaterial, screenOutputMesh;
 let pathTracingRenderTarget, screenCopyRenderTarget;
-// R6-1：PostDenoise bilateral pass RT + scene + material + mesh + uniforms
-let postDenoiseRenderTarget;
-let postDenoiseScene;
-let postDenoiseMaterial, postDenoiseMesh;
-let postDenoiseUniforms;
 // R2-UI Bloom：multi-pass bloom 的 1/4 解析度 ping-pong render targets + scenes/materials
 // R2-UI Bloom multi-scale：4 層 mip chain (1/2, 1/4, 1/8, 1/16)
 let bloomMip = []; // [0]=1/2, [1]=1/4, [2]=1/8, [3]=1/16, [4]=1/32, [5]=1/64, [6]=1/128
@@ -330,13 +325,6 @@ function onWindowResize(event)
 
 	pathTracingRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
 	screenCopyRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
-	// R6-1：PostDenoise RT 同步 resize（與 pathTracingRenderTarget 保持同解析度）
-	if (postDenoiseRenderTarget)
-	{
-		postDenoiseRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
-		if (postDenoiseUniforms && postDenoiseUniforms.uResolution)
-			postDenoiseUniforms.uResolution.value.set(context.drawingBufferWidth, context.drawingBufferHeight);
-	}
 
 	// R2-UI Bloom pyramid：7 層 mip (1/2 ~ 1/128) 同步 resize
 	if (bloomMip && bloomMip.length === 7)
@@ -557,17 +545,6 @@ function initTHREEjs()
 	//required by WebGL 2.0 for rendering to FLOAT textures
 	context = renderer.getContext();
 	context.getExtension('EXT_color_buffer_float');
-	// R6-1-Q6：偵測 EXT_color_buffer_float 是否真正可用（macOS Brave 可能限制）
-	// window.r6_1_extColorBufferFloat = true 代表 HDR > 1.0 FloatType RT 可靠
-	{
-		const _ext = context.getExtension('EXT_color_buffer_float');
-		window.r6_1_extColorBufferFloat = (_ext !== null);
-		if (!_ext)
-		{
-			console.warn('[R6-1-Q6] EXT_color_buffer_float not supported. ' +
-				'PostDenoise RT may fall back to LDR; HDR > 1.0 values not reliable.');
-		}
-	}
 
 	container = document.getElementById('container');
 	container.appendChild(renderer.domElement);
@@ -631,21 +608,6 @@ function initTHREEjs()
 		stencilBuffer: false
 	});
 	screenCopyRenderTarget.texture.generateMipmaps = false;
-
-	//!! WARNING: postDenoiseRenderTarget 寫回域 = N × per-frame-denoised radiance
-	//!! 下游 ScreenOutput * uOneOverSampleCounter 還原 per-sample 域顯示
-	//!! R6-2/R6-3 SVGF 接此 RT 必須先 / uSampleCounter 還原 per-sample 域
-	//!! Bloom brightpass 不讀此 RT（C-1 決策案 a，鎖 pathTracingRT 不切）
-	// R6-1：PostDenoise bilateral pass RT（FloatType RGBA full-res，仿 screenCopyRenderTarget 規格）
-	postDenoiseRenderTarget = new THREE.WebGLRenderTarget(context.drawingBufferWidth, context.drawingBufferHeight, {
-		minFilter: THREE.NearestFilter,
-		magFilter: THREE.NearestFilter,
-		format: THREE.RGBAFormat,
-		type: THREE.FloatType,
-		depthBuffer: false,
-		stencilBuffer: false
-	});
-	postDenoiseRenderTarget.texture.generateMipmaps = false;
 
 	// R2-UI Bloom multi-scale：4 層 mip chain (1/2, 1/4, 1/8, 1/16)
 	// LinearFilter 讓上採樣 tent filter 與 composite 的 bilinear 都能平滑插值
@@ -824,36 +786,6 @@ function initTHREEjs()
 
 		screenOutputMesh = new THREE.Mesh(triangleGeometry, screenOutputMaterial);
 		screenOutputScene.add(screenOutputMesh);
-	});
-
-	// R6-1：PostDenoise bilateral pass（並排新增，不動既有 walk denoiser）
-	// 預設 sigma=0 / enabled=false 安全 passthrough，步驟 3 才由 GUI 注入真實 sigma
-	postDenoiseUniforms = {
-		tPathTracedImageTexture: { type: "t",  value: pathTracingRenderTarget.texture },
-		uSampleCounter:          { type: "f",  value: 0.0 },
-		uOneOverSampleCounter:   { type: "f",  value: 0.0 },
-		uSigmaColor:             { type: "f",  value: 0.0 }, // C1 default per §F.6（步驟 3 GUI 接管）
-		uSigmaSpatial:           { type: "f",  value: 2.0 }, // 全 config 統一 2.0（5×5 kernel 1σ 落點）
-		uResolution:             { type: "v2", value: new THREE.Vector2(context.drawingBufferWidth, context.drawingBufferHeight) },
-		// R6-1 步驟 3：toggle 狀態（僅 JS 端讀取，不傳 GLSL；RT 指向切換由 render loop 使用）
-		uPostDenoiseEnabled:     { value: false }
-	};
-
-	postDenoiseScene = new THREE.Scene();
-	postDenoiseScene.add(orthoCamera);
-
-	fileLoader.load('shaders/PostDenoise_Fragment.glsl', function (shaderText)
-	{
-		postDenoiseMaterial = new THREE.ShaderMaterial({
-			uniforms: postDenoiseUniforms,
-			vertexShader: pathTracingVertexShader,  // 沿用既有全螢幕三角 vertex shader
-			fragmentShader: shaderText,
-			depthWrite: false,
-			depthTest: false
-		});
-
-		postDenoiseMesh = new THREE.Mesh(triangleGeometry, postDenoiseMaterial);
-		postDenoiseScene.add(postDenoiseMesh);
 	});
 
 
@@ -1446,29 +1378,6 @@ function animate()
 		}
 
 		renderer.autoClear = prevAutoClear;
-	}
-
-	// STEP 2.7：PostDenoise pass（R6-1 階段 1）
-	// 注意：本 pass 在 Bloom pyramid 之後、ScreenOutput 之前執行
-	// Bloom brightpass 仍讀 pathTracingRT 原值（C-1 案 a），不讀 postDenoiseRT
-	// ScreenOutput 的 tPathTracedImageTexture 動態指向：toggle on → postDenoiseRT，off → pathTracingRT
-	if (postDenoiseMaterial && postDenoiseUniforms)
-	{
-		// 更新 postDenoise pass 的 sample counter uniforms（對齊當前幀）
-		postDenoiseUniforms.uOneOverSampleCounter.value = screenOutputUniforms.uOneOverSampleCounter.value;
-		postDenoiseUniforms.uSampleCounter.value = sampleCounter;
-
-		// 無論 toggle 狀態，始終執行 postDenoise pass（保持 postDenoiseRT 內容最新）
-		// toggle off 時僅不讓 ScreenOutput 讀此 RT（零代價原則 P5）
-		renderer.setRenderTarget(postDenoiseRenderTarget);
-		renderer.render(postDenoiseScene, orthoCamera);
-
-		// 切 ScreenOutput 讀的 RT（toggle on/off 決定 ScreenOutput 看哪個 RT）
-		if (postDenoiseUniforms.uPostDenoiseEnabled.value) {
-			screenOutputUniforms.tPathTracedImageTexture.value = postDenoiseRenderTarget.texture;
-		} else {
-			screenOutputUniforms.tPathTracedImageTexture.value = pathTracingRenderTarget.texture;
-		}
 	}
 
 	// STEP 3
