@@ -11,3 +11,7 @@
 > iter 2 已決議移除：
 > - ~~Q1（pdfNeeForLight 讀 uniform vs 加參數）~~ → 採「加 `float selectPdfArg` 參數」，記入 R3-6.5.md ADR Decisions
 > - ~~Q3（observability N 值顯示位置）~~ → 採「GUI label 即時顯示 N」，Step 6 實作 `activeLightCountDisplay` textCtrl
+
+## R6-1 階段 1（Bilateral Post-Denoise）
+
+> Open Questions 已遷入 docs/SOP/R6-1：雙邊濾波後處理降噪.md §G
