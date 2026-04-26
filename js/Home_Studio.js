@@ -452,6 +452,38 @@ function applyPanelConfig(config) {
     if (window.reapplyGikColors) {
         window.reapplyGikColors();
     }
+
+    // R6-1 步驟 3：切 config 同步 sigma preset + toggle 狀態（C-2 規範）
+    // sigma 改值必清累積（在 needClearAccumulation = true 之後執行）
+    // C1/C2 sigma=0 → 自動關 toggle（使用者反饋：C1/C2 整體已乾淨）
+    var SIGMA_PRESETS = {
+        1: { space: 2.0, color: 0.00 },  // C1：使用者反饋，整體已乾淨
+        2: { space: 2.0, color: 0.00 },  // C2：使用者反饋，整體已乾淨
+        3: { space: 2.0, color: 0.20 },  // C3：朝外光源，NEE 採樣 50%+ 浪費
+        4: { space: 2.0, color: 0.22 }   // C4：朝外光源，加軌道輔光
+    };
+    var preset = SIGMA_PRESETS[config];
+    if (preset && typeof postDenoiseUniforms !== 'undefined' && postDenoiseUniforms) {
+        postDenoiseUniforms.uSigmaColor.value   = preset.color;
+        postDenoiseUniforms.uSigmaSpatial.value = preset.space;
+
+        // 同步 GUI slider 顯示值
+        var slSpace = document.getElementById('slider-sigma-space');
+        var slColor = document.getElementById('slider-sigma-color');
+        var valSpace = document.getElementById('value-sigma-space');
+        var valColor = document.getElementById('value-sigma-color');
+        if (slSpace)  slSpace.value             = preset.space;
+        if (slColor)  slColor.value             = preset.color;
+        if (valSpace) valSpace.textContent       = preset.space.toFixed(1);
+        if (valColor) valColor.textContent       = preset.color.toFixed(2);
+
+        // C1/C2 sigma_color=0 → 自動關 toggle（使用者反饋）
+        if (preset.color === 0) {
+            postDenoiseUniforms.uPostDenoiseEnabled.value = false;
+            var chkBilateral = document.getElementById('chk-bilateral');
+            if (chkBilateral) chkBilateral.checked = false;
+        }
+    }
 }
 
 // R4-1 / R4-4-fix05 / R4-4-fix08：依 currentPanelConfig 同步燈光面板顯隱。
@@ -2063,6 +2095,61 @@ function initUI() {
             applyPanelConfig(conf);
         });
     });
+
+    // R6-1 步驟 3：bilateral GUI listeners
+    // C-2 規範：切 toggle 不清累積（僅改 RT 指向）；切 sigma 改值才清累積
+
+    // toggle：開關雙邊濾波（僅改 RT 指向，不清累積）
+    var chkBilateral = document.getElementById('chk-bilateral');
+    if (chkBilateral) {
+        chkBilateral.addEventListener('change', function(e) {
+            if (typeof postDenoiseUniforms !== 'undefined' && postDenoiseUniforms) {
+                postDenoiseUniforms.uPostDenoiseEnabled.value = e.target.checked;
+                // 僅改 RT 指向，不清累積（C-2 規範：toggle off 等同 main 零代價）
+            }
+        });
+    }
+
+    // sigma spatial slider：改值清累積（避免新舊參數混疊）
+    var sliderSigmaSpace = document.getElementById('slider-sigma-space');
+    if (sliderSigmaSpace) {
+        sliderSigmaSpace.addEventListener('input', function(e) {
+            var v = parseFloat(e.target.value);
+            if (typeof postDenoiseUniforms !== 'undefined' && postDenoiseUniforms) {
+                postDenoiseUniforms.uSigmaSpatial.value = v;
+            }
+            var valEl = document.getElementById('value-sigma-space');
+            if (valEl) valEl.textContent = v.toFixed(1);
+            // sigma 改值清累積（C-2 規範）
+            needClearAccumulation = true;
+            cameraSwitchFrames = 3;
+        });
+    }
+
+    // sigma color slider：改值清累積（避免新舊參數混疊）
+    var sliderSigmaColor = document.getElementById('slider-sigma-color');
+    if (sliderSigmaColor) {
+        sliderSigmaColor.addEventListener('input', function(e) {
+            var v = parseFloat(e.target.value);
+            if (typeof postDenoiseUniforms !== 'undefined' && postDenoiseUniforms) {
+                postDenoiseUniforms.uSigmaColor.value = v;
+            }
+            var valEl = document.getElementById('value-sigma-color');
+            if (valEl) valEl.textContent = v.toFixed(2);
+            // sigma 改值清累積（C-2 規範）
+            needClearAccumulation = true;
+            cameraSwitchFrames = 3;
+        });
+    }
+
+    // 後處理降噪 panel header 點擊折疊（對齊其他 panel-header 行為）
+    var denoiseHeader = document.getElementById('denoise-header');
+    var denoisePanel = document.getElementById('denoise-panel');
+    if (denoiseHeader && denoisePanel) {
+        denoiseHeader.addEventListener('click', function() {
+            denoisePanel.classList.toggle('collapsed');
+        });
+    }
 
     function applyGikColorToAbsBox(boxIdx, colorIdx) {
         var box = sceneBoxes[boxIdx];

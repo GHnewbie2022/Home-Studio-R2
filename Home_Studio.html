@@ -237,6 +237,27 @@
 					</div>
 				</div>
 
+				<!-- 🔬 後處理降噪（R6-1） -->
+				<div id="denoise-header" class="panel-header item-divider">🔬 後處理降噪</div>
+				<div id="denoise-panel" class="panel-content collapsed">
+					<div class="control-row" style="margin-bottom:8px;">
+						<div class="label-group">
+							<input type="checkbox" id="chk-bilateral">
+							<span class="label-text">雙邊濾波</span>
+						</div>
+					</div>
+					<div class="control-row">
+						<div class="label-group"><span class="label-text">spatial σ</span></div>
+						<input type="range" id="slider-sigma-space" min="0" max="4" step="0.1" value="0">
+						<span id="value-sigma-space" style="width:30px; text-align:right; font-size:10px; color:#aaa;">0.0</span>
+					</div>
+					<div class="control-row">
+						<div class="label-group"><span class="label-text">color σ</span></div>
+						<input type="range" id="slider-sigma-color" min="0" max="1" step="0.01" value="0">
+						<span id="value-sigma-color" style="width:30px; text-align:right; font-size:10px; color:#aaa;">0.00</span>
+					</div>
+				</div>
+
 				<!-- ⚙️ 光追設定 -->
 				<div id="ray-header" class="panel-header">⚙️ 光追設定</div>
 				<div id="ray-panel" class="panel-content collapsed">
@@ -264,7 +285,7 @@
 		<script defer src="js/MobileJoystickControls.js"> </script>
 		<script defer src="js/PathTracingCommon.js"> </script>
 		<script defer src="js/BVH_Acc_Structure_Iterative_Fast_Builder.js"> </script>
-		<script defer src="js/InitCommon.js?v=r6-1-step2"> </script>
+		<script defer src="js/InitCommon.js?v=r6-1-step3"> </script>
 
 		<script defer src="js/Home_Studio.js?v=r4-5-fix02-infodom"> </script>
 

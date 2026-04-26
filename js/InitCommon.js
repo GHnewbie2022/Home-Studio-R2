@@ -834,7 +834,9 @@ function initTHREEjs()
 		uOneOverSampleCounter:   { type: "f",  value: 0.0 },
 		uSigmaColor:             { type: "f",  value: 0.0 }, // C1 default per §F.6（步驟 3 GUI 接管）
 		uSigmaSpatial:           { type: "f",  value: 2.0 }, // 全 config 統一 2.0（5×5 kernel 1σ 落點）
-		uResolution:             { type: "v2", value: new THREE.Vector2(context.drawingBufferWidth, context.drawingBufferHeight) }
+		uResolution:             { type: "v2", value: new THREE.Vector2(context.drawingBufferWidth, context.drawingBufferHeight) },
+		// R6-1 步驟 3：toggle 狀態（僅 JS 端讀取，不傳 GLSL；RT 指向切換由 render loop 使用）
+		uPostDenoiseEnabled:     { value: false }
 	};
 
 	postDenoiseScene = new THREE.Scene();
@@ -1444,6 +1446,29 @@ function animate()
 		}
 
 		renderer.autoClear = prevAutoClear;
+	}
+
+	// STEP 2.7：PostDenoise pass（R6-1 階段 1）
+	// 注意：本 pass 在 Bloom pyramid 之後、ScreenOutput 之前執行
+	// Bloom brightpass 仍讀 pathTracingRT 原值（C-1 案 a），不讀 postDenoiseRT
+	// ScreenOutput 的 tPathTracedImageTexture 動態指向：toggle on → postDenoiseRT，off → pathTracingRT
+	if (postDenoiseMaterial && postDenoiseUniforms)
+	{
+		// 更新 postDenoise pass 的 sample counter uniforms（對齊當前幀）
+		postDenoiseUniforms.uOneOverSampleCounter.value = screenOutputUniforms.uOneOverSampleCounter.value;
+		postDenoiseUniforms.uSampleCounter.value = sampleCounter;
+
+		// 無論 toggle 狀態，始終執行 postDenoise pass（保持 postDenoiseRT 內容最新）
+		// toggle off 時僅不讓 ScreenOutput 讀此 RT（零代價原則 P5）
+		renderer.setRenderTarget(postDenoiseRenderTarget);
+		renderer.render(postDenoiseScene, orthoCamera);
+
+		// 切 ScreenOutput 讀的 RT（toggle on/off 決定 ScreenOutput 看哪個 RT）
+		if (postDenoiseUniforms.uPostDenoiseEnabled.value) {
+			screenOutputUniforms.tPathTracedImageTexture.value = postDenoiseRenderTarget.texture;
+		} else {
+			screenOutputUniforms.tPathTracedImageTexture.value = pathTracingRenderTarget.texture;
+		}
 	}
 
 	// STEP 3
