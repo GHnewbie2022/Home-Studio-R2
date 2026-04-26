@@ -25,13 +25,14 @@ void main()
     // 進入 per-sample 域（HDR-linear）：P1 執行域唯一
     vec3 centerRGB = centerPixel.rgb * uOneOverSampleCounter;
 
-    // 邊緣 pixel 直通（Architect 修訂 #4：centerPixel.a == 1.0 為 walk denoiser 邊緣訊號）
-    // 寫回域對稱：先 / uOneOverSampleCounter 還原累積域，供下游 ScreenOutput * uOneOverSampleCounter
-    if (centerPixel.a >= 0.999)
-    {
-        pc_fragColor = vec4(centerRGB / max(uOneOverSampleCounter, 1e-8), centerPixel.a);
-        return;
-    }
+    // R6-1 step3-fix03：移除 pixelSharpness（centerPixel.a）守門
+    // 原 ralplan v3 Architect 修訂 #4 假設 a=1.0 為「邊緣 pixel」直通，
+    // 實際 erichlof framework 的 pixelSharpness 是 walk denoiser 用來
+    // 保留 sharpness 的 pixel 標記（家具/光源/貼圖 fwidge 觸發），
+    // 並非 bilateral 該借用的 edge mask。
+    // 結果：a=1.0 直通讓家具/光源全跳過 bilateral，只剩牆壁 a=0.0 被降噪。
+    // 修：cross-bilateral 自身 sigma_color 已能「顏色不同 weight≈0」保邊，
+    // 不需 a 旗標守門。
 
     // sigma normalize（Architect 修訂 #3：高 variance 初期放大 sigma，累積後收斂）
     // sigmaC = uSigmaColor * max(1.0, 4.0 / sqrt(sampleCount))
@@ -66,14 +67,12 @@ void main()
             vec4 sampleP   = texelFetch(tPathTracedImageTexture, samplePix, 0);
             vec3 sampleRGB = sampleP.rgb * uOneOverSampleCounter;
 
-            // 鄰域邊緣 pixel spatial weight × 0（Architect 修訂 #4）
-            float edgeMask = (sampleP.a >= 0.999) ? 0.0 : 1.0;
-
+            // step3-fix03：移除鄰域邊緣 edgeMask（pixelSharpness 不是 bilateral edge mask）
             float dS = float(dx * dx + dy * dy);
             vec3  dC = sampleRGB - centerRGB;
             float wS = exp(-dS / twoSigSSq);
             float wC = exp(-dot(dC, dC) / twoSigCSq);
-            float w  = wS * wC * edgeMask;
+            float w  = wS * wC;
 
             sumRGB += sampleRGB * w;
             sumW   += w;
