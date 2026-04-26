@@ -2142,15 +2142,6 @@ function initUI() {
         });
     }
 
-    // 後處理降噪 panel header 點擊折疊（對齊其他 panel-header 行為）
-    var denoiseHeader = document.getElementById('denoise-header');
-    var denoisePanel = document.getElementById('denoise-panel');
-    if (denoiseHeader && denoisePanel) {
-        denoiseHeader.addEventListener('click', function() {
-            denoisePanel.classList.toggle('collapsed');
-        });
-    }
-
     function applyGikColorToAbsBox(boxIdx, colorIdx) {
         var box = sceneBoxes[boxIdx];
         if (!box) return;
