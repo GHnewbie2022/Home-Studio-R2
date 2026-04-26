@@ -14,7 +14,8 @@ uniform float uSigmaColor;                  // color weight σ base（由 GUI / 
 uniform float uSigmaSpatial;                // spatial weight σ（預設 2.0，全 config 統一）
 uniform vec2  uResolution;                  // 渲染解析度（width, height）
 
-out vec4 pc_fragColor;
+// pc_fragColor 由 erichlof framework 自動 inject（對齊 ScreenOutput_Fragment.glsl 範式）
+// 嚴禁在此重複宣告 out vec4 pc_fragColor；會與 framework prefix 衝突造成編譯失敗
 
 void main()
 {

@@ -2110,7 +2110,7 @@ function initUI() {
         });
     }
 
-    // sigma spatial slider：改值清累積（避免新舊參數混疊）
+    // sigma spatial slider：fine-tune 不清累積（PostDenoise 是純後處理，無採樣偏差需重置）
     var sliderSigmaSpace = document.getElementById('slider-sigma-space');
     if (sliderSigmaSpace) {
         sliderSigmaSpace.addEventListener('input', function(e) {
@@ -2120,13 +2120,10 @@ function initUI() {
             }
             var valEl = document.getElementById('value-sigma-space');
             if (valEl) valEl.textContent = v.toFixed(1);
-            // sigma 改值清累積（C-2 規範）
-            needClearAccumulation = true;
-            cameraSwitchFrames = 3;
         });
     }
 
-    // sigma color slider：改值清累積（避免新舊參數混疊）
+    // sigma color slider：fine-tune 不清累積
     var sliderSigmaColor = document.getElementById('slider-sigma-color');
     if (sliderSigmaColor) {
         sliderSigmaColor.addEventListener('input', function(e) {
@@ -2136,9 +2133,6 @@ function initUI() {
             }
             var valEl = document.getElementById('value-sigma-color');
             if (valEl) valEl.textContent = v.toFixed(2);
-            // sigma 改值清累積（C-2 規範）
-            needClearAccumulation = true;
-            cameraSwitchFrames = 3;
         });
     }
 
