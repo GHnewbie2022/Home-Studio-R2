@@ -1,4 +1,4 @@
-# R6-2 Handover — Phase 1.5 Step 2 Step 0 ❌ fail-fast，等使用者裁示走 X/Y/Z
+# R6-2 Handover — 桶 4 F2 Step 0 ❌ fail-fast，下一步桶 4 F1 (C3 21% frame-skip debug)
 
 > 最後更新：2026-04-27
 > 狀態：
@@ -7,7 +7,11 @@
 >   - Phase 1.5 Step 2 ralplan v3 ✅ APPROVED
 >   - Phase 1.5 Step 2 Step 0 探針閘 ❌ fail-fast（leaf P4 fetch Δ ≤ 1%）
 >   - SOP §86 a + d 雙失敗 → BVH 結構優化整支可信度下降
->   - 等使用者裁示走 X/Y/Z 候選路徑
+>   - Y 擱置（廠商討論場景靜態為主、reproject 動機未到）→ 五桶 ROADMAP 落地
+>   - 桶 4 F2 三段 timer 拆解 ralplan v3 ✅ APPROVE w/caveats（共識 v1→v2→v3）
+>   - 桶 4 F2 Step 0 探針閘 ❌ fail-fast（probe overhead ≥ 1.24%、Stage A 不可行）
+>   - 使用者採 B 選項：F2 結案、撤回探針程式碼、跳到桶 4 F1
+>   - R6-2 內累計四連敗（R6-1 / SAH / leaf packing / F2 Stage A）
 
 ---
 
@@ -16,12 +20,15 @@
 依序讀：
 
 ```
-1. .omc/REPORT-R6-2-Phase-1.5-Step2-step0-noop.md（最新失敗紀錄 + X/Y/Z 候選）
-2. .omc/REPORT-R6-2-Phase-1.5-Step1-SAH-rollback.md（前次失敗 SAH -39%）
-3. .omc/REPORT-R6-2-Phase-1.0.md（Phase 1.0 完整 baseline）
-4. .omc/plans/R6-2-Phase-1.5-Step2-leaf-fetch-packing.md（v3 ralplan APPROVED 計畫）
-5. docs/SOP/R6：渲染優化.md（主線 2 + a/d 雙失敗已標記）
-6. docs/SOP/Debug_Log.md 開頭通用 Debug 紀律三條
+1. .omc/REPORT-R6-2-bucket4-F2-step0-noop.md（最新：F2 Step 0 fail-fast、桶 4 F1 推薦）
+2. .omc/REPORT-R6-2-Phase-1.5-Step2-step0-noop.md（前次：leaf packing fail-fast）
+3. .omc/REPORT-R6-2-Phase-1.5-Step1-SAH-rollback.md（前前次：SAH -39%）
+4. .omc/REPORT-R6-2-Phase-1.0.md（Phase 1.0 完整 baseline、§5 C3 21% frame-skip 異常為 F1 目標）
+5. .omc/plans/R6-2-Phase-1.5-Step2-leaf-fetch-packing.md（v3 ralplan APPROVED 計畫）
+6. .omc/plans/R6-2-bucket4-F2-timer-breakdown.md（v3 共識計畫、Step 0 fail-fast 後保留作體例參考）
+7. .omc/ROADMAP-R6-2-optimization-buckets.md（五桶後續路徑地圖、桶 4 F2 已標 ⏸）
+8. docs/SOP/R6：渲染優化.md（主線 2 + a/d 雙失敗已標記）
+9. docs/SOP/Debug_Log.md 開頭通用 Debug 紀律三條
 ```
 
 ---
@@ -29,14 +36,21 @@
 ## ralplan + 兩次實證的核心結論
 
 ```
-ralplan v3 三輪共識預測 leaf fetch packing 上限可能 ≈ 0%（Architect A1+A4）
+ralplan v3 三輪共識（leaf packing）預測上限可能 ≈ 0%（Architect A1+A4）
 Step 0 探針 30 分鐘量測實證：C1=0.00% / C2=0.00% / C4=0.98% Δ
 → ANGLE Metal 已自動 DCE 或 fetch cache locality 緊密
 → packing 上限 ≤ 1%，遠低於 +5% commit 門檻
 → 整段 Step 1A~1E 9 hr 工程跳過，淨節省 8 hr
 
-ralplan ROI：3 輪 Planner+Architect+Critic 流量 vs 8 hr 工程節省 + 第三次失敗教訓
-（前兩次：R6-1 撤回 0.6 d、SAH -39%）
+ralplan v3 三輪共識（F2 三段 timer，2026-04-27）：
+  Critic Round 2 OQ1 嚴格版預測：「Stage A probe overhead ≥ 1%、Stage A 大概率沉沒」
+  Step 0 探針 1 hr 寫程式碼 + 5 分鐘量測實證：
+    C1 -8.0% (含 frame-skip 污染) / C2 -1.24% (高可信度) / C4 -3.88%
+  → 1 處 if 已超嚴格 1% 閘、13 處加齊必加倍
+  → Stage A + Stage B 9~13 hr 工程跳過、F2 結案
+
+ralplan ROI 累計：4 次 R6 失敗（R6-1 / SAH / leaf packing / F2 Stage A）
+  其中後 2 次靠 ralplan + Step 0 探針 fast-skip、共節省約 17~21 hr 工程
 ```
 
 ---
@@ -52,43 +66,41 @@ d) leaf fetch packing            ❌ ≤ 1%（Phase 1.5 Step 2 Step 0）
 
 ---
 
-## 候選路徑 X/Y/Z（待使用者裁示）
+## ROADMAP 五桶現況（Y 擱置 + F2 fast-skip 後）
 
 ```
-路徑 X：嘗試 SOP §86 c (while-loop traversal)
-  改動：fragment shader BVH traversal 由 stack-based 改 while-loop
-  風險：高
-  預期：≤ 5%（a/d 都失敗，估收穫上限低）
-  工時：3~5 天
-  OMC：必須 ralplan
-  建議：不進
+桶 1 SOP §86 b/c           不進（a+d 雙失敗使可信度低）
+桶 2 通用優化               #2 Russian Roulette 風險低、收穫保守 ≤ 10%
+桶 3 R3-8 觸發               場景 ≥ 200 box 才動
+桶 4 F1 C3 21% frame-skip   ★ 推薦下一步、工時 0.5~1 天
+桶 4 F2 三段 timer          ⏸ 暫緩（Step 0 fail-fast 2026-04-27）
+桶 4 F3 spectorJS dump      閒暇做、優先序低
+桶 5 跳出 R6 範圍           等下世代專案
 
-路徑 Y：跳到主線 1 階段 2 時序累積 reproject
-  R6-1 撤回不否定本階段（時序面 vs 空間面物理機制不同）
-  工時：1~2 週
-  OMC：ralplan 三輪
-  風險：中
-  預期：對「均勻雜點」物理上有效（previous frame motion vector 累積）
-
-路徑 Z：R6-2 結案
-  1024-spp 30~34 秒在 Apple M4 Pro 上是合理水準
-  廠商討論用 C1（30 秒）可接受
-  工時：0
-  風險：0
-  推薦：✅ 強烈建議
+詳：.omc/ROADMAP-R6-2-optimization-buckets.md
 ```
 
 ---
 
-## 推薦路徑 Z 的理由
+## 下一步候選路徑（待使用者裁示）
 
 ```
-1. SAH (a) -39% + leaf packing (d) ≤ 1% 兩次失敗證明 BVH 結構優化空間幾乎已用盡
-2. 剩餘 b/c 收穫上限估 ≤ 5%、風險高（fragment shader 重寫）、ROI 不正向
-3. 主線 1 階段 2 reproject 是「投資不同維度」工時 1~2 週、回報未知
-4. 30 秒 1024-spp 在 M4 Pro 是合理基準，廠商討論不卡節奏
-5. R6-1 撤回 + SAH 失敗 + leaf packing 失敗 = 三次 R6 內部失敗
-   合理停損點：R6 結案、轉軸進實體錄音室 config 研究（5 月底前主軸）
+路徑 A：桶 4 F1 C3 21% frame-skip debug ★ 推薦
+  工時：0.5~1 天
+  價值：Phase 1.0 數據可信度補完 + 未來多 config 量測協定都更可靠
+  風險：低
+  OMC：可直接 executor、不需 ralplan
+
+路徑 B：桶 2 #2 Russian Roulette 調校
+  工時：1~2 天
+  風險：低
+  預期：≤ 10% spp/sec 提升
+  OMC：可直接 executor
+
+路徑 C：R6-2 整體結案
+  R6-2 1024-spp 30~34 秒在 Apple M4 Pro 是合理水準
+  桶 1/2/3/5 全擱置、F1 等技術債
+  推薦：可做、但路徑 A/B 風險低工時短、可優先消化
 ```
 
 ---
@@ -103,8 +115,11 @@ Browser: Brave + MCP Playwright Chromium 雙端
 
 接手必驗：
   1. server 是否還在跑（lsof -iTCP:9001）
-  2. shader/JS 已 revert（git diff HEAD shaders/Home_Studio_Fragment.glsl 應為空）
-  3. baseline 數據以 .omc/REPORT-R6-2-Phase-1.0.md 為準
+  2. shader/JS 已 revert（git diff HEAD shaders/Home_Studio_Fragment.glsl 應為空、
+     js/Home_Studio.js uniform 註冊段應無 uSegmentMode）
+  3. F2 探針痕跡：Home_Studio.html 留 ?v=f2-step0-probe + favicon link，
+     js/Home_Studio.js L963 query 同（無功能影響、實證痕跡保留）
+  4. baseline 數據以 .omc/REPORT-R6-2-Phase-1.0.md 為準
 ```
 
 ---
@@ -114,7 +129,9 @@ Browser: Brave + MCP Playwright Chromium 雙端
 ```
 DO NOT 重做 SAH 切換（已驗證 -39%）
 DO NOT 重做 leaf fetch packing（已驗證 ≤ 1%）
-DO NOT 自動進路徑 X/Y（必須使用者明確選）
-DO NOT 跳過 1024-spp pixel diff = 0 視覺驗證（若日後路徑 X/Y 啟動）
+DO NOT 重做 F2 Stage A probe（已驗證 probe overhead ≥ 1.24%）
+DO NOT 重啟 F2 ralplan（plan v3 已落地、Stage B follow-up 等 R3-8 觸發）
+DO NOT 自動進路徑 A/B/C（使用者明確選才動）
+DO NOT 跳過 1024-spp pixel diff = 0 視覺驗證（若日後 BVH 結構優化重啟）
 DO NOT 重啟 ralplan 共識後不對齊 plan 第一性原理（探針優先）
 ```

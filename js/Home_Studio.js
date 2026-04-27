@@ -960,7 +960,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=uncap-test';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=f2-step0-probe';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
