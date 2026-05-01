@@ -1,6 +1,7 @@
-# R6-2 Handover — 桶 4 F2 Step 0 ❌ fail-fast，下一步桶 4 F1 (C3 21% frame-skip debug)
+# R6-2 Handover — 桶 4 F1 ✅ 結案，使用者選留候補（下一步桶 2 #2 Russian Roulette 待啟動）
 
-> 最後更新：2026-04-27
+> 最後更新：2026-05-01（R6 後製子線 LGG-r30 完工後使用者裁示「留候補」）
+> 下一步交接：`.omc/HANDOFF-next-russian-roulette.md`
 > 狀態：
 >   - Phase 1.0 ✅ 完工（baseline 30~34 秒 1024-spp 牆鐘）
 >   - Phase 1.5 Step 1 SAH builder 切換 ❌ 失敗 -39% 回滾
@@ -12,6 +13,7 @@
 >   - 桶 4 F2 Step 0 探針閘 ❌ fail-fast（probe overhead ≥ 1.24%、Stage A 不可行）
 >   - 使用者採 B 選項：F2 結案、撤回探針程式碼、跳到桶 4 F1
 >   - R6-2 內累計四連敗（R6-1 / SAH / leaf packing / F2 Stage A）
+>   - 桶 4 F1 ✅ 結案 2026-04-27（root cause = 啟動暫態 RAF cadence + 60fps gate、不修）
 
 ---
 
@@ -20,15 +22,16 @@
 依序讀：
 
 ```
-1. .omc/REPORT-R6-2-bucket4-F2-step0-noop.md（最新：F2 Step 0 fail-fast、桶 4 F1 推薦）
-2. .omc/REPORT-R6-2-Phase-1.5-Step2-step0-noop.md（前次：leaf packing fail-fast）
-3. .omc/REPORT-R6-2-Phase-1.5-Step1-SAH-rollback.md（前前次：SAH -39%）
-4. .omc/REPORT-R6-2-Phase-1.0.md（Phase 1.0 完整 baseline、§5 C3 21% frame-skip 異常為 F1 目標）
-5. .omc/plans/R6-2-Phase-1.5-Step2-leaf-fetch-packing.md（v3 ralplan APPROVED 計畫）
-6. .omc/plans/R6-2-bucket4-F2-timer-breakdown.md（v3 共識計畫、Step 0 fail-fast 後保留作體例參考）
-7. .omc/ROADMAP-R6-2-optimization-buckets.md（五桶後續路徑地圖、桶 4 F2 已標 ⏸）
-8. docs/SOP/R6：渲染優化.md（主線 2 + a/d 雙失敗已標記）
-9. docs/SOP/Debug_Log.md 開頭通用 Debug 紀律三條
+1. .omc/REPORT-R6-2-bucket4-F1-conclusion.md（最新：F1 結案、暫態 RAF cadence + 60fps gate、不修）
+2. .omc/REPORT-R6-2-bucket4-F2-step0-noop.md（前次：F2 Step 0 fail-fast、桶 4 F1 推薦）
+3. .omc/REPORT-R6-2-Phase-1.5-Step2-step0-noop.md（前前次：leaf packing fail-fast）
+4. .omc/REPORT-R6-2-Phase-1.5-Step1-SAH-rollback.md（前前前次：SAH -39%）
+5. .omc/REPORT-R6-2-Phase-1.0.md（Phase 1.0 完整 baseline、§5 C3 frame-skip 已標 ✅ 結案）
+6. .omc/plans/R6-2-Phase-1.5-Step2-leaf-fetch-packing.md（v3 ralplan APPROVED 計畫）
+7. .omc/plans/R6-2-bucket4-F2-timer-breakdown.md（v3 共識計畫、Step 0 fail-fast 後保留作體例參考）
+8. .omc/ROADMAP-R6-2-optimization-buckets.md（五桶後續路徑地圖、桶 4 F1 ✅ + F2 ⏸）
+9. docs/SOP/R6：渲染優化.md（主線 2 + a/d 雙失敗已標記）
+10. docs/SOP/Debug_Log.md 開頭通用 Debug 紀律三條
 ```
 
 ---
@@ -70,9 +73,9 @@ d) leaf fetch packing            ❌ ≤ 1%（Phase 1.5 Step 2 Step 0）
 
 ```
 桶 1 SOP §86 b/c           不進（a+d 雙失敗使可信度低）
-桶 2 通用優化               #2 Russian Roulette 風險低、收穫保守 ≤ 10%
+桶 2 通用優化               #2 Russian Roulette 風險低、收穫保守 ≤ 10% ★ 推薦下一步
 桶 3 R3-8 觸發               場景 ≥ 200 box 才動
-桶 4 F1 C3 21% frame-skip   ★ 推薦下一步、工時 0.5~1 天
+桶 4 F1 C3 21% frame-skip   ✅ 結案 2026-04-27（暫態 RAF cadence、不修）
 桶 4 F2 三段 timer          ⏸ 暫緩（Step 0 fail-fast 2026-04-27）
 桶 4 F3 spectorJS dump      閒暇做、優先序低
 桶 5 跳出 R6 範圍           等下世代專案
@@ -85,13 +88,10 @@ d) leaf fetch packing            ❌ ≤ 1%（Phase 1.5 Step 2 Step 0）
 ## 下一步候選路徑（待使用者裁示）
 
 ```
-路徑 A：桶 4 F1 C3 21% frame-skip debug ★ 推薦
-  工時：0.5~1 天
-  價值：Phase 1.0 數據可信度補完 + 未來多 config 量測協定都更可靠
-  風險：低
-  OMC：可直接 executor、不需 ralplan
+路徑 A：桶 4 F1 C3 21% frame-skip debug ✅ 已完成 2026-04-27
+  詳：.omc/REPORT-R6-2-bucket4-F1-conclusion.md
 
-路徑 B：桶 2 #2 Russian Roulette 調校
+路徑 B：桶 2 #2 Russian Roulette 調校 ★ 推薦
   工時：1~2 天
   風險：低
   預期：≤ 10% spp/sec 提升
@@ -99,8 +99,8 @@ d) leaf fetch packing            ❌ ≤ 1%（Phase 1.5 Step 2 Step 0）
 
 路徑 C：R6-2 整體結案
   R6-2 1024-spp 30~34 秒在 Apple M4 Pro 是合理水準
-  桶 1/2/3/5 全擱置、F1 等技術債
-  推薦：可做、但路徑 A/B 風險低工時短、可優先消化
+  桶 1/2/3/5 全擱置
+  推薦：可做、但路徑 B 風險低工時短、可優先消化
 ```
 
 ---
@@ -130,8 +130,9 @@ Browser: Brave + MCP Playwright Chromium 雙端
 DO NOT 重做 SAH 切換（已驗證 -39%）
 DO NOT 重做 leaf fetch packing（已驗證 ≤ 1%）
 DO NOT 重做 F2 Stage A probe（已驗證 probe overhead ≥ 1.24%）
+DO NOT 重做 F1 frame-skip 量測（已結案、root cause = 啟動暫態 RAF cadence + 60fps gate、不修）
 DO NOT 重啟 F2 ralplan（plan v3 已落地、Stage B follow-up 等 R3-8 觸發）
-DO NOT 自動進路徑 A/B/C（使用者明確選才動）
+DO NOT 自動進路徑 B/C（使用者明確選才動）
 DO NOT 跳過 1024-spp pixel diff = 0 視覺驗證（若日後 BVH 結構優化重啟）
 DO NOT 重啟 ralplan 共識後不對齊 plan 第一性原理（探針優先）
 ```

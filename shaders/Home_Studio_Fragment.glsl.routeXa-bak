@@ -32,9 +32,6 @@ uniform float uCeilingLampHalfH;
 
 uniform float uWallAlbedo; // R2-UI：結構表面反射率（地板/天花板/牆/樑/柱，陣列索引 0..31；fix19 修正原 1..15 漏蓋多數牆段之索引錯誤）
 uniform float uMaxBounces; // R2-UI：最大反彈次數 1~14，runtime 可調，硬性編譯期上限 14
-uniform sampler2D tBorrowTexture; // R6 LGG-r16 J3：1/8 res 14 彈借光 buffer，主 pass 在 terminal 採樣
-uniform float uBorrowStrength;    // R6 LGG-r16 J3：借光強度 0~1，0=關（不跑借光 pass）
-uniform float uIsBorrowPass;      // R6 LGG-r16 J3：1=當前 frame 是借光 pass，shader 跳過借光採樣避免遞迴
 
 // R2-13 X-ray 透視剝離
 uniform vec3 uCamPos;
@@ -942,7 +939,6 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 	int diffuseCount = 0;
 	bool indirectMultApplied = false; // R6: uIndirectMultiplier 整條光路只套一次（原每次消費皆套會指數疊加）
-	bool reachedMaxBounces = false; // R6 LGG-r15 B1：旗標──只有在 path 被 max bounces 強制中斷時為 true，其他 break（撞光、ray escape）為 false
 	int previousIntersecType = -100;
 	hitType = -100;
 
@@ -967,7 +963,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 	for (int bounces = 0; bounces < 14; bounces++)
 	{
-		if (bounces >= int(uMaxBounces)) { reachedMaxBounces = true; break; } // R2-UI：runtime 動態上限；R6 LGG-r15：標記為 max-bounce 強制中斷供 terminal ambient 用
+		if (bounces >= int(uMaxBounces)) break; // R2-UI：runtime 動態上限
 		primaryRay = (bounces == 0) ? 1 : 0; // R2-13 僅首次 primary ray 套用 X-ray 剔除
 		previousIntersecType = hitType;
 
@@ -1840,48 +1836,6 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		continue;
 	}
 
-	}
-
-	// R6 LGG-r15 B1 / r16 J3：Terminal 注入兩個來源
-	//   uIsBorrowPass < 0.5  → 主 pass：可同時用 borrow 採樣 + constant ambient 保底
-	//   uIsBorrowPass > 0.5  → 借光 pass 自身：跳過所有 terminal 注入，避免遞迴自我餵食
-	// borrow      該像素 14 彈累積色 / sampleCounter，給暗角「來自場景反彈」的真實光
-	// ambient     中性常數，給 borrow 0 或想要保底時用
-	// 兩者皆 mask × value，path 越深 mask 越小，亮區自動衰減
-	if (reachedMaxBounces && uIsBorrowPass < 0.5)
-	{
-		// R6 LGG-r28：拆掉 darkGate，只留 positionGate
-		//
-		// r20~r27 共 8 輪 darkGate 失敗紀錄（這次有實證根因）：
-		//   darkGate = exp(-accumLuma × 100) 是 per-frame 0/1 機率分類
-		//   但 pixel 多 frame 平均 E[darkGate] = (沒撞光機率) × 1 + (撞光機率) × ~0
-		//   → E[darkGate] 直接等於該 pixel 的「沒撞光機率」
-		//   → 牆面不同高度的沒撞光機率隨 NEE 幾何漸變
-		//   → contribution = mask × borrow × strength × E[darkGate] × positionGate
-		//                    形成沿 NEE 機率等高線的水平 banding
-		//   → 不是雜訊、是真實空間結構、無法靠採樣消除
-		//
-		// 拆掉 darkGate 後 contribution = mask × borrow × strength × positionGate
-		//   positionGate 用 borrow_luma 收斂後是 stable 空間平滑值
-		//   不再有 per-frame 隨機性 → 無 banding
-		//   AO 帶用 positionGate 微擋（borrow_luma 0.5 → gate 0.25 → 弱 lift）
-		//   亮面 positionGate 0 → 完全不影響
-		//   深暗角 positionGate ≈ 1 → 全套
-		if (uBorrowStrength > 0.0)
-		{
-			// R6 LGG-r29：positionGate 收緊到 (0.0, 0.3)
-			// r28 範圍 (0.2, 0.6) 讓亮面（borrow_luma 0.4~0.6）也有 0.5 級 gate
-			//   → contribution 受 1/8 borrow per-texel variance 影響、向外擴散變髒
-			// 收緊到 (0.0, 0.3) 後 borrow_luma > 0.3 全擋（牆面/天花板/亮區乾淨）
-			// 只剩深暗角與接觸暗角 borrow_luma < 0.3 時放行
-			vec2 borrowUv = gl_FragCoord.xy / uResolution;
-			vec3 borrowedSum = texture(tBorrowTexture, borrowUv).rgb;
-			vec3 borrowedAvg = borrowedSum / max(uSampleCounter, 1.0);
-			borrowedAvg = min(borrowedAvg, vec3(1.0));
-			float borrowLuma = dot(borrowedAvg, vec3(0.299, 0.587, 0.114));
-			float positionGate = 1.0 - smoothstep(0.0, 0.3, borrowLuma);
-			accumCol += mask * borrowedAvg * uBorrowStrength * positionGate;
-		}
 	}
 
 	// R3-1 DCE-proof sink: 保留 uniform reference 但恆不貢獻 accumCol。

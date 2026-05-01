@@ -243,8 +243,6 @@
 						<div id="slider-lgg-lift"></div>
 						<div id="slider-lgg-gamma"></div>
 						<div id="slider-lgg-gain"></div>
-						<div id="slider-wb-b"></div>
-						<div id="slider-hue-b"></div>
 					</div>
 					<div id="slider-wall-albedo"></div>
 				</div>

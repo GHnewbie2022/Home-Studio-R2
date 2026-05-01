@@ -826,11 +826,7 @@ function initTHREEjs()
 		uLGGStrength: { type: "f", value: 1.00 }, // LGG 整體強度 0~1，0=不套、1=完整套
 		uLGGLift:  { type: "f", value: 0.0 },     // 暗部偏移 -0.30 ~ +0.30，0=中性
 		uLGGGamma: { type: "f", value: 1.0 },     // 中間調曲線 0.50 ~ 2.00，1=中性
-		uLGGGain:  { type: "f", value: 1.0 },     // 亮部增益 0.50 ~ 1.50，1=中性
-		// R6 LGG-r30：B 模 White Balance + Hue 後製（display-space 最末端、不觸發採樣重置）
-		// WB 走 von Kries chromatic adaptation，Hue 走 NTSC luma-preserving 色相環旋轉
-		uWBB:  { type: "f", value: 0.0 },         // 白平衡 -1=藍冷 ~ +1=黃暖，0=中性
-		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
+		uLGGGain:  { type: "f", value: 1.0 }      // 亮部增益 0.50 ~ 1.50，1=中性
 	};
 
 	fileLoader.load('shaders/ScreenOutput_Fragment.glsl', function (shaderText)

@@ -18,10 +18,6 @@ let pathTracingMaterial, pathTracingMesh;
 let screenCopyMaterial, screenCopyMesh;
 let screenOutputMaterial, screenOutputMesh;
 let pathTracingRenderTarget, screenCopyRenderTarget;
-// R6 LGG-r16 J3：B 模 1/8 解析度 14 彈借光 buffer（暗角真光來源）
-// borrowPathTracingRenderTarget 14 彈 path tracer accumulator sum；
-// borrowScreenCopyRenderTarget  ping-pong 副本，給下一 frame 當 tPreviousTexture
-let borrowPathTracingRenderTarget, borrowScreenCopyRenderTarget;
 // R2-UI Bloom：multi-pass bloom 的 1/4 解析度 ping-pong render targets + scenes/materials
 // R2-UI Bloom multi-scale：4 層 mip chain (1/2, 1/4, 1/8, 1/16)
 let bloomMip = []; // [0]=1/2, [1]=1/4, [2]=1/8, [3]=1/16, [4]=1/32, [5]=1/64, [6]=1/128
@@ -331,15 +327,6 @@ function onWindowResize(event)
 	pathTracingRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
 	screenCopyRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
 
-	// R6 LGG-r16 J3：borrow buffer 同步 1/8 解析度 resize
-	if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget)
-	{
-		const lowW = Math.max(1, Math.floor(context.drawingBufferWidth / 8));
-		const lowH = Math.max(1, Math.floor(context.drawingBufferHeight / 8));
-		borrowPathTracingRenderTarget.setSize(lowW, lowH);
-		borrowScreenCopyRenderTarget.setSize(lowW, lowH);
-	}
-
 	// R2-UI Bloom pyramid：7 層 mip (1/2 ~ 1/128) 同步 resize
 	if (bloomMip && bloomMip.length === 7)
 	{
@@ -623,32 +610,6 @@ function initTHREEjs()
 	});
 	screenCopyRenderTarget.texture.generateMipmaps = false;
 
-	// R6 LGG-r16 J3：1/8 解析度 14 彈借光 buffer（暗角真光來源）
-	// borrowPathTracingRenderTarget 用 LinearFilter，主 pass texture() bilinear 採樣較平滑
-	// borrowScreenCopyRenderTarget  用 NearestFilter，因為只是 ping-pong 副本，texelFetch 取整數座標
-	{
-		const lowW = Math.max(1, Math.floor(context.drawingBufferWidth / 8));
-		const lowH = Math.max(1, Math.floor(context.drawingBufferHeight / 8));
-		borrowPathTracingRenderTarget = new THREE.WebGLRenderTarget(lowW, lowH, {
-			minFilter: THREE.LinearFilter,
-			magFilter: THREE.LinearFilter,
-			format: THREE.RGBAFormat,
-			type: THREE.FloatType,
-			depthBuffer: false,
-			stencilBuffer: false
-		});
-		borrowPathTracingRenderTarget.texture.generateMipmaps = false;
-		borrowScreenCopyRenderTarget = new THREE.WebGLRenderTarget(lowW, lowH, {
-			minFilter: THREE.NearestFilter,
-			magFilter: THREE.NearestFilter,
-			format: THREE.RGBAFormat,
-			type: THREE.FloatType,
-			depthBuffer: false,
-			stencilBuffer: false
-		});
-		borrowScreenCopyRenderTarget.texture.generateMipmaps = false;
-	}
-
 	// R2-UI Bloom multi-scale：4 層 mip chain (1/2, 1/4, 1/8, 1/16)
 	// LinearFilter 讓上採樣 tent filter 與 composite 的 bilinear 都能平滑插值
 	{
@@ -703,8 +664,6 @@ function initTHREEjs()
 
 	pathTracingUniforms.tPreviousTexture = { type: "t", value: screenCopyRenderTarget.texture };
 	pathTracingUniforms.tBlueNoiseTexture = { type: "t", value: blueNoiseTexture };
-	// R6 LGG-r16 J3：借光 buffer 紋理引用，主 pass 在 terminal 採樣
-	pathTracingUniforms.tBorrowTexture = { type: "t", value: borrowPathTracingRenderTarget.texture };
 
 	pathTracingUniforms.uCameraMatrix = { type: "m4", value: new THREE.Matrix4() };
 
@@ -826,11 +785,7 @@ function initTHREEjs()
 		uLGGStrength: { type: "f", value: 1.00 }, // LGG 整體強度 0~1，0=不套、1=完整套
 		uLGGLift:  { type: "f", value: 0.0 },     // 暗部偏移 -0.30 ~ +0.30，0=中性
 		uLGGGamma: { type: "f", value: 1.0 },     // 中間調曲線 0.50 ~ 2.00，1=中性
-		uLGGGain:  { type: "f", value: 1.0 },     // 亮部增益 0.50 ~ 1.50，1=中性
-		// R6 LGG-r30：B 模 White Balance + Hue 後製（display-space 最末端、不觸發採樣重置）
-		// WB 走 von Kries chromatic adaptation，Hue 走 NTSC luma-preserving 色相環旋轉
-		uWBB:  { type: "f", value: 0.0 },         // 白平衡 -1=藍冷 ~ +1=黃暖，0=中性
-		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
+		uLGGGain:  { type: "f", value: 1.0 }      // 亮部增益 0.50 ~ 1.50，1=中性
 	};
 
 	fileLoader.load('shaders/ScreenOutput_Fragment.glsl', function (shaderText)
@@ -1363,14 +1318,6 @@ function animate()
 		renderer.clear();
 		renderer.setRenderTarget(screenCopyRenderTarget);
 		renderer.clear();
-		// R6 LGG-r16 J3：borrow ping-pong 同步清空，避免新 frame 的 14 彈累積讀到舊相機角度的殘影
-		if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget)
-		{
-			renderer.setRenderTarget(borrowPathTracingRenderTarget);
-			renderer.clear();
-			renderer.setRenderTarget(borrowScreenCopyRenderTarget);
-			renderer.clear();
-		}
 		sampleCounter = 1.0;
 		frameCounter = 1.0;
 		pathTracingUniforms.uSampleCounter.value = sampleCounter;
@@ -1387,52 +1334,6 @@ function animate()
 
 	if (!renderingStopped)
 	{
-		// STEP 1A: R6 LGG-r16 J3 借光 pass（1/8 res、14 彈），只在 uBorrowStrength > 0 時跑
-		// 暫時切 uniforms（uMaxBounces=14、uIsBorrowPass=1、tPreviousTexture 換 borrow ping-pong、uResolution 切 1/8）
-		// 主 pass 跑完之後恢復原 uniforms 狀態
-		var borrowActive = pathTracingUniforms.uBorrowStrength
-			&& pathTracingUniforms.uBorrowStrength.value > 0.0
-			&& borrowPathTracingRenderTarget
-			&& borrowScreenCopyRenderTarget;
-		if (borrowActive)
-		{
-			var savedBounces = pathTracingUniforms.uMaxBounces.value;
-			var savedTPrev = pathTracingUniforms.tPreviousTexture.value;
-			var savedTBorrow = pathTracingUniforms.tBorrowTexture.value;
-			var savedResX = pathTracingUniforms.uResolution.value.x;
-			var savedResY = pathTracingUniforms.uResolution.value.y;
-			var lowW = Math.max(1, Math.floor(savedResX / 8));
-			var lowH = Math.max(1, Math.floor(savedResY / 8));
-
-			// R6 LGG-r20：借光反彈回到 14 彈（深暗角需要 5+ 彈光線才到得了）
-			// 配合 pathtracing_main chunk 的 source-side clamp 1.0，14 彈 firefly 不會永久汙染累積
-			pathTracingUniforms.uMaxBounces.value = 14.0;
-			pathTracingUniforms.uIsBorrowPass.value = 1.0;
-			pathTracingUniforms.tPreviousTexture.value = borrowScreenCopyRenderTarget.texture;
-			// 防 WebGL feedback loop：借光 pass 寫入 borrowPathTracingRenderTarget，
-			// 暫時把 tBorrowTexture 指到 ping-pong 兄弟 borrowScreenCopyRenderTarget，避免「同張紋理同時是 input + output」未定義行為
-			pathTracingUniforms.tBorrowTexture.value = borrowScreenCopyRenderTarget.texture;
-			pathTracingUniforms.uResolution.value.set(lowW, lowH);
-
-			renderer.setRenderTarget(borrowPathTracingRenderTarget);
-			renderer.render(pathTracingScene, worldCamera);
-
-			// borrow ping-pong：把剛寫的 borrowPathTracingRenderTarget 複製到 borrowScreenCopyRenderTarget
-			// 用既有 screenCopyScene/Material（fragment 是 ScreenCopy_Fragment.glsl），暫時換 source 紋理引用
-			var savedScSrc = screenCopyUniforms.tPathTracedImageTexture.value;
-			screenCopyUniforms.tPathTracedImageTexture.value = borrowPathTracingRenderTarget.texture;
-			renderer.setRenderTarget(borrowScreenCopyRenderTarget);
-			renderer.render(screenCopyScene, orthoCamera);
-			screenCopyUniforms.tPathTracedImageTexture.value = savedScSrc;
-
-			// 恢復主 pass uniforms
-			pathTracingUniforms.uMaxBounces.value = savedBounces;
-			pathTracingUniforms.uIsBorrowPass.value = 0.0;
-			pathTracingUniforms.tPreviousTexture.value = savedTPrev;
-			pathTracingUniforms.tBorrowTexture.value = savedTBorrow;
-			pathTracingUniforms.uResolution.value.set(savedResX, savedResY);
-		}
-
 		// STEP 1
 		// Perform PathTracing and Render(save) into pathTracingRenderTarget, a full-screen texture (on the oversized triangle).
 		// Read previous screenCopyRenderTarget(via texelFetch inside fragment shader) to use as a new starting point to blend with

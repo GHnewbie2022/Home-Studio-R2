@@ -9,11 +9,10 @@ const MIN_Z = -2.074;
 const MAX_Z = 3.256;
 
 // R2-2 顏色常量
-// R6 LGG-r30：C1/C2 開頁預設牆面反射率 0.75（截圖配色）；C3/C4 切過去時由 applyPanelConfig 套 0.85
-const C_WALL = [0.75, 0.738, 0.71175];
-const C_WALL_L = [0.75, 0.738, 0.71175];
-const C_WALL_R = [0.75, 0.738, 0.71175];
-const C_WALL_S = [0.75, 0.738, 0.71175];
+const C_WALL = [0.85, 0.8364, 0.80665];
+const C_WALL_L = [0.85, 0.8364, 0.80665];
+const C_WALL_R = [0.85, 0.8364, 0.80665];
+const C_WALL_S = [0.85, 0.8364, 0.80665];
 const C_BEAM = [1.0, 0.984, 0.949];
 const C_FLOOR = [0.55, 0.47, 0.41];
 const C_WOOD = [0.55, 0.35, 0.17];
@@ -128,7 +127,7 @@ addBox([-1.91, 0.475, 2.385], [-1.035, 0.6275, 3.056], z3, C_WOOD, 1);        //
 // R2-5 門 + 窗外景色 (index 25-27)
 addBox([-1.52, 0.0, -1.914], [-0.73, 2.03, -1.874], z3, C_WOOD, 7, 0, 1);          // 25 北牆木門（type 7: 木門貼圖）
 addBox([-2.00, 0.09, -1.874], [-1.96, 2.04, -0.984], z3, C_METAL, 8, 0, 1);        // 26 西牆鐵門（type 8: 鐵門貼圖）
-addBox([-15.0, -5.0, 14.9], [15.0, 10.0, 15.0], z3, C_WHITE, 5, 0, 0);              // 27 窗外景色背板（type 5: 貼圖採樣；R6 LGG-r30：cullable 1→0，窗外景色不屬於 X-ray 牆系剝離範疇、永遠可見）
+addBox([-15.0, -5.0, 14.9], [15.0, 10.0, 15.0], z3, C_WHITE, 5, 0, 1);              // 27 窗外景色背板（type 5: 貼圖採樣）
 
 // R2-7 KH750 超低音 (index 28)
 addBox([0.79, 0.0, 2.273], [1.12, 0.383, 2.656], z3, C_SPEAKER, 9);          // 28 KH750 超低音（type 9: 正背面貼圖，33×38.3×38.3cm）
@@ -244,78 +243,6 @@ const panelConfig2 = [
 ];
 
 let currentPanelConfig = 1;
-
-// R6 LGG-r30：per-config stateful 切換
-//   configPostDefaults  每個 config 第一次進入時的初值，亦是 cmd+click 重置目標
-//   configState         每個 config 離開時的 slider 值快照；切回時恢復、避免臨時調整丟失
-const configState = { 1: null, 2: null, 3: null, 4: null };
-const configPostDefaults = {
-    1: { borrow: 0.0, sat: 1.5, acesStrength: 1.00, acesSat: 0.95, lggLift:  0.0, lggGamma: 1.5, lggGain: 0.80, wb: -0.2, hue: 1, wall: 0.75 },
-    2: { borrow: 0.0, sat: 1.5, acesStrength: 1.00, acesSat: 0.95, lggLift:  0.0, lggGamma: 1.5, lggGain: 0.80, wb: -0.2, hue: 1, wall: 0.75 },
-    3: { borrow: 2.0, sat: 1.7, acesStrength: 0.30, acesSat: 1.00, lggLift: -0.1, lggGamma: 1.5, lggGain: 0.90, wb: -0.4, hue: 5, wall: 0.85 },
-    4: { borrow: 0.5, sat: 1.7, acesStrength: 0.30, acesSat: 1.00, lggLift: -0.1, lggGamma: 2.0, lggGain: 0.90, wb: -0.2, hue: 2, wall: 0.85 }
-};
-
-// R6 LGG-r30：snapshot 當前 9 條 slider 值（給 stateful 切換用，slider 未就緒時返回 null）
-function snapshotCurrentConfigPost() {
-    var pairs = [
-        ['borrow',       'slider-borrow-strength-b'],
-        ['sat',          'slider-sat-b'],
-        ['acesStrength', 'slider-aces-strength-b'],
-        ['acesSat',      'slider-aces-sat-b'],
-        ['lggLift',      'slider-lgg-lift'],
-        ['lggGamma',     'slider-lgg-gamma'],
-        ['lggGain',      'slider-lgg-gain'],
-        ['wb',           'slider-wb-b'],
-        ['hue',          'slider-hue-b'],
-        ['wall',         'slider-wall-albedo']
-    ];
-    var snap = {};
-    var ok = false;
-    for (var i = 0; i < pairs.length; i++) {
-        var v = getSliderValue(pairs[i][1]);
-        if (typeof v === 'number' && !isNaN(v)) {
-            snap[pairs[i][0]] = v;
-            ok = true;
-        }
-    }
-    return ok ? snap : null;
-}
-
-// R6 LGG-r30：套 9 條 slider 值 + 對應 uniform（B 模 active 才寫 uniform；A 模 uniform 由 btnA 強制中性）
-function applyConfigPost(post) {
-    if (!post) return;
-    setSliderValue('slider-borrow-strength-b', post.borrow);
-    setSliderValue('slider-sat-b', post.sat);
-    setSliderValue('slider-aces-strength-b', post.acesStrength);
-    setSliderValue('slider-aces-sat-b', post.acesSat);
-    setSliderValue('slider-lgg-lift', post.lggLift);
-    setSliderValue('slider-lgg-gamma', post.lggGamma);
-    setSliderValue('slider-lgg-gain', post.lggGain);
-    setSliderValue('slider-wb-b', post.wb);
-    setSliderValue('slider-hue-b', post.hue);
-    if (typeof window.applyWallAlbedo === 'function') {
-        window.applyWallAlbedo(post.wall);
-    } else {
-        setSliderValue('slider-wall-albedo', post.wall);
-    }
-    var btnBEl = document.getElementById('btnGroupB');
-    if (btnBEl && btnBEl.classList.contains('glow-white')) {
-        if (pathTracingUniforms && pathTracingUniforms.uBorrowStrength) pathTracingUniforms.uBorrowStrength.value = post.borrow;
-        if (screenOutputUniforms) {
-            if (screenOutputUniforms.uSaturation) screenOutputUniforms.uSaturation.value = post.sat;
-            if (screenOutputUniforms.uACESStrength) screenOutputUniforms.uACESStrength.value = post.acesStrength;
-            if (screenOutputUniforms.uACESSatShadow) screenOutputUniforms.uACESSatShadow.value = post.acesSat;
-            if (screenOutputUniforms.uACESSatMid) screenOutputUniforms.uACESSatMid.value = post.acesSat;
-            if (screenOutputUniforms.uACESSatHighlight) screenOutputUniforms.uACESSatHighlight.value = post.acesSat;
-            if (screenOutputUniforms.uLGGLift) screenOutputUniforms.uLGGLift.value = post.lggLift;
-            if (screenOutputUniforms.uLGGGamma) screenOutputUniforms.uLGGGamma.value = post.lggGamma;
-            if (screenOutputUniforms.uLGGGain) screenOutputUniforms.uLGGGain.value = post.lggGain;
-            if (screenOutputUniforms.uWBB) screenOutputUniforms.uWBB.value = post.wb;
-            if (screenOutputUniforms.uHueB) screenOutputUniforms.uHueB.value = post.hue;
-        }
-    }
-}
 
 function buildSceneBVH() {
     var N = sceneBoxes.length;
@@ -472,17 +399,7 @@ function applyPanelConfig(config) {
     setCheckboxChecked('chkTrackWideSouth', trackLampOn);
     setCheckboxChecked('chkTrackWideNorth', trackLampOn);
     syncWideEmissions();
-    // R6 LGG-r30：stateful per-config 切換
-    //   離開舊 config 時 snapshot 當前 slider 狀態
-    //   進入新 config：若有 snapshot 則恢復，否則套 configPostDefaults 初值
-    var oldConfig = currentPanelConfig;
-    if (oldConfig !== config) {
-        var leavingSnap = snapshotCurrentConfigPost();
-        if (leavingSnap) configState[oldConfig] = leavingSnap;
-    }
     currentPanelConfig = config;
-    var targetPost = configState[config] || configPostDefaults[config];
-    applyConfigPost(targetPost);
     buildSceneBVH();
     needClearAccumulation = true;
     cameraIsMoving = true;
@@ -497,10 +414,6 @@ function applyPanelConfig(config) {
     // R3-2-fix01：Config 切換 → 吸頂燈滑桿 + R3 4 dropdown 的 enable/disable 同步。
     syncR3ColorUIEnable();
     rebuildActiveLightLUT('applyPanelConfig');
-
-    // R6 LGG-r30：per-config stateful 切換已在 currentPanelConfig 切換處（line ~402）處理
-    // 第一次進該 config 用 configPostDefaults；切回已訪問過的 config 恢復離開前 slider 狀態
-
     // R4-2 CONFIG radio: 同步 DOM radio 狀態 + 描述文字
     var configRadio = document.getElementById('btnConfig' + config);
     if (configRadio) configRadio.checked = true;
@@ -834,7 +747,7 @@ if (sceneBoxes[TRACK_WIDE_STAND_IDX].fixtureGroup !== 2) {
 }
 // ---------------- /R4-4 ----------------
 
-let wallAlbedo = 0.75;
+let wallAlbedo = 0.85;
 
 // acousticPanelVisibility 已被 R2-8 Config 1/Config 2 切換取代
 
@@ -1273,12 +1186,6 @@ function initSceneData() {
     // 詳見 docs/SOP/Debug_Log.md「Phase 2 漫射能量 2-bounce truncation 說明」章節。
     pathTracingUniforms.uIndirectMultiplier = { value: 1.0 };
 
-    // R6 LGG-r16 J3：B 模借光強度——主 pass 在 terminal 從 1/8 res 14 彈 buffer 取色
-    // 0 = 關（不跑借光 pass，零成本）；A 模強制 0；走 path tracer 重啟
-    pathTracingUniforms.uBorrowStrength = { value: 0.0 };
-    // R6 LGG-r16 J3：1=當前 frame 是借光 pass、shader 跳過借光採樣避免遞迴；主 pass 為 0
-    pathTracingUniforms.uIsBorrowPass = { value: 0.0 };
-
     // R3-0 / R3-7：NEE 直接光補償（shader 10 處 `mask *= weight * uLegacyGain`）。
     // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。
     pathTracingUniforms.uLegacyGain = { value: 1.0 };
@@ -1613,12 +1520,6 @@ function wakeRender() {
     sceneParamsChanged = true;
 }
 
-// R6 Route X：後製專用喚醒——不重置 path tracer 累積，只觸發一次 STEP 3 讓滑桿生效
-// 用途：陰影補光三條滑桿（強度/軟膝/純白比例）等純後製操作
-function wakePostProcess() {
-    postProcessChanged = true;
-}
-
 // ---------------- R4-4 甜蜜點 UI recompute 輔助 ----------------
 // 幾何常數（對齊 L150-167 addBox 初值，半寬 = FULL size / 2）
 const R4_4_TRACK_BASE_HALF_X       = 0.0175;   // 軌道底座半寬 x（FULL=0.035）
@@ -1856,113 +1757,28 @@ function initUI() {
     });
     createS('slider-sat-a', '間接光飽和', 0.5, 2.0, 0.05, 1.0, function(v) {
         if (btnA && btnA.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uSaturation) screenOutputUniforms.uSaturation.value = v;
-        wakePostProcess(); return v;
-    }, false);
+        wakeRender(); return v;
+    });
     createS('slider-mult-b', '間接光補償', 0.1, 5.0, 0.1, 2.5, function(v) {
         if (btnB && btnB.classList.contains('glow-white') && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = v;
         wakeRender(); return v;
     });
-    // R6 LGG-r16 J3：暗角借光——主 pass 在 terminal 從 1/8 res 14 彈 buffer 取「該像素的真實反彈光」
-    // r21 雙重 gate 上線後上限提到 2.0：gate 會把亮面/AO 帶過濾掉，深暗角才需更高 strength 才達甜蜜點
-    createS('slider-borrow-strength-b', '暗角借光', 0.0, 2.0, 0.05, 0.0, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && pathTracingUniforms.uBorrowStrength) pathTracingUniforms.uBorrowStrength.value = v;
-        wakeRender(); return v;
-    });
     createS('slider-sat-b', '間接光飽和', 0.5, 2.0, 0.05, 1.5, function(v) {
         if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uSaturation) screenOutputUniforms.uSaturation.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    // R6 Route X (LGG)：ACES（A/B 各一組）+ LGG 強度 + DaVinci 三段調色（B 專用）
-    // reset=false：純後製、不該觸發 cameraIsMoving 重啟累積
-    // ── A 模式 ACES 組 ──
-    createS('slider-aces-strength-a', 'ACES%', 0.0, 1.0, 0.05, 0.20, function(v) {
-        if (btnA && btnA.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uACESStrength) screenOutputUniforms.uACESStrength.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    // A 模式單一 SAT：同步寫入 uACESSatShadow / uACESSatMid / uACESSatHighlight 三個 uniform
-    createS('slider-aces-sat-a', 'SAT', 0.0, 2.0, 0.05, 0.90, function(v) {
-        if (btnA && btnA.classList.contains('glow-white') && screenOutputUniforms) {
-            if (screenOutputUniforms.uACESSatShadow) screenOutputUniforms.uACESSatShadow.value = v;
-            if (screenOutputUniforms.uACESSatMid) screenOutputUniforms.uACESSatMid.value = v;
-            if (screenOutputUniforms.uACESSatHighlight) screenOutputUniforms.uACESSatHighlight.value = v;
-        }
-        wakePostProcess(); return v;
-    }, false);
-    // A 模式 EXP（pre-tonemap HDR 曝光，補償 ACES 帶來的亮度偏移）
-    createS('slider-exp-a', 'EXP', 0.50, 1.50, 0.05, 0.90, function(v) {
-        if (btnA && btnA.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uExposure) screenOutputUniforms.uExposure.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    // ── B 模式 ACES 組 ──
-    createS('slider-aces-strength-b', 'ACES%', 0.0, 1.0, 0.05, 1.00, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uACESStrength) screenOutputUniforms.uACESStrength.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    // B 模式單一 SAT：同步寫入 uACESSatShadow / uACESSatMid / uACESSatHighlight 三個 uniform
-    createS('slider-aces-sat-b', 'SAT', 0.0, 2.0, 0.05, 0.95, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms) {
-            if (screenOutputUniforms.uACESSatShadow) screenOutputUniforms.uACESSatShadow.value = v;
-            if (screenOutputUniforms.uACESSatMid) screenOutputUniforms.uACESSatMid.value = v;
-            if (screenOutputUniforms.uACESSatHighlight) screenOutputUniforms.uACESSatHighlight.value = v;
-        }
-        wakePostProcess(); return v;
-    }, false);
-    // B 模式 EXP（pre-tonemap HDR 曝光，補償 ACES 帶來的亮度偏移）
-    createS('slider-exp-b', 'EXP', 0.50, 1.50, 0.05, 0.50, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uExposure) screenOutputUniforms.uExposure.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    createS('slider-lgg-strength', 'LGG%', 0.0, 1.0, 0.05, 0.50, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uLGGStrength) screenOutputUniforms.uLGGStrength.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    createS('slider-lgg-lift', 'Lift', -0.30, 0.30, 0.01, 0.00, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uLGGLift) screenOutputUniforms.uLGGLift.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    createS('slider-lgg-gamma', 'Gamma', 0.50, 2.00, 0.05, 1.50, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uLGGGamma) screenOutputUniforms.uLGGGamma.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    createS('slider-lgg-gain', 'Gain', 0.50, 1.50, 0.01, 0.80, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uLGGGain) screenOutputUniforms.uLGGGain.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    // R6 LGG-r30：B 模 White Balance + Hue 後製（display-space 最末端、純後製、不重啟採樣）
-    // WB = von Kries chromatic adaptation（D65 → 目標 illuminant ratio）
-    // Hue = NTSC luma-preserving 色相環旋轉（紅→橘→黃→綠→青→藍→紫→紅）
-    createS('slider-wb-b', 'WB 白平衡', -1.0, 1.0, 0.05, -0.2, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uWBB) screenOutputUniforms.uWBB.value = v;
-        wakePostProcess(); return v;
-    }, false);
-    createS('slider-hue-b', 'Hue 色相°', -10, 10, 0.5, 1, function(v) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uHueB) screenOutputUniforms.uHueB.value = v;
-        wakePostProcess(); return v;
-    }, false);
-
-    // ACES checkbox（A / B 各一個，互不影響、各自只在對應模式下寫入 uniform）
-    var chkAcesA = document.getElementById('chkAces-a');
-    if (chkAcesA) chkAcesA.onchange = function(e) {
-        if (btnA && btnA.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uACESEnabled) {
-            screenOutputUniforms.uACESEnabled.value = e.target.checked ? 1.0 : 0.0;
-        }
-        wakePostProcess();
-    };
-    var chkAcesB = document.getElementById('chkAces-b');
-    if (chkAcesB) chkAcesB.onchange = function(e) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uACESEnabled) {
-            screenOutputUniforms.uACESEnabled.value = e.target.checked ? 1.0 : 0.0;
-        }
-        wakePostProcess();
-    };
-    // LGG checkbox（B 模式專用，A 模式時 btnA 會強制 enabled = 0）
-    var chkLgg = document.getElementById('chkLgg');
-    if (chkLgg) chkLgg.onchange = function(e) {
-        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uLGGEnabled) {
-            screenOutputUniforms.uLGGEnabled.value = e.target.checked ? 1.0 : 0.0;
-        }
-        wakePostProcess();
-    };
+        wakeRender(); return v;
+    });
+    createS('slider-lift-b', '陰影補光', 0.0, 0.30, 0.01, 0.10, function(v) {
+        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uShadowLift) screenOutputUniforms.uShadowLift.value = v;
+        wakeRender(); return v;
+    });
+    createS('slider-lift-knee-b', '補光軟膝', 0.05, 0.30, 0.01, 0.15, function(v) {
+        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uShadowLiftKnee) screenOutputUniforms.uShadowLiftKnee.value = v;
+        wakeRender(); return v;
+    });
+    createS('slider-lift-blend-b', '補光純白比例', 0.0, 1.0, 0.05, 0.6, function(v) {
+        if (btnB && btnB.classList.contains('glow-white') && screenOutputUniforms && screenOutputUniforms.uShadowLiftAutoBlend) screenOutputUniforms.uShadowLiftAutoBlend.value = v;
+        wakeRender(); return v;
+    });
 
     // A/B radio
     var btnA = document.getElementById('btnGroupA'), btnB = document.getElementById('btnGroupB');
@@ -1977,8 +1793,6 @@ function initUI() {
         C_WALL_S[0] = r; C_WALL_S[1] = g; C_WALL_S[2] = b;
         updateBoxDataTexture();
     }
-    // R6 LGG-r30：暴露給 applyPanelConfig 跨閉包呼叫，用來 per-config 套用 wall-albedo
-    window.applyWallAlbedo = applyWallAlbedo;
     if (btnA) btnA.onclick = function() {
         btnA.className = 'action-btn glow-white'; btnB.className = 'action-btn';
         if (ctrlA) ctrlA.style.display = 'block';
@@ -1986,29 +1800,12 @@ function initUI() {
         setSliderValue('slider-bounces', 14);
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 14;
         if (pathTracingUniforms && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = getSliderValue('slider-mult-a');
-        if (pathTracingUniforms && pathTracingUniforms.uBorrowStrength) pathTracingUniforms.uBorrowStrength.value = 0.0; // A 模 14 彈不需借光，強制 0（順便省下借光 pass 成本）
         if (screenOutputUniforms && screenOutputUniforms.uSaturation) screenOutputUniforms.uSaturation.value = getSliderValue('slider-sat-a');
-        // A 模式（趨近真實）：ACES 由 chkAces-a + 4 條 -a 滑桿控制，LGG 仍強制關閉
-        var chkAcesAEl = document.getElementById('chkAces-a');
-        if (screenOutputUniforms && screenOutputUniforms.uACESEnabled) screenOutputUniforms.uACESEnabled.value = (chkAcesAEl && chkAcesAEl.checked) ? 1.0 : 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uACESStrength) screenOutputUniforms.uACESStrength.value = getSliderValue('slider-aces-strength-a');
-        // A 模式單一 SAT 同步寫 3 個 uniform；EXP 由 -a 滑桿讀
-        var satAVal = getSliderValue('slider-aces-sat-a');
-        if (screenOutputUniforms && screenOutputUniforms.uACESSatShadow) screenOutputUniforms.uACESSatShadow.value = satAVal;
-        if (screenOutputUniforms && screenOutputUniforms.uACESSatMid) screenOutputUniforms.uACESSatMid.value = satAVal;
-        if (screenOutputUniforms && screenOutputUniforms.uACESSatHighlight) screenOutputUniforms.uACESSatHighlight.value = satAVal;
-        if (screenOutputUniforms && screenOutputUniforms.uExposure) screenOutputUniforms.uExposure.value = getSliderValue('slider-exp-a');
-        if (screenOutputUniforms && screenOutputUniforms.uLGGEnabled) screenOutputUniforms.uLGGEnabled.value = 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uLGGStrength) screenOutputUniforms.uLGGStrength.value = 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uLGGLift) screenOutputUniforms.uLGGLift.value = 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uLGGGamma) screenOutputUniforms.uLGGGamma.value = 1.0;
-        if (screenOutputUniforms && screenOutputUniforms.uLGGGain) screenOutputUniforms.uLGGGain.value = 1.0;
-        // A 模式（趨近真實）：WB / Hue 強制中性，跟 LGG / 借光同邏輯
-        if (screenOutputUniforms && screenOutputUniforms.uWBB) screenOutputUniforms.uWBB.value = 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uHueB) screenOutputUniforms.uHueB.value = 0.0;
+        // A 模式（趨近真實）強制關閉陰影補光，純路徑追蹤輸出
+        if (screenOutputUniforms && screenOutputUniforms.uShadowLift) screenOutputUniforms.uShadowLift.value = 0.0;
         setSliderValue('slider-pixel-res', 1.0);
         needChangePixelResolution = true;
-        applyWallAlbedo(getSliderValue('slider-wall-albedo'));
+        applyWallAlbedo(0.85);
         wakeRender();
     };
     if (btnB) btnB.onclick = function() {
@@ -2018,30 +1815,14 @@ function initUI() {
         setSliderValue('slider-bounces', 4);
         if (pathTracingUniforms && pathTracingUniforms.uMaxBounces) pathTracingUniforms.uMaxBounces.value = 4;
         if (pathTracingUniforms && pathTracingUniforms.uIndirectMultiplier) pathTracingUniforms.uIndirectMultiplier.value = getSliderValue('slider-mult-b');
-        if (pathTracingUniforms && pathTracingUniforms.uBorrowStrength) pathTracingUniforms.uBorrowStrength.value = getSliderValue('slider-borrow-strength-b');
         if (screenOutputUniforms && screenOutputUniforms.uSaturation) screenOutputUniforms.uSaturation.value = getSliderValue('slider-sat-b');
-        // B 模式（快速預覽）：兩個 toggle 從 checkbox 讀、三條 LGG 從滑桿讀
-        var chkAcesEl = document.getElementById('chkAces-b');
-        var chkLggEl = document.getElementById('chkLgg');
-        if (screenOutputUniforms && screenOutputUniforms.uACESEnabled) screenOutputUniforms.uACESEnabled.value = (chkAcesEl && chkAcesEl.checked) ? 1.0 : 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uACESStrength) screenOutputUniforms.uACESStrength.value = getSliderValue('slider-aces-strength-b');
-        // B 模式單一 SAT 同步寫 3 個 uniform；EXP 由 -b 滑桿讀
-        var satBVal = getSliderValue('slider-aces-sat-b');
-        if (screenOutputUniforms && screenOutputUniforms.uACESSatShadow) screenOutputUniforms.uACESSatShadow.value = satBVal;
-        if (screenOutputUniforms && screenOutputUniforms.uACESSatMid) screenOutputUniforms.uACESSatMid.value = satBVal;
-        if (screenOutputUniforms && screenOutputUniforms.uACESSatHighlight) screenOutputUniforms.uACESSatHighlight.value = satBVal;
-        if (screenOutputUniforms && screenOutputUniforms.uExposure) screenOutputUniforms.uExposure.value = getSliderValue('slider-exp-b');
-        if (screenOutputUniforms && screenOutputUniforms.uLGGEnabled) screenOutputUniforms.uLGGEnabled.value = (chkLggEl && chkLggEl.checked) ? 1.0 : 0.0;
-        if (screenOutputUniforms && screenOutputUniforms.uLGGStrength) screenOutputUniforms.uLGGStrength.value = getSliderValue('slider-lgg-strength');
-        if (screenOutputUniforms && screenOutputUniforms.uLGGLift) screenOutputUniforms.uLGGLift.value = getSliderValue('slider-lgg-lift');
-        if (screenOutputUniforms && screenOutputUniforms.uLGGGamma) screenOutputUniforms.uLGGGamma.value = getSliderValue('slider-lgg-gamma');
-        if (screenOutputUniforms && screenOutputUniforms.uLGGGain) screenOutputUniforms.uLGGGain.value = getSliderValue('slider-lgg-gain');
-        // B 模式 White Balance + Hue（純後製、display-space 最末端）
-        if (screenOutputUniforms && screenOutputUniforms.uWBB) screenOutputUniforms.uWBB.value = getSliderValue('slider-wb-b');
-        if (screenOutputUniforms && screenOutputUniforms.uHueB) screenOutputUniforms.uHueB.value = getSliderValue('slider-hue-b');
+        // B 模式（快速預覽）三條陰影補光滑桿全部套用
+        if (screenOutputUniforms && screenOutputUniforms.uShadowLift) screenOutputUniforms.uShadowLift.value = getSliderValue('slider-lift-b');
+        if (screenOutputUniforms && screenOutputUniforms.uShadowLiftKnee) screenOutputUniforms.uShadowLiftKnee.value = getSliderValue('slider-lift-knee-b');
+        if (screenOutputUniforms && screenOutputUniforms.uShadowLiftAutoBlend) screenOutputUniforms.uShadowLiftAutoBlend.value = getSliderValue('slider-lift-blend-b');
         setSliderValue('slider-pixel-res', 0.5);
         needChangePixelResolution = true;
-        applyWallAlbedo(getSliderValue('slider-wall-albedo'));
+        applyWallAlbedo(0.85);
         wakeRender();
     };
 
@@ -2075,92 +1856,8 @@ function initUI() {
             needChangePixelResolution = true;
         });
 
-    // R6 LGG-r30：per-config cmd+click 重置（8 條受 config 影響的滑桿，依 currentPanelConfig 取 configPostDefaults）
-    // A 模時 uniform 寫入仍由 btnA.onclick 強制（borrow/wb/hue 走 0），cmd+click 只動 slider 顯示值
-    function postOf() { return configPostDefaults[currentPanelConfig] || configPostDefaults[1]; }
-    function bModeActive() { var b = document.getElementById('btnGroupB'); return b && b.classList.contains('glow-white'); }
-    installContextReset('slider-borrow-strength-b',
-        function() { return postOf().borrow; },
-        function(v) {
-            setSliderValue('slider-borrow-strength-b', v);
-            if (bModeActive() && pathTracingUniforms && pathTracingUniforms.uBorrowStrength) pathTracingUniforms.uBorrowStrength.value = v;
-            wakeRender();
-        });
-    installContextReset('slider-sat-b',
-        function() { return postOf().sat; },
-        function(v) {
-            setSliderValue('slider-sat-b', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uSaturation) screenOutputUniforms.uSaturation.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-aces-strength-b',
-        function() { return postOf().acesStrength; },
-        function(v) {
-            setSliderValue('slider-aces-strength-b', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uACESStrength) screenOutputUniforms.uACESStrength.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-aces-sat-b',
-        function() { return postOf().acesSat; },
-        function(v) {
-            setSliderValue('slider-aces-sat-b', v);
-            if (bModeActive() && screenOutputUniforms) {
-                if (screenOutputUniforms.uACESSatShadow) screenOutputUniforms.uACESSatShadow.value = v;
-                if (screenOutputUniforms.uACESSatMid) screenOutputUniforms.uACESSatMid.value = v;
-                if (screenOutputUniforms.uACESSatHighlight) screenOutputUniforms.uACESSatHighlight.value = v;
-            }
-            wakePostProcess();
-        });
-    installContextReset('slider-lgg-lift',
-        function() { return postOf().lggLift; },
-        function(v) {
-            setSliderValue('slider-lgg-lift', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uLGGLift) screenOutputUniforms.uLGGLift.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-lgg-gamma',
-        function() { return postOf().lggGamma; },
-        function(v) {
-            setSliderValue('slider-lgg-gamma', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uLGGGamma) screenOutputUniforms.uLGGGamma.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-lgg-gain',
-        function() { return postOf().lggGain; },
-        function(v) {
-            setSliderValue('slider-lgg-gain', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uLGGGain) screenOutputUniforms.uLGGGain.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-wb-b',
-        function() { return postOf().wb; },
-        function(v) {
-            setSliderValue('slider-wb-b', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uWBB) screenOutputUniforms.uWBB.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-hue-b',
-        function() { return postOf().hue; },
-        function(v) {
-            setSliderValue('slider-hue-b', v);
-            if (bModeActive() && screenOutputUniforms && screenOutputUniforms.uHueB) screenOutputUniforms.uHueB.value = v;
-            wakePostProcess();
-        });
-    installContextReset('slider-wall-albedo',
-        function() { return postOf().wall; },
-        function(v) {
-            // applyWallAlbedo 會處理 setSliderValue + wallAlbedo + C_WALL + BVH texture，必觸發 wakeRender
-            if (typeof window.applyWallAlbedo === 'function') {
-                window.applyWallAlbedo(v);
-                wakeRender();
-            } else {
-                setSliderValue('slider-wall-albedo', v);
-            }
-        });
 
-
-
-    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 0.75, function(v) {
+    createS('slider-wall-albedo', '牆面反射率', 0.1, 1.0, 0.05, 0.85, function(v) {
         wallAlbedo = v;
         var r = 1.0 * v, g = 0.984 * v, b = 0.949 * v;
         C_WALL[0] = r; C_WALL[1] = g; C_WALL[2] = b;

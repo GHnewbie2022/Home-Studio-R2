@@ -17,35 +17,13 @@ uniform sampler2D tBloomTexture;
 uniform float uBloomIntensity; // 0.0 = 關閉，1.0 = 強
 uniform float uBloomDebug;     // R2-UI: 1.0 = 直接顯示 bloom target（diagnostic）
 uniform float uSaturation;     // R6: post-tonemap pre-gamma 飽和度，1.0 = 中性，>1 = 加色，<1 = 退色
-uniform float uExposure;       // R6 LGG-r10：pre-tonemap HDR 曝光線性倍率，1.0 = 中性（A/B 各自獨立寫入）
 
-// R6 Route X (LGG pivot)：可調百分比的 ACES Filmic tonemap + DaVinci 風格 LGG 調色
-// A 模式強制 enabled=0 + 強度=0/1 中性、等效於原始 Reinhard 輸出
-uniform float uACESEnabled;   // 0=純 Reinhard、1=啟用 ACES 混合（依 uACESStrength）
-uniform float uACESStrength;  // ACES 混合強度 0~1：mix(Reinhard, ACES, uACESStrength)
-uniform float uACESSatShadow;    // ACES 暗部飽和 0~2，1=中性
-uniform float uACESSatMid;       // ACES 中段飽和 0~2，1=中性
-uniform float uACESSatHighlight; // ACES 亮部飽和 0~2，1=中性
-uniform float uLGGEnabled;    // 0=跳過 LGG、1=套 Lift/Gamma/Gain（依 uLGGStrength 混血）
-uniform float uLGGStrength;   // LGG 整體強度 0~1：mix(原色, 調色後, uLGGStrength)
-uniform float uLGGLift;       // 暗部偏移 -0.30 ~ +0.30，0=中性
-uniform float uLGGGamma;      // 中間調曲線 0.50 ~ 2.00，1=中性，>1 提亮中間
-uniform float uLGGGain;       // 亮部增益 0.50 ~ 1.50，1=中性
-
-// R6 LGG-r30：B 模 White Balance + Hue 後製（display-space 最末端）
-// 不是粗糙色彩濾鏡：WB 走 von Kries chromatic adaptation、Hue 走 luma-preserving 色相環旋轉
-uniform float uWBB;           // 白平衡 -1=藍冷（≈9000K target）~ +1=黃暖（≈3000K target）
-uniform float uHueB;          // 色相環旋轉角度（degrees），-180 ~ +180
-
-// ACES Filmic 近似（Krzysztof Narkowicz 2015）：HDR 輸入、display-linear 輸出
-// 跟 Reinhard 比：shoulder 軟過渡（亮區不死白）、foot 優雅滾降（暗區更開層次）
-//
-// 命名注意：函式名故意避開「ACESFilmicToneMapping」，因 Three.js 在 ShaderMaterial
-// toneMapped=true 時自動注入同名函式，重複定義會導致 GLSL compile fail / 黑畫面
-vec3 ACESFilmicNarkowicz(vec3 x)
-{
-	return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
-}
+// R6 Route X：陰影補光
+// 借 bloom 最低層金字塔（≈整圖光源平均色）當補光色相，搭配 0.6 純白混血保險
+uniform sampler2D tBloomLowMipTexture;
+uniform float uShadowLift;          // 強度 0.0 ~ 0.30
+uniform float uShadowLiftKnee;      // soft knee 寬度 0.05 ~ 0.30
+uniform float uShadowLiftAutoBlend; // 0=純自動感應、1=純白
 
 #define TRUE 1
 #define FALSE 0
@@ -398,13 +376,6 @@ void main()
 		filteredPixelColor += bloom * uBloomIntensity;
 	}
 
-	// R6 LGG-r11：pre-tonemap HDR 曝光（P1：tonemap 前線性倍率，給 A/B 抓 ACES 甜蜜點）
-	// gate 在 uACESEnabled — ACES 關閉時自動退回原始 Reinhard 純畫面，方便比對
-	if (uACESEnabled > 0.5)
-	{
-		filteredPixelColor *= uExposure;
-	}
-
 	// R6: pre-tonemap 飽和度補償 + chroma-mask（低彩度全力推、高彩度幾乎不動，
 	// 解「白牆要色溢、軌道燈/家具不要被多染」需求；HSV-style saturation 度量）
 	// + 自動白平衡補償（補紅/補藍消除 chroma-mask 在低彩度暖色傾向區造成的黃綠色偏）
@@ -426,92 +397,24 @@ void main()
 		}
 	}
 
-	// 色調映射：HDR 壓回 0~1 顯示範圍
-	// 啟用時 → mix(Reinhard, ACES, strength) 線性混合兩條 tonemap，平滑控電影感比例
-	if (uUseToneMapping)
+	// R6 Route X：陰影補光（音訊類比：upward expander with soft knee）
+	// 公式：lift = strength * exp(-luma / knee)；luma=0 滿補、luma 越大衰減越快
+	// 補光色相 = mix(自動感應色, 純白, blend)；自動感應色取 bloom 最低層金字塔（整圖光源平均色）
+	if (uShadowLift > 0.0)
 	{
-		vec3 reinhard = ReinhardToneMapping(filteredPixelColor);
-		if (uACESEnabled > 0.5)
-		{
-			vec3 aces = ACESFilmicNarkowicz(filteredPixelColor);
-			filteredPixelColor = mix(reinhard, aces, clamp(uACESStrength, 0.0, 1.0));
-		}
-		else
-		{
-			filteredPixelColor = reinhard;
-		}
+		float lumaPre = dot(filteredPixelColor, vec3(0.299, 0.587, 0.114));
+		float lift = uShadowLift * exp(-lumaPre / max(uShadowLiftKnee, 0.001));
+		vec3 autoTint = texture(tBloomLowMipTexture, vec2(0.5)).rgb;
+		// normalize 自動色到亮度 1.0，避免 bloom 暗時補光等於沒補
+		float autoLuma = dot(autoTint, vec3(0.299, 0.587, 0.114));
+		autoTint = autoLuma > 0.0001 ? autoTint / autoLuma : vec3(1.0);
+		vec3 tint = mix(autoTint, vec3(1.0), uShadowLiftAutoBlend);
+		filteredPixelColor += lift * tint;
 	}
 
-	// gamma 校正：linear → display sRGB
-	vec3 displayColor = sqrt(filteredPixelColor);
+	// apply tone mapping (brings pixel into 0.0-1.0 rgb color range)
+	filteredPixelColor = uUseToneMapping ? ReinhardToneMapping(filteredPixelColor) : filteredPixelColor;
 
-	// LGG 調色（DaVinci Lift/Gamma/Gain）：display 空間作用、滑桿刻度跟眼睛一致
-	//   Lift  ：暗部偏移
-	//   Gain  ：亮部增益
-	//   Gamma ：中間調曲線
-	// uLGGStrength = 整體強度，0=不套、1=完整套；0~1 之間在原色與調色後線性混合
-	if (uLGGEnabled > 0.5)
-	{
-		vec3 graded = displayColor;
-		graded += uLGGLift * (1.0 - graded);
-		graded *= uLGGGain;
-		graded = pow(max(graded, vec3(0.0)), vec3(1.0 / max(uLGGGamma, 0.01)));
-		displayColor = mix(displayColor, graded, clamp(uLGGStrength, 0.0, 1.0));
-	}
-
-	// ACES 三段飽和補償（gate 在 uACESEnabled、display 空間作用）
-	// 用 luma-band mask 讓三條 SAT 各自負責暗 / 中 / 亮 區
-	//   暗 SAT: 0~0.5 luma 區漸增權重
-	//   中 SAT: 0.25~0.75 luma 區峰值
-	//   亮 SAT: 0.5~1.0 luma 區漸增權重
-	// 三個 mask 加總 = 1.0（保證單調過渡、無斷層）
-	if (uACESEnabled > 0.5)
-	{
-		float lumaSat = dot(displayColor, vec3(0.299, 0.587, 0.114));
-		float shadowMask    = 1.0 - smoothstep(0.0, 0.5, lumaSat);
-		float highlightMask = smoothstep(0.5, 1.0, lumaSat);
-		float midMask       = 1.0 - shadowMask - highlightMask;
-
-		float effectiveSat = uACESSatShadow * shadowMask
-		                   + uACESSatMid * midMask
-		                   + uACESSatHighlight * highlightMask;
-
-		displayColor = mix(vec3(lumaSat), displayColor, effectiveSat);
-	}
-
-	// R6 LGG-r30：White Balance（display-space 最末端、純後製、不觸發採樣重置）
-	// 數學：D65 → 目標 illuminant 的 von Kries-style RGB ratio
-	//   端點 +1 ≈ 3000K Tungsten（warm）目標：R 升 25%、B 降 35%
-	//   端點 -1 ≈ 9000K cool target           ：R 降 15%、B 升 18%
-	//   G channel 在 D illuminant 上幾乎不變（Y 為支點），微調保比例
-	if (uWBB != 0.0)
-	{
-		vec3 wbScale = uWBB > 0.0
-			? mix(vec3(1.0), vec3(1.25, 1.00, 0.65), uWBB)   // warm
-			: mix(vec3(1.0), vec3(0.85, 1.00, 1.18), -uWBB); // cool
-		displayColor *= wbScale;
-	}
-
-	// R6 LGG-r30：Hue 色相環旋轉（NTSC luma-preserving，繞 (1,1,1)/√3 軸）
-	// 紅 → 橘 → 黃 → 綠 → 青 → 藍 → 紫 → 紅，整環平移、不偏色不染色
-	if (uHueB != 0.0)
-	{
-		float h = radians(uHueB);
-		float c = cos(h);
-		float s = sin(h);
-		mat3 hueM = mat3(
-			0.299 + 0.701 * c + 0.168 * s,
-			0.299 - 0.299 * c - 0.328 * s,
-			0.299 - 0.300 * c + 1.250 * s,
-			0.587 - 0.587 * c + 0.330 * s,
-			0.587 + 0.413 * c + 0.035 * s,
-			0.587 - 0.588 * c - 1.050 * s,
-			0.114 - 0.114 * c - 0.497 * s,
-			0.114 - 0.114 * c + 0.292 * s,
-			0.114 + 0.886 * c - 0.203 * s
-		);
-		displayColor = max(hueM * displayColor, vec3(0.0));
-	}
-
-	pc_fragColor = vec4(displayColor, 1.0);
+	// lastly, apply gamma correction (gives more intensity/brightness range where it's needed)
+	pc_fragColor = vec4(sqrt(filteredPixelColor), 1.0);
 }

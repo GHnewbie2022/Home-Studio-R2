@@ -12,6 +12,17 @@ html, body {
 	-webkit-user-select: none;
 }
 
+#container canvas {
+	display: block;
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: min(100vw, calc(100vh * 16 / 9));
+	height: min(100vh, calc(100vw * 9 / 16));
+	z-index: 0;
+}
+
 #info {
 	position: fixed;
 	top: 5px;
@@ -102,7 +113,7 @@ html, body {
 	padding: 4px 12px 12px 24px;
 	font-size: 11px;
 	background: transparent; border: none; border-radius: 0; box-shadow: none;
-	display: block; min-width: 190px; flex-shrink: 0;
+	display: block; flex-shrink: 0;
 }
 .panel-content.collapsed { display: none; }
 
@@ -115,8 +126,9 @@ html, body {
 .control-row {
 	display: flex; align-items: center; justify-content: space-between;
 	margin-bottom: 12px; gap: 8px;
+	min-width: 127px;
 }
-.label-group { width: 70px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+.label-group { width: 50px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
 .label-text { color: #aaa; font-size: 10px; white-space: nowrap; }
 
 input[type=range] {
@@ -129,7 +141,7 @@ input[type=range]::-webkit-slider-thumb {
 	width: 10px; height: 10px; border-radius: 50%; background: #8c8273; cursor: pointer;
 }
 input[type=number] {
-	width: 42px; flex-shrink: 0;
+	width: 36px; flex-shrink: 0;
 	background: rgba(0,0,0,0.2); color: #d3d3d1;
 	border: 1px solid rgba(255,255,255,0.05); border-radius: 3px;
 	font-size: 10px; text-align: right; padding: 3px 4px; outline: none;
@@ -170,7 +182,7 @@ button.action-btn.glow-gradient-bo {
 }
 
 /* CONFIG radio buttons */
-.config-radio-group { display: flex; gap: 8px; margin-bottom: 8px; }
+.config-radio-group { display: grid; grid-template-columns: 50px 50px; gap: 8px; margin-bottom: 8px; }
 .config-radio { flex: 1; cursor: pointer; }
 .config-radio input[type="radio"] { display: none; }
 .config-radio-label {
@@ -203,6 +215,19 @@ button.action-btn.glow-gradient-bo {
 	box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 8px rgba(0,0,0,0.4);
 }
 #help-btn:hover, #hide-btn:hover { background: rgba(40, 39, 36, 0.95); color: #d3d3d1; }
+#lock-btn {
+	width: 26px; height: 26px; border-radius: 4px;
+	background: rgba(28, 28, 26, 0.9); border: 1px solid rgba(255,255,255,0.05);
+	color: #aaa; display: flex; align-items: center; justify-content: center;
+	cursor: pointer; backdrop-filter: blur(10px);
+	box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 8px rgba(0,0,0,0.4);
+	transition: box-shadow 0.2s, color 0.2s, border-color 0.2s;
+}
+#lock-btn:hover { background: rgba(40, 39, 36, 0.95); color: #d3d3d1; }
+#lock-btn.locked {
+	color: rgba(255,200,80,1); border-color: rgba(255,200,80,0.4);
+	box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 0 10px rgba(255,200,80,0.5), 0 0 20px rgba(255,200,80,0.2);
+}
 
 #instructions {
 	position: absolute; bottom: 36px; right: 0; left: auto;
@@ -225,7 +250,7 @@ button.action-btn.glow-gradient-bo {
 }
 
 #snapshot-bar {
-	position: fixed; bottom: 28px; left: 15px; z-index: 25;
+	position: fixed; bottom: 60px; left: 15px; z-index: 25;
 	display: flex; gap: 6px; align-items: flex-end; pointer-events: auto;
 	flex-wrap: wrap; max-width: 90vw;
 }
@@ -250,7 +275,7 @@ button.action-btn.glow-gradient-bo {
 	box-shadow: 0 4px 20px rgba(0,0,0,0.7);
 }
 #snapshot-actions {
-	position: fixed; bottom: 120px; left: 15px; z-index: 25; display: none;
+	position: fixed; bottom: 28px; left: 15px; z-index: 25; display: flex;
 	gap: 6px; pointer-events: auto;
 }
 .snapshot-action-btn {
@@ -259,6 +284,12 @@ button.action-btn.glow-gradient-bo {
 	cursor: pointer; font-family: inherit;
 }
 .snapshot-action-btn:hover { background: rgba(50,50,46,0.95); color: #fff; }
+.snapshot-chip {
+	background: rgba(28,28,26,0.85); border: 1px solid rgba(255,255,255,0.15);
+	color: #bbb; font-size: 10px; padding: 3px 8px; border-radius: 10px;
+	cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+.snapshot-chip:hover { background: rgba(50,50,46,0.95); color: #fff; border-color: rgba(255,200,100,0.5); }
 
 .gik-minimap { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; padding-left: 12px; }
 .gik-row { display: flex; align-items: center; gap: 16px; }

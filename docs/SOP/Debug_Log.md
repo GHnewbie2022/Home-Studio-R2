@@ -1229,3 +1229,228 @@ R4-1 命中案例：
 #### 6. Dark Reader 瀏覽器擴充功能會干擾驗收
 
 Brave 的 Dark Reader 會反轉 CSS 色彩，導致 glow 效果和 GIK 色塊外觀錯誤。驗收 UI 色彩相關功能時必須先關閉 Dark Reader。
+
+---
+
+## R6-LGG-J3｜借光 buffer 13 輪 debug 與根因（per-frame stochastic gate 平均後產生空間 banding）
+
+### 症狀
+
+B 模 4 彈快速預覽開啟「暗角借光」（slider-borrow-strength-b > 0）後，C1/C2 高反彈場景（白牆 + 大吸頂燈）牆面與天花板交界、AO 帶等位置出現空間結構性光斑/條紋，跟一般 path tracing noise 不同——多採樣不會收斂消失，是真實的 mean 結構。
+
+### 13 輪失敗時序（r17~r28，最終 r29 修好）
+
+```
+ r17  5×5 cross blur on borrow（無 source clamp、無 gate）
+       使用者：「光斑被抹大了」
+       失敗原因：blur 把所有 borrow 值（亮 + 暗）一起平均，亮面被推、暗角被均化
+
+ r18  同 r17 邏輯，僅微調
+
+ r19  source-side firefly clamp（pathtracing_main chunk，借光 pass 進入 accumulator 前 clamp 1.0）
+       改善 firefly 但 1/8 res chunk 仍在
+
+ r20  accumCol gate（per-path 撞光與否，exp(-accumLuma × 100)）
+       使用者：「C1/C2 wall top 被推亮，光暗顛倒」
+       失敗原因：AO 帶 path 收到弱光，gate 給半套，加上 14 彈 borrow 高 wraparound luma → AO 帶被推得比中段牆還亮
+
+ r21  雙重 gate：accumCol gate × positionGate(borrow_luma, 0.2~0.6)
+       使用者當時驗收 OK，但其實 banding 仍在、只是 r20 inversion 太明顯掩蓋
+       本輪即埋下 r28 的種子
+
+ r22  cleanup（移甜蜜點預設、拆暗角補光）
+
+ r23  速度優化嘗試：tighter gate (0.25, 0.35) + Russian Roulette + 5-tap blur
+       使用者：「C1/C2 wall top 不明光斑」
+       失敗原因（事後分析）：tighter gate 把 1/8 borrow texel 邊界亮度差直接放大成硬邊；
+                              RR 在白牆高反彈場景 mask /= survival 偶爆 firefly；
+                              blur 抹大 RR spike 變大塊光斑
+
+ r24  rollback gate to (0.20, 0.45)
+       使用者：「還是有」
+       失敗原因：根因不是 gate 寬窄，是 RR + darkGate 組合
+
+ r25  in-shader 5-tap cross blur on borrow
+       使用者：「還是有阿」
+       失敗原因：RR 仍在跑，blur + RR spike 互相疊加
+
+ r26  rollback to r21 state（拆 RR、拆 blur、gate 回 0.2~0.6）
+       使用者：「這版一樣是有光斑」
+       重大發現：banding 不是 r23~r25 引入的、r21 就有、只是當時 r20 inversion 蓋過
+
+ r27  4-tap 半 texel 偏移 blur 修 bilinear 跨 borrow 邊界跳變
+       使用者：「失敗 還是有」
+       失敗原因：bilinear 跳變不是根因（事後追究是 darkGate 平均後形成空間結構）
+
+ r28  拆 darkGate，只留 positionGate (0.2, 0.6)
+       使用者：「光斑變成向外擴散，連旁邊都髒髒的」
+       失敗原因：positionGate (0.2, 0.6) 範圍太寬，亮面 borrow_luma 0.4~0.6 仍給 0.5 級 gate，
+                 contribution 受 1/8 borrow per-texel variance 影響、向外擴散變髒
+```
+
+### 真正的根因
+
+`darkGate = exp(-accumLuma × 100)` 是 per-frame 對「該 path 撞光與否」做機率分類，看似合理但 **多 frame 平均後 E[darkGate] 直接等於該 pixel「沒撞光機率」**：
+
+```
+ pixel 撞光機率 60% → E[darkGate] ≈ 0.4 × 1 + 0.6 × ~0 = 0.4
+ pixel 撞光機率 40% → E[darkGate] ≈ 0.6 × 1 + 0.4 × ~0 = 0.6
+```
+
+牆面不同高度的撞光機率隨 NEE 幾何漸變（離吸頂燈愈近的牆愈容易撞到光）→ E[darkGate] 隨高度漸變 → contribution mean 形成沿 NEE 機率等高線的水平 banding。**這不是雜訊，是真實空間結構，再多採樣也不會消失。**
+
+### r29 修法（成功）
+
+拆 darkGate，positionGate 收緊到 (0.0, 0.3)：
+
+```glsl
+if (uBorrowStrength > 0.0)
+{
+    vec2 borrowUv = gl_FragCoord.xy / uResolution;
+    vec3 borrowedSum = texture(tBorrowTexture, borrowUv).rgb;
+    vec3 borrowedAvg = borrowedSum / max(uSampleCounter, 1.0);
+    borrowedAvg = min(borrowedAvg, vec3(1.0));
+    float borrowLuma = dot(borrowedAvg, vec3(0.299, 0.587, 0.114));
+    float positionGate = 1.0 - smoothstep(0.0, 0.3, borrowLuma);
+    accumCol += mask * borrowedAvg * uBorrowStrength * positionGate;
+}
+```
+
+`positionGate` 用穩定收斂的 `borrow_luma` 判位置「14 彈下本來是不是亮的」，不是 per-frame 隨機，多 frame 平均後不會產生 banding。範圍 (0.0, 0.3) 比 r28 的 (0.2, 0.6) 嚴：
+
+```
+ borrow_luma 0    → gate 1.0   (深暗角全套)
+ borrow_luma 0.15 → gate 0.5   (corner edge)
+ borrow_luma 0.25 → gate 0.07  (almost off)
+ borrow_luma 0.3+ → gate 0     (wall, ceiling, lit area, all blocked)
+```
+
+### 教訓（永久紀律）
+
+```
+ 1. 必先 isolation test 鎖根因再動工
+    使用者一句「strength=0 就無 banding」精準定位「根因在 borrow 機制內」，
+    我前 4 輪沒做這步、瞎猜瞎改、燒掉 4 個版本
+
+ 2. per-frame stochastic gate 是危險的
+    per-frame 0/1 機率分類在多 frame 平均後 E 值等於該 pixel 機率
+    若該機率隨幾何漸變（NEE 視野角度、AO 程度）→ 形成空間結構
+    這個 mean 結構是「真實正確的數學期望值」、不是 noise，多採樣不會消除
+
+ 3. 跟 LESSONS-R6 5 路 luma-based shadow detection 失敗的對照
+    失敗組：post-process 階段用「顯示亮度」per-pixel 分類
+    本組  ：path tracer terminal 階段用「該 path 收到光多少」per-frame 分類
+    都是「per-frame 樣本基礎的分類」，平均後若樣本機率有空間漸變即產生 banding
+    教訓 same：per-frame stochastic gating 不可靠，要用穩定收斂的位置量
+
+ 4. blur 不是萬能藥
+    r17 / r25 兩次 blur 都失敗、不是 blur 本身有問題、是 blur 上游有 firefly / RR spike
+    blur 把 spike 抹大 → 視覺更糟
+    blur 應在「source 已經 clamped 不會 spike」時才上
+
+ 5. 速度優化要在功能正確之後再做
+    r23~r25 都是在功能（其實當時還沒收斂）尚未驗證乾淨時就開始優化速度
+    結果優化的副作用跟既有 bug 互相疊加、debug 路線完全混亂
+```
+
+---
+
+## R6-LGG-r30｜White Balance + Hue + per-config stateful 切換 + 窗外背板 X-ray fix
+
+### 範圍
+
+R6-LGG-r29 完工狀態之後累積的延伸工作（B 模快速預覽）：
+
+```
+ 1. WB / Hue 雙滑桿（純後製、display-space 最末端、不觸發採樣重置）
+ 2. per-config 預設體系（C1 / C2 / C3 / C4 各自 10 欄甜蜜點）
+ 3. stateful per-config 切換（離開 snapshot、進入 restore-or-init）
+ 4. cmd+click 重置回該 config 預設（8 條後製 + 牆面反射率共 9 條）
+ 5. C1 / C2 全套滑桿對齊使用者實測截圖
+ 6. C4 局部細調（Gamma 2.0、WB -0.2、Hue 2、Lift -0.1、ACES SAT 1.0）
+ 7. 窗外景色背板（box 27）cullable 1 → 0 修 X-ray 透視剝離 bug
+```
+
+### 教訓 1｜粗糙色彩濾鏡 vs LR / DaVinci 物理 WB / Hue 不同數學
+
+第一版實作把「色溫藍↔黃 / 色調綠↔紅」做成直接 R / G / B 通道乘加：
+
+```glsl
+displayColor.r *= 1.0 + uTempB * 0.30;
+displayColor.b *= 1.0 - uTempB * 0.30;
+displayColor.g *= 1.0 - uTintB * 0.30;
+```
+
+使用者糾正：「我要的是 WHITE BALANCE 跟 HUE，剛剛做的看起來則是套用顏色濾鏡，效果完全不一樣」。
+
+差異本質：
+
+```
+ 粗糙色彩濾鏡       3 個獨立 channel 偏移；對應 PS Color Balance Tool 那種「整體染色」感
+ White Balance     von Kries chromatic adaptation：模擬光源 illuminant 位移
+                    暖端 +1（≈3000K Tungsten）：R *= 1.25、G *= 1.00、B *= 0.65
+                    冷端 -1（≈9000K cool target）：R *= 0.85、G *= 1.00、B *= 1.18
+                    G channel 在 D illuminant 上幾乎不變（Y 為支點），R / B 非對稱反向
+ Hue               NTSC luma-preserving 色相環旋轉（繞 (1,1,1)/√3 軸）
+                    紅 → 橘 → 黃 → 綠 → 青 → 藍 → 紫 → 紅 整環平移、亮度幾乎不變
+```
+
+**Hard Rule**：使用者要求「白平衡 / 色相」滑桿時，必走物理 chromatic adaptation + hue rotation matrix 數學，禁用粗糙 R / G / B 偏移。
+
+### 教訓 2｜「切標籤不重置」與「切標籤套預設」的衝突 → stateful 架構
+
+兩條使用者需求曾衝突：
+
+```
+ A  切到 C4 → 自動套 Gamma 2.0 等 C4 預設（要看 C4 樣貌）
+ B  切離 C1 → 切回 C1 → 我先前在 C1 調的值還在（不要丟）
+```
+
+第一版做 A 不做 B：使用者抱怨「臨時調整的值會不見」。
+第二版做 B 不做 A：使用者抱怨「切到 C4 仍是 Gamma 1.5」。
+
+正解：**stateful per-config 架構**。
+
+```
+ 全域狀態：
+   configPostDefaults  4 個 config 第一次進入時的初值 + cmd+click 重置目標
+   configState         4 個 config 離開時的 slider 值快照
+
+ 切 config 時：
+   1. snapshot oldConfig 當前 slider → configState[oldConfig]
+   2. enter newConfig：
+        configState[newConfig] 存在 → restore（恢復離開前狀態）
+        configState[newConfig] 是 null → 套 configPostDefaults[newConfig]（第一次進該 config）
+```
+
+兩條需求同時成立。
+
+### 教訓 3｜窗外景色背板 cullable bug 與 X-ray 範疇定位
+
+R2-13 X-ray 透視剝離邏輯（cullable=1 走 line 635-638）：
+
+```glsl
+if (uCamPos.z > uRoomMax.z + eps && bmin.z > uRoomMax.z - T) return true;
+```
+
+意思：「相機在 z+ 房間外、box 在 z+ 遠端」→ 剝離。
+
+box 27（窗外景色背板）位於 z=14.9~15.0、cullable=1 → 當 cam1 / cam2 在 z=3.7 / 3.9（roomMax.z 約 3.13）外時，條件成立 → 窗外背板被剝離 → 從室內看出去窗戶變空。
+
+根因：「窗外背板」是「永遠該被看見的背景貼圖」、不屬於 X-ray 牆系剝離範疇，cullable 應該設 0。
+
+修法：line 131 cullable 1 → 0。
+
+**Hard Rule**：cullable 標記是給「會擋視線、剝離後露出室內的牆系幾何」用的；背景 / 天空 / 永遠該見的貼圖物件 cullable=0。
+
+### 程式現況（r30 final）
+
+```
+ 4 檔備份標記 r6lgg30-bak：
+   Home_Studio.html
+   js/Home_Studio.js
+   js/InitCommon.js
+   shaders/ScreenOutput_Fragment.glsl
+
+ 詳細交接：.omc/HANDOFF-R6-r30-final.md
+```

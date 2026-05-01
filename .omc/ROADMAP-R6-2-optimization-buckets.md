@@ -132,16 +132,33 @@ OMC：必須 ralplan 三輪共識
 
 ## 桶 4：Phase 1.0 留下的待解 follow-up（小型技術債）
 
-### 4-1. C3 異常：21% frame 跳過（fps 高但 spp 沒跟上）
+### 4-1. C3 異常：21% frame 跳過 ✅ 結案 2026-04-27
 
 ```
 出處：REPORT-R6-2-Phase-1.0.md §5 + §8 F1
-症狀：C3 fps=39（高於其他 config）但 spp_per_frame_ratio=0.789
-猜測：cameraSwitchFrames=3 邏輯延伸 / 4 燈條 + Cloud 觸發特殊跳過
-查證點：js/InitCommon.js 渲染迴圈
-工時：0.5~1 天
-價值：不影響效能，但 Phase 1.0 數據可信度補完
-推薦：可做（成本低、屬技術債清理）
+詳：.omc/REPORT-R6-2-bucket4-F1-conclusion.md
+
+Root cause：啟動暫態（前 2 秒）瀏覽器 RAF 60Hz 跟 GPU 26ms/frame 不同步、
+            被 InitCommon.js L877 60fps gate 擋下、穩態下 RAF 自動降到
+            ~39Hz 後 frame-skip 完全消失
+
+關鍵證據：
+  - 5 秒 RAF instrumentation + 0.5 秒 sliding window
+  - acc=0 frame 100% 對應 dtLR < 16.67ms（gate L877 條件）
+  - moving=true / sw>0 全 trace 0 個 → cameraSwitchFrames 完全不是元凶
+  - sliding window ratio 從 0.5 平滑爬到 1.0、明確 transient 模式
+
+影響：
+  - 穩態損失 ≈ 0%
+  - 累積 1024 spp 影響 ≈ 2.9%（低於 ralplan +5% commit 門檻）
+  - Phase 1.0 ratio 浮動 11% 解釋：量測 window 起點與 panel 切換的相對距離
+
+Phase 2 三方案評估：
+  方案 A：移除 60fps gate ❌（成本高、風險高、收益 ~3%）
+  方案 B：暖機 ❌（cosmetic、無實質意義）
+  方案 C：不修、修正 Phase 1.0 §5 描述 ✅ 採用
+
+決策：不修
 ```
 
 ### 4-2. 三段佔比拆解（BVH / NEE / Material 各占 frame 多少 ms）⏸ 暫緩 2026-04-27
@@ -218,13 +235,10 @@ Stage B 升級路徑（Option 3 #ifdef N+1 build）保留為 follow-up F-F2-3
 ## 推薦排序（若 R6-2 結案後仍要繼續）
 
 ```
-優先做（小成本高槓桿）：★ 2026-04-27 修訂後
-  桶 4 F1  ★ C3 21% frame 跳過 debug
-    成本：0.5~1 天
-    收益：Phase 1.0 數據可信度補完 + 未來多 config 量測協定都更可靠
-
-次做（風險低、收穫保守）：
-  桶 2 #2  Russian Roulette 調校 — 風險最低的 path tracer 調優
+優先做（風險低、收穫保守）：★ 2026-04-27 修訂後
+  桶 2 #2  ★ Russian Roulette 調校 — 風險最低的 path tracer 調優
+    成本：1~2 天
+    收益：≤ 10% spp/sec 提升
 
 R3-8 觸發後做：
   桶 3 全部（場景變大才有意義，現在做沒意義）
@@ -237,6 +251,10 @@ R3-8 觸發後做：
 
 永久不進（違守門禁忌）：
   桶 2 #5（半精度紋理）
+
+✅ 已完成：
+  桶 4 F1  C3 21% frame 跳過 debug（root cause = 啟動暫態 RAF cadence + 60fps gate、不修）
+    詳：.omc/REPORT-R6-2-bucket4-F1-conclusion.md
 
 ⏸ 暫緩（已嘗試、Step 0 fail-fast）：
   桶 4 F2  三段 timer 拆解（Stage A probe overhead ≥ 1.24% 失敗）

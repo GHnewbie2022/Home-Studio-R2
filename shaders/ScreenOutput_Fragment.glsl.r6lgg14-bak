@@ -32,11 +32,6 @@ uniform float uLGGLift;       // 暗部偏移 -0.30 ~ +0.30，0=中性
 uniform float uLGGGamma;      // 中間調曲線 0.50 ~ 2.00，1=中性，>1 提亮中間
 uniform float uLGGGain;       // 亮部增益 0.50 ~ 1.50，1=中性
 
-// R6 LGG-r30：B 模 White Balance + Hue 後製（display-space 最末端）
-// 不是粗糙色彩濾鏡：WB 走 von Kries chromatic adaptation、Hue 走 luma-preserving 色相環旋轉
-uniform float uWBB;           // 白平衡 -1=藍冷（≈9000K target）~ +1=黃暖（≈3000K target）
-uniform float uHueB;          // 色相環旋轉角度（degrees），-180 ~ +180
-
 // ACES Filmic 近似（Krzysztof Narkowicz 2015）：HDR 輸入、display-linear 輸出
 // 跟 Reinhard 比：shoulder 軟過渡（亮區不死白）、foot 優雅滾降（暗區更開層次）
 //
@@ -477,40 +472,6 @@ void main()
 		                   + uACESSatHighlight * highlightMask;
 
 		displayColor = mix(vec3(lumaSat), displayColor, effectiveSat);
-	}
-
-	// R6 LGG-r30：White Balance（display-space 最末端、純後製、不觸發採樣重置）
-	// 數學：D65 → 目標 illuminant 的 von Kries-style RGB ratio
-	//   端點 +1 ≈ 3000K Tungsten（warm）目標：R 升 25%、B 降 35%
-	//   端點 -1 ≈ 9000K cool target           ：R 降 15%、B 升 18%
-	//   G channel 在 D illuminant 上幾乎不變（Y 為支點），微調保比例
-	if (uWBB != 0.0)
-	{
-		vec3 wbScale = uWBB > 0.0
-			? mix(vec3(1.0), vec3(1.25, 1.00, 0.65), uWBB)   // warm
-			: mix(vec3(1.0), vec3(0.85, 1.00, 1.18), -uWBB); // cool
-		displayColor *= wbScale;
-	}
-
-	// R6 LGG-r30：Hue 色相環旋轉（NTSC luma-preserving，繞 (1,1,1)/√3 軸）
-	// 紅 → 橘 → 黃 → 綠 → 青 → 藍 → 紫 → 紅，整環平移、不偏色不染色
-	if (uHueB != 0.0)
-	{
-		float h = radians(uHueB);
-		float c = cos(h);
-		float s = sin(h);
-		mat3 hueM = mat3(
-			0.299 + 0.701 * c + 0.168 * s,
-			0.299 - 0.299 * c - 0.328 * s,
-			0.299 - 0.300 * c + 1.250 * s,
-			0.587 - 0.587 * c + 0.330 * s,
-			0.587 + 0.413 * c + 0.035 * s,
-			0.587 - 0.588 * c - 1.050 * s,
-			0.114 - 0.114 * c - 0.497 * s,
-			0.114 - 0.114 * c + 0.292 * s,
-			0.114 + 0.886 * c - 0.203 * s
-		);
-		displayColor = max(hueM * displayColor, vec3(0.0));
 	}
 
 	pc_fragColor = vec4(displayColor, 1.0);

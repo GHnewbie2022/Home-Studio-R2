@@ -23,7 +23,7 @@
 |--------|---------|-----|---------|----------------|-----------------|------|
 | C1 | 基本吸頂燈 | 35.5 | 34.30 | 29.9 秒 | 0.967 | GPU saturated |
 | C2 | 吸頂燈 + 軌道 | 32.7 | 31.56 | 32.4 秒 | 0.964 | GPU saturated |
-| C3 | 4 燈條 | 39.0 | 30.78 | 33.3 秒 | 0.789 | ⚠ 21% frame 跳過 |
+| C3 | 4 燈條 | 39.0 | 30.78 | 33.3 秒 | 0.789 | ⚠ 啟動暫態 frame-skip（穩態 0%、見 F1 結案） |
 | C4 | C3 + 軌道 | 32.0 | 30.39 | 33.7 秒 | 0.951 | GPU saturated |
 
 ### 2.1 量測方法
@@ -87,7 +87,7 @@
 |--------|----------------|
 | C1 | 28.2 ms |
 | C2 | 30.6 ms |
-| C3 | 25.6 ms（21% 跳過 frame 影響）|
+| C3 | 25.6 ms（穩態值；前 2 秒啟動暫態 ratio≈0.5、見 F1 結案）|
 | C4 | 31.3 ms |
 
 從 fps 反推（1000/fps）。包含：
@@ -100,7 +100,9 @@ STEP 3 screen output（walk denoiser + tone map，cheap）
 
 ---
 
-## 5. C3 異常：21% frame 跳過（follow-up F1）
+## 5. C3 異常：21% frame 跳過（✅ 已結案 2026-04-27）
+
+### 5.1 原始症狀（保留作 systematic-debugging 紀錄）
 
 ```
 症狀：fps=39（高於其他 config）但 spp_per_frame_ratio=0.789
@@ -114,7 +116,19 @@ STEP 3 screen output（walk denoiser + tone map，cheap）
   - 對 C3 真實 spp/sec 估值有 ~21% 誤差（保守估 30.78 → 真實可能 ~38）
 ```
 
-列為 follow-up：階段 1.5 完工後若有時間再查 `js/InitCommon.js` 渲染迴圈。
+### 5.2 結案結論（2026-04-27）
+
+```
+Root cause：啟動暫態（前 2 秒）瀏覽器 RAF 60Hz 跟 GPU 26ms/frame 不同步、
+            被 InitCommon.js L877 60fps gate 擋下；穩態下 RAF 自動降到
+            ~39Hz 後 frame-skip 完全消失。
+穩態損失：≈ 0%
+累積 1024 spp 影響：≈ 2.9%（低於 ralplan +5% commit 門檻）
+ratio 浮動 11% 解釋：量測 window 起點與 panel 切換時刻的相對距離不同、
+                     window 含暫態多寡造成 ratio 浮動
+決策：不修（修法都觸碰框架核心、收益人眼難察覺）
+詳細論證：.omc/REPORT-R6-2-bucket4-F1-conclusion.md
+```
 
 ---
 
@@ -156,8 +170,8 @@ Server: python3 -m http.server 9001 (cwd=Home_Studio_3D/)
 ## 8. follow-up
 
 ```
-F1: C3 21% frame 跳過原因查 js/InitCommon.js 渲染迴圈
-    （優先序：低，階段 1.5 完工後再查）
+F1: ✅ 結案 2026-04-27（root cause = 啟動暫態 RAF cadence + 60fps gate、不修）
+    詳：.omc/REPORT-R6-2-bucket4-F1-conclusion.md
 
 F2: 量測項目 3 三段佔比拆解
     （階段 1.5 動 shader 時順手加 EXT_disjoint_timer_query_webgl2
