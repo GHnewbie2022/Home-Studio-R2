@@ -32,7 +32,7 @@ Before any work: curl or open browser to confirm 200 OK.
 ## Required Reading Order (do not skip)
 <!-- 必讀順序，不得跳過 -->
 
-1. `docs/SOP/（先讀大綱.md` — 30-second overview of current R-stage progress
+1. `docs/SOP/R0：全景地圖.md` — 30-second overview of current R-stage progress
 2. `docs/SOP/Debug_Log.md` — read ONLY the opening chapter "通用 Debug 紀律" (L1–L45). Rest is fix-history, use as grep index on demand.
 3. `docs/SOP/R?：...md` — current R-stage playbook. Read ONLY the active sub-phase and its immediate predecessor for context. Completed sub-phases are on-demand.
 4. Claude Code only: auto-memory `project_home_studio_r2_13_handover.md` (R2 implementation decisions, specs, pitfalls; auto-loaded if present)
@@ -110,7 +110,7 @@ Do not assume the framework is missing something; verify before acting.
 When user declares "R? DONE", execute in order:
 
 1. Update `docs/SOP/R?：...md` — add ✅ to BOTH the outline table row AND the `### ` section header (dual-checkmark rule, see below)
-2. Update `docs/SOP/（先讀大綱.md` stage status
+2. Update `docs/SOP/R0：全景地圖.md` stage status
 3. Claude Code only: update handover memory at `~/.claude/projects/-Users-eajrockmacmini-Documents-Claude-Code/memory/project_home_studio_r2_13_handover.md`
 4. `git commit + push` to current branch (r3-light for R3). Commit title format: `R3-N DONE：<title>（<key technical point>）`
 
@@ -161,7 +161,7 @@ Pick tool by phase characteristics; do not apply one skill throughout.
 
 | Need | Look here |
 |------|-----------|
-| R-stage current progress | `docs/SOP/（先讀大綱.md` |
+| R-stage current progress | `docs/SOP/R0：全景地圖.md` |
 | Universal debug discipline + fix history | `docs/SOP/Debug_Log.md` (opening only, rest grep-on-demand) |
 | Specific R-stage playbook | `docs/SOP/R?：...md` |
 | R2 implementation / pitfalls / specs | Claude Code auto-memory `project_home_studio_r2_13_handover.md` |

@@ -251,7 +251,7 @@ R4-5 SOP 8 項中 6 項先前已由 R4-1/R4-3/R4-4 跨階段完成；R4-5 本階
 ## Pre-reads (in order)
 
 1. `docs/SOP/Debug_Log.md` — universal debug discipline (never skip)
-2. `docs/SOP/（先讀大綱.md` — stage overview, current ✅ / ⬜ snapshot
+2. `docs/SOP/R0：全景地圖.md` — stage overview, current ✅ / ⬜ snapshot
 3. `docs/SOP/R4：UI控制層.md` — fully expanded SOP with R4-1~R4-5 detailed bodies
 4. `CLAUDE.md` — project-level conventions
 

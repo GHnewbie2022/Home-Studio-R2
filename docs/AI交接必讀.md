@@ -40,7 +40,7 @@ R3-3 時 Cloud 漫射燈條僅做自發光幾何與 radiometric 量綱，area sa
 | 內容 | 位置 |
 |------|------|
 | 跨階段規則 / 流程 / 必讀順序 | `CLAUDE.md`（專案根，CC 自動注入） |
-| R 階段當前進度總表 | `docs/SOP/（先讀大綱.md` |
+| R 階段當前進度總表 | `docs/SOP/R0：全景地圖.md` |
 | 通用 Debug 紀律 + fix 紀錄 | `docs/SOP/Debug_Log.md`（開頭紀律段必讀） |
 | 某 R 階段工作手冊 | `docs/SOP/R?：...md` |
 | R2 實作細節 / 踩雷 / 規格 | CC auto-memory `project_home_studio_r2_13_handover.md` |
