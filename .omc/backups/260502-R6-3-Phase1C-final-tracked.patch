@@ -1,0 +1,968 @@
+diff --git a/Home_Studio.html b/Home_Studio.html
+index 99cc08e..a530fc4 100644
+--- a/Home_Studio.html
++++ b/Home_Studio.html
+@@ -298,7 +298,7 @@
+ 		<script defer src="js/BVH_Acc_Structure_Iterative_Fast_Builder.js"> </script>
+ 		<script defer src="js/InitCommon.js?v=r4-1-skeleton"> </script>
+ 
+-		<script defer src="js/Home_Studio.js?v=lock-btn"> </script>
++		<script defer src="js/Home_Studio.js?v=p1c-cloud-base83"> </script>
+ 
+ 	</body>
+ </html>
+diff --git a/docs/tests/r3-3-cloud-radiance.test.js b/docs/tests/r3-3-cloud-radiance.test.js
+index 88e6956..291db85 100644
+--- a/docs/tests/r3-3-cloud-radiance.test.js
++++ b/docs/tests/r3-3-cloud-radiance.test.js
+@@ -1,6 +1,6 @@
+-// R3-3 computeCloudRadiance + kelvinToLuminousEfficacy contract-test
++// R6-3 Phase 1C computeCloudRadiance + kelvinToLuminousEfficacy contract-test
+ // 執行：node docs/tests/r3-3-cloud-radiance.test.js
+-// 模式：contract-test（函式本體複製自 js/Home_Studio.js R3-1/R3-3）
++// 模式：contract-test（函式本體複製自 js/Home_Studio.js）
+ // 警告：改動 kelvinToLuminousEfficacy / computeCloudRadiance 時須同步更新此檔副本。
+ 
+ // ========== 函式本體副本（與 js/Home_Studio.js 對齊）==========
+@@ -13,14 +13,19 @@ function kelvinToLuminousEfficacy(kelvin) {
+     return 350;
+ }
+ function computeCloudRadiance(lm_total, kelvin, faceArea) {
++    if (!Number.isFinite(lm_total) || lm_total <= 0) return 0;
+     const K = kelvinToLuminousEfficacy(kelvin);
+-    return (lm_total / 3) / (K * Math.PI * faceArea);
++    const arcArea = Math.max(faceArea * CLOUD_ARC_AREA_SCALE, 1e-8);
++    return lm_total / (K * Math.PI * arcArea);
+ }
+ // ========== 函式本體副本結束 ==========
+ 
+ const CLOUD_BOX_IDX_BASE = 71;  // R3-3 fix01：sceneBoxes 陣列 index（非註解邏輯 ID 55）
+-const ROD_LUMENS    = [480 * 2.4, 480 * 2.4, 480 * 1.768, 480 * 1.768];
+-const ROD_FACE_AREA = [0.016 * 2.4, 0.016 * 2.4, 0.016 * 1.768, 0.016 * 1.768];
++const CLOUD_ARC_AREA_SCALE = Math.PI * 0.5;
++const CLOUD_ARC_RADIUS = 0.016;
++const ROD_LENGTH    = [2.368, 2.368, 1.768, 1.768];
++const ROD_LUMENS    = ROD_LENGTH.map(length => 480 * length);
++const ROD_FACE_AREA = ROD_LENGTH.map(length => CLOUD_ARC_RADIUS * length);
+ 
+ let failed = 0;
+ function pass(label, extra) { console.log(`  PASS  ${label}${extra ? '  ' + extra : ''}`); }
+@@ -35,7 +40,7 @@ function assertRelErr(actual, expected, tol, label) {
+     else fail(label, `actual=${actual} expected=${expected} rel=${rel} tol=${tol}`);
+ }
+ 
+-console.log('=== R3-3 Cloud radiance contract-test ===\n');
++console.log('=== R6-3 Phase 1C Cloud arc radiance contract-test ===\n');
+ 
+ // [A] kelvinToLuminousEfficacy LUT 鎖定（4000K → 320 lm/W）
+ console.log('[A] kelvinToLuminousEfficacy LUT 鎖定:');
+@@ -43,22 +48,22 @@ assertRange(kelvinToLuminousEfficacy(4000), 318, 322, 'K(4000K) ∈ [318, 322]')
+ assertRange(kelvinToLuminousEfficacy(3000), 298, 302, 'K(3000K) ∈ [298, 302]');
+ assertRange(kelvinToLuminousEfficacy(6500), 338, 342, 'K(6500K) ∈ [338, 342]');
+ 
+-// [B] computeCloudRadiance 對 hand-computed ground truth（E rod, 1152 lm, 4000K, 0.0384 m²）
+-// 手算：1152 / 3 / (320 × π × 0.0384) = 384 / 38.5988... ≈ 9.9472 W/(sr·m²)
++// [B] computeCloudRadiance 對 hand-computed ground truth（E rod, 1136.64 lm, 4000K, A_face=0.037888 m²）
++// 手算：A_arc=(π/2)×0.037888；1136.64 / (320 × π × A_arc) ≈ 18.9977 W/(sr·m²)
+ console.log('\n[B] computeCloudRadiance vs. hand-computed ground truth:');
+-assertRelErr(computeCloudRadiance(1152, 4000, 0.0384), 9.9472, 0.001, 'E rod @ 4000K ≈ 9.9472');
+-assertRelErr(computeCloudRadiance(848.64, 4000, 0.02829), 9.9472, 0.002, 'S rod @ 4000K ≈ 9.9472 (同 Φ/A 比 → 同 radiance)');
++assertRelErr(computeCloudRadiance(ROD_LUMENS[0], 4000, ROD_FACE_AREA[0]), 18.9977, 0.001, 'E rod 480 lm/m @ 4000K ≈ 18.9977');
++assertRelErr(computeCloudRadiance(ROD_LUMENS[2], 4000, ROD_FACE_AREA[2]), 18.9977, 0.002, 'S rod 480 lm/m @ 4000K ≈ 18.9977（同 Φ/A 比 → 同 radiance）');
+ 
+ // [C] K(T) 反比例獨立驗證：固定 Φ/A 下 radiance(3000K)/radiance(4000K) = K(4000)/K(3000) = 320/300
+ console.log('\n[C] radiance ∝ 1/K(T) 獨立驗證:');
+-const r3000 = computeCloudRadiance(1152, 3000, 0.0384);
+-const r4000 = computeCloudRadiance(1152, 4000, 0.0384);
++const r3000 = computeCloudRadiance(ROD_LUMENS[0], 3000, ROD_FACE_AREA[0]);
++const r4000 = computeCloudRadiance(ROD_LUMENS[0], 4000, ROD_FACE_AREA[0]);
+ assertRelErr(r3000 / r4000, 320 / 300, 0.001, 'ratio r(3000K)/r(4000K) = K(4000)/K(3000)');
+ 
+ // [D] 5600K 單調性（階梯 LUT：K(4000)=320, K(5600)=K(6500)=340 → radiance(4000K) > radiance(5600K) = radiance(6500K)）
+ console.log('\n[D] 5600K 單調:');
+-const r5600 = computeCloudRadiance(1152, 5600, 0.0384);
+-const r6500 = computeCloudRadiance(1152, 6500, 0.0384);
++const r5600 = computeCloudRadiance(ROD_LUMENS[0], 5600, ROD_FACE_AREA[0]);
++const r6500 = computeCloudRadiance(ROD_LUMENS[0], 6500, ROD_FACE_AREA[0]);
+ if (r5600 <= r4000 && r5600 >= r6500) pass('r(5600K) 介於 r(4000K) 與 r(6500K)', `r4000=${r4000.toFixed(4)} r5600=${r5600.toFixed(4)} r6500=${r6500.toFixed(4)}`);
+ else fail('5600K 單調性破', `r4000=${r4000} r5600=${r5600} r6500=${r6500}`);
+ 
+diff --git a/docs/tests/r3-5b-cloud-area-nee.test.js b/docs/tests/r3-5b-cloud-area-nee.test.js
+index 4579d68..8618630 100644
+--- a/docs/tests/r3-5b-cloud-area-nee.test.js
++++ b/docs/tests/r3-5b-cloud-area-nee.test.js
+@@ -1,7 +1,7 @@
+-// R3-5b computeCloudRadiance + CLOUD_FACE_COUNT contract-test
++// R6-3 Phase 1C computeCloudRadiance + Cloud arc-area NEE contract-test
+ // 執行：node docs/tests/r3-5b-cloud-area-nee.test.js
+-// 模式：contract-test（函式本體複製自 js/Home_Studio.js R3-5b 區段）
+-// 警告：改動 computeCloudRadiance / CLOUD_FACE_COUNT / CLOUD_ROD_CENTER / CLOUD_ROD_HALF_EXTENT
++// 模式：contract-test（函式本體複製自 js/Home_Studio.js R6-3 Phase 1C 區段）
++// 警告：改動 computeCloudRadiance / CLOUD_ARC_AREA_SCALE / CLOUD_ROD_CENTER / CLOUD_ROD_HALF_EXTENT
+ //       時須同步更新此檔副本。
+ 
+ // ========== 函式本體副本（與 js/Home_Studio.js 對齊）==========
+@@ -16,16 +16,19 @@ function kelvinToLuminousEfficacy(kelvin) {
+ function computeCloudRadiance(lm_total, kelvin, faceArea) {
+     if (!Number.isFinite(lm_total) || lm_total <= 0) return 0;
+     const K = kelvinToLuminousEfficacy(kelvin);
+-    const A = Math.max(faceArea, 1e-8);
+-    return (lm_total / 2) / (K * Math.PI * A);
++    const arcArea = Math.max(faceArea * CLOUD_ARC_AREA_SCALE, 1e-8);
++    return lm_total / (K * Math.PI * arcArea);
+ }
+ // ========== 函式本體副本結束 ==========
+ 
+-// 常量副本（與 js/Home_Studio.js R3-5b 區段對齊）
+-const CLOUD_FACE_COUNT    = 2;
++// 常量副本（與 js/Home_Studio.js R6-3 Phase 1C 區段對齊）
++const CLOUD_ARC_AREA_SCALE = Math.PI * 0.5;
++const CLOUD_ARC_RADIUS = 0.016;
+ const NEE_POOL_SIZE       = 11;
+-const CLOUD_ROD_LUMENS    = [480 * 2.4, 480 * 2.4, 480 * 1.768, 480 * 1.768];
+-const CLOUD_ROD_FACE_AREA = [0.016 * 2.4, 0.016 * 2.4, 0.016 * 1.768, 0.016 * 1.768];
++const CLOUD_ROD_LENGTH = [2.368, 2.368, 1.768, 1.768];
++const CLOUD_ROD_LUMENS_REF_480 = CLOUD_ROD_LENGTH.map(length => 480 * length);
++const CLOUD_ROD_LUMENS_CURRENT_1600 = CLOUD_ROD_LENGTH.map(length => 1600 * length);
++const CLOUD_ROD_FACE_AREA = CLOUD_ROD_LENGTH.map(length => CLOUD_ARC_RADIUS * length);
+ // Rod centers (world-space metres)
+ const ROD_CENTERS = [
+     { x:  0.892, y: 2.795, z:  0.498 },  // E
+@@ -34,8 +37,8 @@ const ROD_CENTERS = [
+     { x:  0.000, y: 2.795, z: -0.694 },  // N
+ ];
+ const ROD_HALF_EXTENTS = [
+-    { x: 0.008, y: 0.008, z: 1.200 },  // E
+-    { x: 0.008, y: 0.008, z: 1.200 },  // W
++    { x: 0.008, y: 0.008, z: 1.184 },  // E
++    { x: 0.008, y: 0.008, z: 1.184 },  // W
+     { x: 0.884, y: 0.008, z: 0.008 },  // S
+     { x: 0.884, y: 0.008, z: 0.008 },  // N
+ ];
+@@ -61,40 +64,40 @@ function assertTrue(cond, label, extra) {
+     else fail(label, extra);
+ }
+ 
+-console.log('=== R3-5b Cloud 2-face area NEE contract-test ===\n');
++console.log('=== R6-3 Phase 1C Cloud arc area NEE contract-test ===\n');
+ 
+-// [A] computeCloudRadiance(1152, 4000, 0.0384) ground truth
+-// 手算：(1152/2) / (320 · π · 0.0384) = 576 / (320 · 3.14159 · 0.0384)
+-//      = 576 / 38.5793 ≈ 14.93 W/(sr·m²)
+-console.log('[A] computeCloudRadiance(1152, 4000, 0.0384) ≈ 14.93:');
+-const r_A = computeCloudRadiance(1152, 4000, 0.0384);
+-assertRelErr(r_A, 14.93, 0.01, 'radiance 對 E/W rod 算式對齊 /2 分母');
++// [A] computeCloudRadiance(1136.64, 4000, 0.037888) ground truth
++// 手算：A_arc=(π/2)×0.037888；1136.64 / (320 · π · A_arc) ≈ 18.9977 W/(sr·m²)
++console.log('[A] computeCloudRadiance(1136.64, 4000, 0.037888) ≈ 18.9977:');
++const r_A = computeCloudRadiance(1136.64, 4000, 0.037888);
++assertRelErr(r_A, 18.9977, 0.001, 'radiance 對 E/W rod 算式對齊 A_arc 分母');
+ 
+ // [B] lm=0 守門
+-console.log('\n[B] computeCloudRadiance(0, 4000, 0.0384) === 0:');
+-const r_B = computeCloudRadiance(0, 4000, 0.0384);
++console.log('\n[B] computeCloudRadiance(0, 4000, E/W faceArea) === 0:');
++const r_B = computeCloudRadiance(0, 4000, CLOUD_ROD_FACE_AREA[0]);
+ assertEq(r_B, 0, 'lm=0 → 0');
+ 
+ // [C] faceArea=0 守門（max(A, 1e-8)）
+-console.log('\n[C] computeCloudRadiance(1152, 4000, 0) finite:');
+-const r_C = computeCloudRadiance(1152, 4000, 0);
++console.log('\n[C] computeCloudRadiance(E/W 480 lm/m flux, 4000, 0) finite:');
++const r_C = computeCloudRadiance(CLOUD_ROD_LUMENS_REF_480[0], 4000, 0);
+ assertTrue(Number.isFinite(r_C), 'radiance finite when A=0', `actual=${r_C}`);
+ 
+-// [D] CLOUD_FACE_COUNT = 2 契約（三源同值：NEE face pick / hit-branch / JS Φ 分母）
+-console.log('\n[D] CLOUD_FACE_COUNT === 2:');
+-assertEq(CLOUD_FACE_COUNT, 2, '2-face 甲案 三源契約');
++// [D] A_arc = (π/2) × A_face 契約
++console.log('\n[D] CLOUD_ARC_AREA_SCALE === π/2:');
++assertRelErr(CLOUD_ARC_AREA_SCALE, Math.PI / 2, 1e-12, 'arc area scale = π/2');
++assertRelErr(CLOUD_ROD_FACE_AREA[0] * CLOUD_ARC_AREA_SCALE, 0.0595143, 0.0001, 'E/W A_arc ≈ 0.0595143 m²');
+ 
+ // [E] 色溫：K(2700)=280 vs K(6500)=340 → radiance ratio 340/280 ≈ 1.214（Φ 固定）
+ console.log('\n[E] radiance(2700) / radiance(6500) = 340/280:');
+-const r_warm = computeCloudRadiance(1152, 2700, 0.0384);
+-const r_cold = computeCloudRadiance(1152, 6500, 0.0384);
++const r_warm = computeCloudRadiance(CLOUD_ROD_LUMENS_REF_480[0], 2700, CLOUD_ROD_FACE_AREA[0]);
++const r_cold = computeCloudRadiance(CLOUD_ROD_LUMENS_REF_480[0], 6500, CLOUD_ROD_FACE_AREA[0]);
+ assertRelErr(r_warm / r_cold, 340 / 280, 0.01, 'K(warm)=280, K(cold)=340 → r_warm/r_cold=340/280');
+ 
+-// [F] Rod geometry: E/W half-extent = (0.008, 0.008, 1.200)；S/N = (0.884, 0.008, 0.008)
++// [F] Rod geometry: E/W half-extent = (0.008, 0.008, 1.184)；S/N = (0.884, 0.008, 0.008)
+ console.log('\n[F] rod half-extent 幾何契約:');
+ assertEq(ROD_HALF_EXTENTS[0].x, 0.008, 'E rod halfX');
+ assertEq(ROD_HALF_EXTENTS[0].y, 0.008, 'E rod halfY');
+-assertEq(ROD_HALF_EXTENTS[0].z, 1.200, 'E rod halfZ');
++assertEq(ROD_HALF_EXTENTS[0].z, 1.184, 'E rod halfZ');
+ assertEq(ROD_HALF_EXTENTS[2].x, 0.884, 'S rod halfX');
+ assertEq(ROD_HALF_EXTENTS[2].y, 0.008, 'S rod halfY');
+ assertEq(ROD_HALF_EXTENTS[2].z, 0.008, 'S rod halfZ');
+@@ -105,15 +108,12 @@ assertEq(ROD_CENTERS[0].x, -ROD_CENTERS[1].x, 'E/W x 鏡像');
+ assertEq(ROD_CENTERS[2].x, ROD_CENTERS[3].x, 'S/N x 對齊');
+ assertTrue(Math.abs(ROD_CENTERS[2].z + ROD_CENTERS[3].z) < 1.0, 'S/N z 大致對稱（房間非嚴格鏡像）');
+ 
+-// [H] 短端能量損失 ≈ 0.66%（甲案 2-face 接受誤差，見 ADR 附錄 A）
+-// E rod (長 2.4m)：2-face emissive area = 2 × 0.016×2.4 = 0.0768 m²
+-// 短端 total area = 2 × 0.016×0.016 = 0.000512 m²
+-// 損失比 = 0.000512 / (0.0768 + 0.000512) ≈ 0.0066
+-console.log('\n[H] 短端能量損失 ≈ 0.66%:');
+-const A_long  = 2 * 0.016 * 2.4;     // 2 emissive faces (top + outer long)
+-const A_short = 2 * 0.016 * 0.016;   // 2 short-end faces
+-const lossRatio = A_short / (A_long + A_short);
+-assertRelErr(lossRatio, 0.0066, 0.05, '短端 / (2-face + 短端) ≈ 0.66%');
++// [H] 目前預設 1600 lm/m，480 lm/m 保留為商品低檔參考值
++console.log('\n[H] 1600 lm/m current default vs 480 lm/m product reference:');
++const r_ref480 = computeCloudRadiance(CLOUD_ROD_LUMENS_REF_480[0], 4000, CLOUD_ROD_FACE_AREA[0]);
++const r_current1600 = computeCloudRadiance(CLOUD_ROD_LUMENS_CURRENT_1600[0], 4000, CLOUD_ROD_FACE_AREA[0]);
++assertRelErr(r_current1600 / r_ref480, 1600 / 480, 0.001, 'current/reference radiance ratio = 1600/480');
++assertRelErr(r_current1600, 63.3257, 0.001, 'E/W current 1600 lm/m radiance ≈ 63.3257');
+ 
+ // [I] NEE pool size = 11（7 R3-5a lights + 4 Cloud rods）
+ console.log('\n[I] NEE pool size = 11:');
+@@ -127,16 +127,16 @@ assertRelErr(pdfNew, 1 / 11, 0.001, 'selectPdf_new = 1/11 ≈ 0.0909');
+ assertTrue(pdfNew < pdfOld, 'selectPdf 縮小（variance 略升）');
+ 
+ // [K] 所有 rod 同 K 下 radiance 同值（lm / faceArea 比例不變）
+-// E/W: lm=480×2.4=1152, A=0.016×2.4=0.0384 → lm/A=30000
++// E/W: lm=480×2.368=1136.64, A=0.016×2.368=0.037888 → lm/A=30000
+ // S/N: lm=480×1.768=848.64, A=0.016×1.768=0.028288 → lm/A=30000
+ console.log('\n[K] radiance E/W vs S/N 同值（lm/faceArea 比不變）:');
+-const r_EW = computeCloudRadiance(CLOUD_ROD_LUMENS[0], 4000, CLOUD_ROD_FACE_AREA[0]);
+-const r_SN = computeCloudRadiance(CLOUD_ROD_LUMENS[2], 4000, CLOUD_ROD_FACE_AREA[2]);
++const r_EW = computeCloudRadiance(CLOUD_ROD_LUMENS_CURRENT_1600[0], 4000, CLOUD_ROD_FACE_AREA[0]);
++const r_SN = computeCloudRadiance(CLOUD_ROD_LUMENS_CURRENT_1600[2], 4000, CLOUD_ROD_FACE_AREA[2]);
+ assertRelErr(r_EW, r_SN, 0.001, '所有 rod 同 K 下 radiance 同值');
+ 
+-// [L] radiometric 量綱範圍確認：Cloud rod radiance 應落 O(10~100) W/(sr·m²)
++// [L] radiometric 量綱範圍確認：current 1600 lm/m Cloud rod radiance 應落 O(10~100) W/(sr·m²)
+ console.log('\n[L] Cloud radiance 量綱範圍 O(10~100):');
+-assertTrue(r_EW > 5 && r_EW < 200, 'Cloud radiance 在合理量綱範圍', `actual=${r_EW}`);
++assertTrue(r_EW > 10 && r_EW < 100, 'Cloud radiance 在合理量綱範圍', `actual=${r_EW}`);
+ 
+ console.log(`\n=== 結果：${failed === 0 ? 'PASS' : `FAIL (${failed})`} ===`);
+ process.exit(failed === 0 ? 0 : 1);
+diff --git a/docs/tests/r3-6-5-dynamic-pool.test.js b/docs/tests/r3-6-5-dynamic-pool.test.js
+index ce1c927..732a975 100644
+--- a/docs/tests/r3-6-5-dynamic-pool.test.js
++++ b/docs/tests/r3-6-5-dynamic-pool.test.js
+@@ -9,7 +9,6 @@
+ const assert = require('assert');
+ const fs = require('fs');
+ const path = require('path');
+-const { execSync } = require('child_process');
+ 
+ // ---------------------------------------------------------------------------
+ // Pure-logic clone of rebuildActiveLightLUT
+@@ -81,16 +80,19 @@ function buildActiveLightLUT(config, cloudOn, trackOn, wideOn) {
+ }
+ 
+ // ---------------------------------------------------------------------------
+-// U5: grep shaders/Home_Studio_Fragment.glsl for 'pdfNeeForLight(' → 11 matches
++// U5: shader Cloud contract checks for Phase 1C arc emitter
+ // ---------------------------------------------------------------------------
+ {
+     const shaderPath = path.resolve(
+         __dirname, '../../shaders/Home_Studio_Fragment.glsl'
+     );
+     const src = fs.readFileSync(shaderPath, 'utf8');
+-    const matches = src.split('pdfNeeForLight(').length - 1; // count occurrences
+-    assert.strictEqual(matches, 11, 'U5 pdfNeeForLight call count (expected 11, got ' + matches + ')');
+-    console.log('U5 PASS  pdfNeeForLight( occurrences = ' + matches + ' (1 decl + 10 call sites)');
++    assert(src.includes('CLOUD_ARC_AREA_SCALE'), 'U5 CLOUD_ARC_AREA_SCALE missing');
++    assert(src.includes('CloudArcIntersect'), 'U5 CloudArcIntersect missing');
++    assert(src.includes('cloudArcArea'), 'U5 cloudArcArea missing');
++    assert(!src.includes('CLOUD_DIAGONAL_FACE_AREA_SCALE'), 'U5 old diagonal area scale still present');
++    assert(!src.includes('uCloudFaceCount'), 'U5 old Cloud face-count uniform still present');
++    console.log('U5 PASS  shader uses Phase 1C arc Cloud contract');
+ }
+ 
+ console.log('\nAll 5 contract tests PASSED.');
+diff --git a/js/Home_Studio.js b/js/Home_Studio.js
+index 295de23..19edf61 100644
+--- a/js/Home_Studio.js
++++ b/js/Home_Studio.js
+@@ -188,25 +188,36 @@ const CLOUD_BOX_IDX_BASE = 71;
+ if (sceneBoxes.length !== CLOUD_BOX_IDX_BASE) {
+     throw new Error('[R3-3] Cloud boxIdx base mismatch: expected ' + CLOUD_BOX_IDX_BASE + ', got ' + sceneBoxes.length);
+ }
+-addBox([ 0.884, 2.787, -0.702], [ 0.900, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 55 東燈條（沿 z 2.4m；舊專案 c=[0.892, 2.795, 0.498] s=[0.016, 0.016, 2.4]）
+-addBox([-0.900, 2.787, -0.702], [-0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 56 西燈條
++addBox([ 0.884, 2.787, -0.686], [ 0.900, 2.803, 1.682], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 55 東燈條（沿 z 2.368m；R6-3 Phase 1C corner relief：頭尾各退 16mm）
++addBox([-0.900, 2.787, -0.686], [-0.884, 2.803, 1.682], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 56 西燈條
+ addBox([-0.884, 2.787,  1.682], [ 0.884, 2.803, 1.698], z3, C_CLOUD_LIGHT, 14, 0, 1, 4);  // 57 南燈條（沿 x 1.768m；比照東西短軸 1.6cm）
+ addBox([-0.884, 2.787, -0.702], [ 0.884, 2.803, -0.686], z3, C_CLOUD_LIGHT, 14, 0, 1, 4); // 58 北燈條
+-// R4-3-追加 exp：中央工作桌桌面正中央 Lambertian 參考塊（index 59）
+-// 微抬法：底面 y = 桌面 max.y(0.757) + 0.001，避 Z-fighting
+-// PASS-8 客觀亮度錨點；生命週期：experiment/r4-uncap-test 永久，分支丟棄即消失
+-addBox([-0.09, 0.758, 0.337], [0.09, 0.759, 0.517], z3, [0.5, 0.5, 0.5], 1, 0, 0, 0, 1.0, 0.0); // 59 桌面參考塊 50%灰 DIFF
++// R6-3 Phase 1C：Cloud 鋁槽不發光鋁板。16mm pizza 為發光弧面外接輪廓；底板在 GIK 頂面上方，內側 17mm 補齊 L 型鋁槽。
++// 材質沿用喇叭架霧面鋁 C_STAND_PILLAR。
++addBox([ 0.884, 2.787, -0.686], [ 0.900, 2.788, 1.682], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // E 底板 1mm，寬 16mm
++addBox([-0.900, 2.787, -0.686], [-0.884, 2.788, 1.682], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // W 底板 1mm，寬 16mm
++addBox([-0.884, 2.787,  1.682], [ 0.884, 2.788, 1.698], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // S 底板 1mm，寬 16mm
++addBox([-0.884, 2.787, -0.702], [ 0.884, 2.788,-0.686], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // N 底板 1mm，寬 16mm
++addBox([ 0.883, 2.786, -0.686], [ 0.884, 2.803, 1.682], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // E 內側板 17mm
++addBox([-0.884, 2.786, -0.686], [-0.883, 2.803, 1.682], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // W 內側板 17mm
++addBox([-0.884, 2.786,  1.681], [ 0.884, 2.803, 1.682], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // S 內側板 17mm
++addBox([-0.884, 2.786, -0.686], [ 0.884, 2.803,-0.685], z3, C_STAND_PILLAR, 1, 0, 1, 4, 0.55, 1.0); // N 內側板 17mm
+ 
+ // R3-3：商品規格 D-35NA12V4DR1 軟條燈 480 lm/m。
+-// R3-5b (2-face 甲案): Φ_rod = 480 × L；faceArea = 0.016 × L（+Y 頂 + 外長側 2 面；−Y 被 Cloud 板擋、內長面 + 兩短端本階段不發光 ≈ 0.66% 能量損失登錄 ADR）。
++// R6-3 Phase 1C：使用者決策預設 1600 lm/m（C3 Cloud-only 亮度）；480 lm/m 保留為低檔產品參考。
++// Cloud 鋁槽以 1/4 圓弧 diffuser 近似；16mm × 16mm 外接正方形對應半徑 16mm pizza。
++// A_face = 0.016 × L，A_arc = (π/2) × A_face。
+ // 順序 [0]=E [1]=W [2]=S [3]=N 對齊 uCloudEmission / uCloudFaceArea。
+-const CLOUD_ROD_LUMENS    = [1600 * 2.4, 1600 * 2.4, 1600 * 1.768, 1600 * 1.768];
+-const CLOUD_ROD_FACE_AREA = [0.016 * 2.4, 0.016 * 2.4, 0.016 * 1.768, 0.016 * 1.768];
+-
+-// R3-5b: Cloud 2-face stochastic NEE (甲案)
+-// sceneBoxes 55(E)/56(W)/57(S)/58(N)；中心與半邊由 addBox min/max 推導
+-// E/W 沿 z 長 2.4m；S/N 沿 x 長 1.768m；四向厚度皆 16mm
+-const CLOUD_FACE_COUNT = 2;
++const CLOUD_ARC_RADIUS = 0.016;
++const CLOUD_ROD_LENGTH    = [2.368, 2.368, 1.768, 1.768];
++const CLOUD_ROD_LUMENS    = CLOUD_ROD_LENGTH.map(length => 1600 * length);
++const CLOUD_ROD_FACE_AREA = CLOUD_ROD_LENGTH.map(length => CLOUD_ARC_RADIUS * length);
++const CLOUD_ARC_AREA_SCALE = Math.PI * 0.5;
++
++// R6-3 Phase 1C: Cloud 1/4 arc stochastic NEE
++// sceneBoxes 71(E)/72(W)/73(S)/74(N)；中心與半邊由 addBox min/max 推導
++// E/W 沿 z 長 2.368m；S/N 沿 x 長 1.768m；外框厚度 16mm，發光弧面半徑 16mm。
++// E/W 頭尾各退 16mm，讓四角形成非發光 corner relief，避免與 S/N arc 端點重疊。
+ const CLOUD_ROD_CENTER = [
+     new THREE.Vector3( 0.892, 2.795,  0.498),  // rod 0 E
+     new THREE.Vector3(-0.892, 2.795,  0.498),  // rod 1 W
+@@ -214,14 +225,14 @@ const CLOUD_ROD_CENTER = [
+     new THREE.Vector3( 0.000, 2.795, -0.694),  // rod 3 N
+ ];
+ const CLOUD_ROD_HALF_EXTENT = [
+-    new THREE.Vector3(0.008, 0.008, 1.200),    // rod 0 E
+-    new THREE.Vector3(0.008, 0.008, 1.200),    // rod 1 W
++    new THREE.Vector3(0.008, 0.008, 1.184),    // rod 0 E
++    new THREE.Vector3(0.008, 0.008, 1.184),    // rod 1 W
+     new THREE.Vector3(0.884, 0.008, 0.008),    // rod 2 S
+     new THREE.Vector3(0.884, 0.008, 0.008),    // rod 3 N
+ ];
+ 
+ // R2-8 吸音板
+-const BASE_BOX_COUNT = 75; // base 53 + R2-14 八 + R2-15 四 + R2-16 六 + R2-17 四 = 75
++const BASE_BOX_COUNT = 83; // base 53 + R2-14 八 + R2-15 四 + R2-16 六 + R2-17 四 + Cloud 鋁槽鋁板八 = 83
+ 
+ // Config 1：3 片灰色（第一反射點）
+ const panelConfig1 = [
+@@ -361,7 +372,7 @@ function buildSceneBVH() {
+     bvhDataTexture.needsUpdate = true;
+ 
+     // 4) Box Data Texture (512x1, RGBA32F, 5 pixels per box)
+-    // R2-18：pixel 4 新增 [roughness, metalness, 0, 0]；75 box × 5 = 375 ≤ BVH_TEX_W=512
++    // R2-18：pixel 4 新增 [roughness, metalness, 0, 0]；目前 base 83 box，config 追加後仍 ≤ BVH_TEX_W=512
+     var boxArr = new Float32Array(BVH_TEX_W * 1 * 4);
+     for (var i = 0; i < N; i++) {
+         var b = sceneBoxes[i];
+@@ -672,17 +683,17 @@ function kelvinToLuminousEfficacy(kelvin) {
+ }
+ 
+ /**
+- * R3-5b：Cloud rod Lambertian 2-face emitter 單面 radiance W/(sr·m²)。
+- * Φ_rod 均分 2 個等面積發光面（+Y 頂 + 外長側），各面 Lambertian Φ = π·A·L。
+- * → L = (Φ_rod / 2) / (K(T) · π · A)。
+- * 單位推導：Φ_rod [lm] → /K(T) [W]，再/(π·A) 得 W/(sr·m²)。
++ * R6-3 Phase 1C：Cloud rod 1/4 圓弧 diffuser radiance W/(sr·m²)。
++ * 實物為 16mm 角落鋁槽，發光面近似半徑 16mm 的 1/4 圓弧：
++ * A_arc = (π/2) · A_face，其中 A_face = 0.016 · rodLength。
++ * Lambertian 面光源：Φ = K(T) · π · A_arc · L。
++ * → L = Φ_rod / (K(T) · π · A_arc)。
+  */
+ function computeCloudRadiance(lm_total, kelvin, faceArea) {
+     if (!Number.isFinite(lm_total) || lm_total <= 0) return 0;
+     const K = kelvinToLuminousEfficacy(kelvin);
+-    const A = Math.max(faceArea, 1e-8);
+-    // R3-5b (2-face 甲案): Φ 平分 2 面（+Y top + outer long），同 Φ/(K·π·A) radiometric
+-    return (lm_total / 2) / (K * Math.PI * A);
++    const arcArea = Math.max(faceArea * CLOUD_ARC_AREA_SCALE, 1e-8);
++    return lm_total / (K * Math.PI * arcArea);
+ }
+ 
+ // ---------------- R3-4 Track spot lamp constants & radiance ----------------
+@@ -796,7 +807,7 @@ let trackWideTiltSouth   = 30;     // 廣角燈南側傾斜角 deg（R4-4-fix04
+ let trackWideTiltNorth   = -30;    // 廣角燈北側傾斜角 deg（R4-4-fix03 甜蜜點：-25→-30）
+ let trackWideZ           = 0.20;   // 廣角燈距 Cloud 邊距 m（R4-4-fix03 甜蜜點：0.40→0.20，貼近 Cloud 邊緣）
+ 
+-// sceneBoxes 具名索引：避免硬編碰撞桌面參考塊與未來新增幾何
++// sceneBoxes 具名索引：避免硬編碰撞既有 base 幾何與未來新增幾何
+ // R4-4 fix：原誤寫 37/41/45/47（邏輯 ID，對應舊 plan 註解）→ 實際 sceneBoxes index 為 53/57/61/63
+ // 錯因：plan 註解「37 西軌底座北半」屬邏輯編號，但 addBox 實押 sceneBoxes index 受複合物件影響
+ //       （0a/0c/0d.. 地面 7 片、1a/1c/1d.. 天花板 7 片、2a/2b 北牆裂塊、6a/6b 南牆裂塊等每子塊各 push 一次）
+@@ -814,7 +825,7 @@ let trackWideZ           = 0.20;   // 廣角燈距 Cloud 邊距 m（R4-4-fix03 
+ //   idx [63..64] 廣角燈支架（fixtureGroup=2）    → TRACK_WIDE_STAND_IDX = 63
+ //   idx [65..70] Cloud 吸音板 6 片
+ //   idx [71..74] Cloud 燈條 4 支 ← CLOUD_BOX_IDX_BASE = 71 之基準
+-//   idx [75]     桌面參考塊
++//   idx [75..82] Cloud 鋁槽不發光鋁板 8 片
+ const TRACK_BASE_IDX       = 53;
+ const TRACK_STAND_IDX      = 57;
+ const TRACK_WIDE_BASE_IDX  = 61;
+@@ -843,9 +854,9 @@ let bloomIntensity = 0.025;
+ //   層數多 → halo 廣、柔；少 → halo 集中、窄
+ let bloomMipCount = 7;
+ 
+-const MAX_SAMPLES = 20000;
++const MAX_SAMPLES = 3000;
+ let uiLocked = false;
+-const SNAPSHOT_MILESTONES = [8, 100, 300, 500, 1000, 2000, 3000, 5000, 7500, 15000];
++const SNAPSHOT_MILESTONES = [1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32, 48, 64, 80, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000];
+ const snapshots = [];
+ let lastSnapshotCheck = -1;
+ const capturedMilestones = new Set();
+@@ -1027,7 +1038,7 @@ function switchCamera(preset) {
+ }
+ 
+ function initSceneData() {
+-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=f2-step0-probe';
++    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=p1c-cloud-base83';
+ 
+     sceneIsDynamic = false;
+     cameraFlightSpeed = 3;
+@@ -1291,12 +1302,11 @@ function initSceneData() {
+     pathTracingUniforms.uR3EmissionGate     = { value: 1.0 };   // R3-3 S3b：Cloud emissive 開，Track / TrackWide 仍為 0 向量故不發光
+     // R3-3 fix01：Cloud hitObjectID 基準 = objectCount(0) + CLOUD_BOX_IDX_BASE(71) + 1 = 72（見 shader L516）
+     pathTracingUniforms.uCloudObjIdBase     = { value: CLOUD_BOX_IDX_BASE + 1 };
+-    // R3-3：4 rod 單面面積 [0]=E [1]=W [2]=S [3]=N，供 R3-5 MIS area sampling 承接
++    // R6-3 Phase 1C：4 rod A_face [0]=E [1]=W [2]=S [3]=N；shader 端乘 π/2 得 A_arc。
+     pathTracingUniforms.uCloudFaceArea      = { value: CLOUD_ROD_FACE_AREA.slice() };
+-    // R3-5b: Cloud NEE 2-face (甲案)
++    // R6-3 Phase 1C: Cloud analytic 1/4 arc geometry source
+     pathTracingUniforms.uCloudRodCenter     = { value: CLOUD_ROD_CENTER.map(v => v.clone()) };
+     pathTracingUniforms.uCloudRodHalfExtent = { value: CLOUD_ROD_HALF_EXTENT.map(v => v.clone()) };
+-    pathTracingUniforms.uCloudFaceCount     = { value: CLOUD_FACE_COUNT };
+     // R3-3 clamp: 預設 50（median×30 的保守估算；curtain-center 量測值落地後請重校）
+     pathTracingUniforms.uEmissiveClamp      = { value: 50.0 };
+     // R3-4：軌道投射燈 emitter meta（4 盞 hitType=TRACK_LIGHT 共用 uniform 索引）
+@@ -1394,21 +1404,14 @@ function computeLightEmissions() {
+             pathTracingUniforms.uTrackWideLampIdBase.value + ' vs ' + TRACK_WIDE_LAMP_ID_BASE
+         );
+     }
+-    // R3-5b throw-first: CLOUD_FACE_COUNT 三源契約（shader L1387 / NEE / JS 分母同值=2）
+-    if (!pathTracingUniforms.uCloudFaceCount) {
+-        throw new Error('[R3-5b] uCloudFaceCount uniform missing');
+-    }
+-    if (pathTracingUniforms.uCloudFaceCount.value !== CLOUD_FACE_COUNT) {
+-        throw new Error('[R3-5b] uCloudFaceCount mismatch: expected ' + CLOUD_FACE_COUNT + ', got ' + pathTracingUniforms.uCloudFaceCount.value);
+-    }
+     if (!Array.isArray(pathTracingUniforms.uCloudRodCenter.value) || pathTracingUniforms.uCloudRodCenter.value.length !== 4) {
+-        throw new Error('[R3-5b] uCloudRodCenter must be 4-element Vector3 array');
++        throw new Error('[R6-3 Phase 1C] uCloudRodCenter must be 4-element Vector3 array');
+     }
+     if (!Array.isArray(pathTracingUniforms.uCloudRodHalfExtent.value) || pathTracingUniforms.uCloudRodHalfExtent.value.length !== 4) {
+-        throw new Error('[R3-5b] uCloudRodHalfExtent must be 4-element Vector3 array');
++        throw new Error('[R6-3 Phase 1C] uCloudRodHalfExtent must be 4-element Vector3 array');
+     }
+ 
+-    // R3-5b：Cloud rod Lambertian 2-face emitter。kelvinToRGB 回傳 sRGB，pow(,2.2) 轉 linear 給 path tracer。
++    // R6-3 Phase 1C：Cloud rod Lambertian 1/4 arc emitter。kelvinToRGB 回傳 sRGB，pow(,2.2) 轉 linear 給 path tracer。
+     const cloudSrgb = kelvinToRGB(cloudKelvin);
+     const cloudRLin = Math.pow(cloudSrgb.r, 2.2);
+     const cloudGLin = Math.pow(cloudSrgb.g, 2.2);
+@@ -1491,7 +1494,7 @@ function computeLightEmissions() {
+         cloudKelvin: cloudKelvin,
+         cloudRadiance: pathTracingUniforms.uCloudEmission.value.map(v => ({ r: +v.x.toFixed(4), g: +v.y.toFixed(4), b: +v.z.toFixed(4) })),
+         cloudObjIdBase: pathTracingUniforms.uCloudObjIdBase.value,
+-        cloudFaceCount: CLOUD_FACE_COUNT,
++        cloudArcAreaScale: +CLOUD_ARC_AREA_SCALE.toFixed(6),
+         neePoolSize: 11,
+         selectPdf: (1/11).toFixed(4),
+         cloudRodCenter: CLOUD_ROD_CENTER.map(v => ({ x: +v.x.toFixed(3), y: +v.y.toFixed(3), z: +v.z.toFixed(3) })),
+@@ -1665,7 +1668,7 @@ function recomputeTrackGeometry() {
+  * 更新 sceneBoxes 後呼叫 updateBoxDataTexture()；BVH 重建由呼叫端依指針策略決定（拖動期不重建）。
+  */
+ function recomputeTrackPositions() {
+-    // 護欄：防止未來新增幾何把索引推飄時誤改桌面參考塊（index 75）或 Cloud 幾何（65-74）
++    // 護欄：防止未來新增幾何把索引推飄時誤改 Cloud 幾何（65-82）
+     if (sceneBoxes[TRACK_BASE_IDX].fixtureGroup !== 1) {
+         throw new Error('[R4-4] recomputeTrackPositions: TRACK_BASE_IDX drift, expected fg=1');
+     }
+@@ -1747,7 +1750,7 @@ function recomputeWideGeometry() {
+  * 範圍 v=0.05~1.15：v=0.40 預設對應 +2.098/-1.102；v=1.15 上界 → 北軌 z=-1.852 距北牆 22mm。
+  */
+ function recomputeWidePositions() {
+-    // 護欄：防止未來新增幾何把索引推飄時誤改桌面參考塊（index 75）或 Cloud 燈條（71-74）
++    // 護欄：防止未來新增幾何把索引推飄時誤改 Cloud 幾何（71-82）
+     if (sceneBoxes[TRACK_WIDE_BASE_IDX].fixtureGroup !== 2) {
+         throw new Error('[R4-4] recomputeWidePositions: TRACK_WIDE_BASE_IDX drift, expected fg=2');
+     }
+@@ -2248,10 +2251,9 @@ function initUI() {
+ 
+     // Cloud lumens
+     createS('slider-lumens', '光通量 (lm/m)', 0, 4000, 1, 1600, function(v) {
+-        CLOUD_ROD_LUMENS[0] = v * 2.4;
+-        CLOUD_ROD_LUMENS[1] = v * 2.4;
+-        CLOUD_ROD_LUMENS[2] = v * 1.768;
+-        CLOUD_ROD_LUMENS[3] = v * 1.768;
++        for (let i = 0; i < CLOUD_ROD_LENGTH.length; i++) {
++            CLOUD_ROD_LUMENS[i] = v * CLOUD_ROD_LENGTH[i];
++        }
+         computeLightEmissions();
+         wakeRender();
+         return v;
+@@ -2795,4 +2797,4 @@ function updateVariablesAndUniforms() {
+     }
+ }
+ 
+-init();
+\ No newline at end of file
++init();
+diff --git a/shaders/Home_Studio_Fragment.glsl b/shaders/Home_Studio_Fragment.glsl
+index e9f7336..a5d06b5 100644
+--- a/shaders/Home_Studio_Fragment.glsl
++++ b/shaders/Home_Studio_Fragment.glsl
+@@ -86,16 +86,13 @@ uniform vec3 uCloudEmission[4];
+ uniform vec3 uTrackEmission[4];
+ uniform vec3 uTrackWideEmission[2];
+ uniform float uR3EmissionGate;   // R3-1 起預留；R3-3 S3b 翻 1.0
+-// R3-3：Cloud rod 3-face Lambertian emitter meta（供本階段 shader 分支 + R3-5 MIS area sampling 承接）
++// R6-3 Phase 1C：Cloud rod analytic 1/4 arc emitter meta。
+ uniform float uCloudObjIdBase;   // R3-3 fix01：= objectCount(0) + CLOUD_BOX_IDX_BASE(71) + 1 = 72（sceneBoxes 陣列 index，非註解邏輯 ID）
+-uniform float uCloudFaceArea[4]; // [0]=E [1]=W [2]=S [3]=N rod 單面面積 m²
++uniform float uCloudFaceArea[4]; // [0]=E [1]=W [2]=S [3]=N，A_face = 0.016 × rodLength
+ uniform float uEmissiveClamp;    // R3-3 firefly clamp（median×30 估算；預設 50）
+-// R3-5b: Cloud 2-face stochastic NEE (甲案)
+-// 每 rod 存世界空間 center + 完整半邊 (halfX, halfY, halfZ)；
+-// NEE branch 以 faceIdx 選軸 (TOP→y, OUTER_LONG→x/z 依 rodIdx)
++// 每 rod 存世界空間 center + 完整半邊 (halfX, halfY, halfZ)；NEE / hit 由此重建 1/4 圓弧面。
+ uniform vec3 uCloudRodCenter[4];
+ uniform vec3 uCloudRodHalfExtent[4];
+-uniform float uCloudFaceCount; // = 2.0（甲案 2-face 三源契約）
+ // R3-4：Track spot lamp emitter meta（4 盞，hitType=TRACK_LIGHT）
+ uniform vec2 uTrackBeamCos[4];   // .x = cos(inner_half) ≈ 0.9659（15°）；.y = cos(outer_half) ≈ 0.8660（30°）；smoothstep 邊界 edge0=.y、edge1=.x
+ uniform float uTrackLampIdBase;  // R3-4 fix01：= objectCount(0) + 400 = 400（pre-bake objectCount，仿 R3-3 uCloudObjIdBase pattern；CalculateRadiance 無 objectCount 區域變數可見）；JS 端 TRACK_LAMP_ID_BASE 同步契約，throw-first assertion 守門
+@@ -123,7 +120,7 @@ int primaryRay = 1; // 僅 bounces==0 為 1，其餘為 0
+ #define OUTLET 11
+ #define LAMP_SHELL 12
+ #define TRACK 13
+-#define CLOUD_LIGHT 14 // R2-17 Cloud 漫射燈條（emission=0 視覺幾何，behavior 同 DIFF）
++#define CLOUD_LIGHT 14 // R6-3 Phase 1C Cloud analytic 1/4 arc emitter
+ #define TRACK_LIGHT 15 // R3-4 軌道投射燈 emitter 圓柱（hitType-only branch，emissive primary/specular accumulation；與 TRACK=13 軌道鋁槽 box 分家）
+ #define TRACK_WIDE_LIGHT 16 // R3-5a 軌道廣角燈 emitter 圓盤（pattern 同 TRACK_LIGHT，全角 120° 軟邊 smoothstep gate；與 TRACK=13/TRACK_LIGHT=15 分家）
+ // R3-4 fix07：發光圓盤面積（disk-area NEE integrand 需乘此常數，對齊 L = Φ/(K·π·A) radiance 量綱契約）
+@@ -244,10 +241,93 @@ float pdfNeeForLight(vec3 x, vec3 lightPoint, vec3 lightNormal, float lightArea,
+ 	float safeArea = max(lightArea, 1e-6);
+ 	return selectPdfArg * (dist2 / (cosLight * safeArea));
+ }
+-// R3-6：Cloud rod 45° 對角面幾何面積（MIS p_nee 用，radiometric uCloudFaceArea[] 不動）
+-// 對角面 = 「外長側 + +Y 頂」組合之 45° 對角投影，長 × √2 補償（R3-5b fix05 對角 Lambertian pattern）
+-// 僅供 reverse-NEE PDF 計算。
+-const float CLOUD_DIAGONAL_FACE_AREA_SCALE = 1.4142135623730951; // √2
++// R6-3 Phase 1C：Cloud 鋁槽 1/4 圓弧 diffuser。
++// 16mm × 16mm 外接正方形對應完整 1/4 pizza，發光弧面半徑 16mm。
++// uCloudFaceArea = 0.016 × rodLength；真實弧面 A_arc = (π/2) × uCloudFaceArea。
++const float CLOUD_ARC_RADIUS = 0.016;
++const float CLOUD_ARC_AREA_SCALE = 1.5707963267948966;
++const float CLOUD_ARC_THETA_MAX = 1.5707963267948966;
++
++vec3 cloudOutAxis(int rodIdx)
++{
++	if (rodIdx == 0) return vec3( 1.0, 0.0, 0.0);
++	if (rodIdx == 1) return vec3(-1.0, 0.0, 0.0);
++	if (rodIdx == 2) return vec3( 0.0, 0.0, 1.0);
++	return vec3(0.0, 0.0, -1.0);
++}
++
++vec3 cloudLongAxis(int rodIdx)
++{
++	return (rodIdx < 2) ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
++}
++
++float cloudLongHalf(int rodIdx, vec3 rodHalf)
++{
++	return (rodIdx < 2) ? rodHalf.z : rodHalf.x;
++}
++
++float cloudCrossHalf(int rodIdx, vec3 rodHalf)
++{
++	return (rodIdx < 2) ? rodHalf.x : rodHalf.z;
++}
++
++float cloudArcRadius(int rodIdx, vec3 rodHalf)
++{
++	return max(CLOUD_ARC_RADIUS, cloudCrossHalf(rodIdx, rodHalf) + rodHalf.y);
++}
++
++vec3 cloudArcCenter(int rodIdx, vec3 rodCenter, vec3 rodHalf)
++{
++	return rodCenter - cloudOutAxis(rodIdx) * cloudCrossHalf(rodIdx, rodHalf) - vec3(0.0, rodHalf.y, 0.0);
++}
++
++vec3 cloudArcNormal(int rodIdx, float theta)
++{
++	return normalize(cloudOutAxis(rodIdx) * cos(theta) + vec3(0.0, sin(theta), 0.0));
++}
++
++float CloudArcIntersect(int rodIdx, vec3 ro, vec3 rd, out vec3 normal)
++{
++	vec3 rodCenter = uCloudRodCenter[rodIdx];
++	vec3 rodHalf = uCloudRodHalfExtent[rodIdx];
++	vec3 outAxis = cloudOutAxis(rodIdx);
++	vec3 longAxis = cloudLongAxis(rodIdx);
++	vec3 arcCenter = cloudArcCenter(rodIdx, rodCenter, rodHalf);
++	float radius = cloudArcRadius(rodIdx, rodHalf);
++	float longHalf = cloudLongHalf(rodIdx, rodHalf);
++
++	vec3 oc = ro - arcCenter;
++	float ou = dot(oc, outAxis);
++	float ov = oc.y;
++	float du = dot(rd, outAxis);
++	float dv = rd.y;
++	float a = du * du + dv * dv;
++	if (a < 1e-10) return INFINITY;
++	float b = 2.0 * (ou * du + ov * dv);
++	float c = ou * ou + ov * ov - radius * radius;
++	float disc = b * b - 4.0 * a * c;
++	if (disc < 0.0) return INFINITY;
++
++	float sq = sqrt(disc);
++	float bestT = INFINITY;
++	for (int i = 0; i < 2; i++)
++	{
++		float tCand = (i == 0) ? ((-b - sq) / (2.0 * a)) : ((-b + sq) / (2.0 * a));
++		if (tCand > 0.0 && tCand < bestT)
++		{
++			vec3 hit = oc + rd * tCand;
++			float longCoord = dot(hit, longAxis);
++			float outCoord = dot(hit, outAxis);
++			float upCoord = hit.y;
++			if (abs(longCoord) <= longHalf && outCoord >= -1e-5 && upCoord >= -1e-5)
++			{
++				bestT = tCand;
++				normal = normalize(outAxis * outCoord + vec3(0.0, upCoord, 0.0));
++			}
++		}
++	}
++	return bestT;
++}
+ 
+ 
+ // R3-6.5 S2：動態版 NEE pick。slot→real idx 透過 LUT 轉譯，
+@@ -343,7 +423,7 @@ vec3 sampleStochasticLightDynamic(vec3 x, vec3 nl, Quad ql0, out vec3 throughput
+ 		pdfNeeOmega = pdfNeeForLight(x, wideTarget, -uTrackWideLampDir[wi], TRACK_WIDE_LAMP_EMITTER_AREA, selectPdf);
+ 		return wideDir;
+ 	}
+-	// R3-5b: neeIdx 7-10 → Cloud rod 0-3 (2-face 甲案：+Y 頂 + 外長側)
++	// R6-3 Phase 1C: neeIdx 7-10 → Cloud rod 0-3 analytic 1/4 arc。
+ 	// R3-5b fix01：Cloud-off 守門。cull 時幾何消失但 uCloudEmission 仍非零，
+ 	// 若無此 gate，shadow ray 會穿透 Cloud 位置命中 ceilingLampQuad（LIGHT 分支 L898）→ 雙計爆 firefly。
+ 	if (uCloudLightEnabled < 0.5) {
+@@ -354,37 +434,24 @@ vec3 sampleStochasticLightDynamic(vec3 x, vec3 nl, Quad ql0, out vec3 throughput
+ 	int rodIdx = neeIdx - 7;
+ 	vec3 rodCenter = uCloudRodCenter[rodIdx];
+ 	vec3 rodHalf = uCloudRodHalfExtent[rodIdx];
+-	// R3-5b fix05：改採舊專案 Path Tracking 260412a 的「單對角 Lambertian 面」，放棄 2-face甲案 face-pick。
+-	// 2-face 方案將 +Y top / outer long 各取一次 cos(θ)，hitNormal 軸向對齊 → 天花/側牆出現 4 軸向硬光斑（使用者反饋「像投射燈」）。
+-	// 對角 normal = (outer-up 45°, 0) 單次取 cos(θ)，屬平滑連續 Lambertian 分佈。
+-	vec3 faceNormal;
+-	vec3 faceOffset;
+-	if (rodIdx == 0)       { faceNormal = vec3( 0.7071067811865, 0.7071067811865, 0.0); faceOffset = vec3( rodHalf.x, rodHalf.y, 0.0); } // E rod → +X+Y 45°
+-	else if (rodIdx == 1)  { faceNormal = vec3(-0.7071067811865, 0.7071067811865, 0.0); faceOffset = vec3(-rodHalf.x, rodHalf.y, 0.0); } // W rod → -X+Y 45°
+-	else if (rodIdx == 2)  { faceNormal = vec3( 0.0, 0.7071067811865, 0.7071067811865); faceOffset = vec3(0.0, rodHalf.y, rodHalf.z); }  // S rod → +Z+Y 45°
+-	else                   { faceNormal = vec3( 0.0, 0.7071067811865,-0.7071067811865); faceOffset = vec3(0.0, rodHalf.y,-rodHalf.z); }  // N rod → -Z+Y 45°
+-	// R3-5b fix06：沿 rod 長軸 jitter target（非單點），產生連續線 emitter 效果。
+-	// fix05 缺陷：單點 target → 每 rod 僅 1 個取樣位置 → 天花/側牆各出現 1 個亮斑 × 4 rods = 4 斑，非 2.4m 線 emitter 預期之「口」字 strip。
+-	// 舊專案 Path Tracking 260412a L1245 之 (r2-0.5)*2.4（E/W 長軸 z）與 (r2-0.5)*1.768（S/N 長軸 x）。
+-	// rodHalf.z for E/W = 1.2 (= length 2.4/2)；rodHalf.x for S/N = 0.884 (= 1.768/2)
+-	float longAxisJitter = rng() * 2.0 - 1.0; // [-1, 1] uniform
+-	vec3 longAxisOffset;
+-	if (rodIdx < 2)  longAxisOffset = vec3(0.0, 0.0, longAxisJitter * rodHalf.z); // E/W: long axis = z
+-	else             longAxisOffset = vec3(longAxisJitter * rodHalf.x, 0.0, 0.0); // S/N: long axis = x
+-	// cloudTarget = rod outer-top 棱邊 jittered 點；shadow ray 命中 +Y 或 outer long 其中一面皆為 emissive 接受
+-	vec3 cloudTarget = rodCenter + faceOffset + longAxisOffset;
++	vec3 longAxis = cloudLongAxis(rodIdx);
++	vec3 arcCenter = cloudArcCenter(rodIdx, rodCenter, rodHalf);
++	float radius = cloudArcRadius(rodIdx, rodHalf);
++	float longHalf = cloudLongHalf(rodIdx, rodHalf);
++	float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
++
++	float longAxisJitter = rng() * 2.0 - 1.0;
++	float theta = rng() * CLOUD_ARC_THETA_MAX;
++	vec3 localNormal = cloudArcNormal(rodIdx, theta);
++	vec3 cloudTarget = arcCenter + longAxis * (longAxisJitter * longHalf) + localNormal * radius;
+ 	vec3 cloudTo = cloudTarget - x;
+ 	float cloudDist2 = max(dot(cloudTo, cloudTo), 1e-4);
+ 	vec3 cloudDir = cloudTo * inversesqrt(cloudDist2);
+-	float cloudCosLight = max(0.0, dot(-cloudDir, faceNormal));
++	float cloudCosLight = max(0.0, dot(-cloudDir, localNormal));
+ 	float cloudGeom = max(0.0, dot(nl, cloudDir)) * cloudCosLight / cloudDist2;
+ 	vec3 cloudEmit = uCloudEmission[rodIdx];
+-	// throughput = emit × geom × faceArea × faceCount / selectPdf
+-	//   faceCount (=2) 保留：對角面投影等效面積 ≈ 2 × A_face × cos(45°) ≈ 1.41 × A_face，× 2 係保守偏亮 ~1.4× 容忍區間，R3-6 MIS 再校準
+-	throughput = cloudEmit * cloudGeom * uCloudFaceArea[rodIdx] * uCloudFaceCount / selectPdf;
+-	// R3-6：Cloud rod MIS solid-angle PDF。對角面幾何面積 = A_face × √2（S2 pre-mortem 防護：radiometric uCloudFaceArea 另供 throughput）。
+-	float cloudDiagArea = uCloudFaceArea[rodIdx] * CLOUD_DIAGONAL_FACE_AREA_SCALE;
+-	pdfNeeOmega = pdfNeeForLight(x, cloudTarget, faceNormal, cloudDiagArea, selectPdf);
++	throughput = cloudEmit * cloudGeom * cloudArcArea / selectPdf;
++	pdfNeeOmega = pdfNeeForLight(x, cloudTarget, localNormal, cloudArcArea, selectPdf);
+ 	return cloudDir;
+ }
+ 
+@@ -703,7 +770,7 @@ float SceneIntersect( )
+ 			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness);
+ 
+ 			// R2-14：裝置關閉時 primary/secondary ray 皆跳過（自動無陰影）；R2-13 X-ray 剝離沿用
+-			if (!isFixtureDisabled(boxFixtureGroup) && !isBoxCulled(boxMin, boxMax, boxCullable))
++			if (!isFixtureDisabled(boxFixtureGroup) && !isBoxCulled(boxMin, boxMax, boxCullable) && boxType != CLOUD_LIGHT)
+ 			{
+ 				d = BoxIntersect(boxMin, boxMax, rayOrigin, rayDirection, n, isRayExiting);
+ 				if (d < t && n != vec3(0,0,0))
+@@ -919,6 +986,29 @@ float SceneIntersect( )
+ 		}
+ 	}
+ 
++	// R6-3 Phase 1C：Cloud 鋁槽弧形 diffuser analytic geometry。
++	// BVH 中的 square proxy 僅保留資料來源；真正發光與命中使用 1/4 圓弧面。
++	if (uCloudLightEnabled > 0.5)
++	{
++		for (int ci = 0; ci < 4; ci++)
++		{
++			d = CloudArcIntersect(ci, rayOrigin, rayDirection, n);
++			if (d < t)
++			{
++				t = d;
++				hitNormal = n;
++				hitEmission = uCloudEmission[ci];
++				hitColor = vec3(0.0);
++				hitType = CLOUD_LIGHT;
++				hitRoughness = 1.0;
++				hitMetalness = 0.0;
++				hitObjectID = uCloudObjIdBase + float(ci);
++				hitBoxMin = uCloudRodCenter[ci] - uCloudRodHalfExtent[ci];
++				hitBoxMax = uCloudRodCenter[ci] + uCloudRodHalfExtent[ci];
++			}
++		}
++	}
++
+ 	return t;
+ }
+ 
+@@ -1148,49 +1238,32 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
+ 			break;
+ 		}
+ 
+-		// R3-5b fix04：CLOUD_LIGHT NEE-hit 前置分支，對齊 R3-4 fix04 TRACK_LIGHT 前置原則。
+-		// 放在 L1001 sampleLight catch-all 之前，否則 NEE shadow ray 命中 Cloud rod emissive face 會被 catch-all 攔截 break
+-		// （= fix02 accumCol+=mask 為死碼 → 天花板/地板收不到 Cloud 光）。
+-		// 僅處理 sampleLight==TRUE 分支；primary (bounceIsSpecular) 與非 emissive 面之 DIFF-like 行為仍由下方 L1417 既有分支承接。
++		// R6-3 Phase 1C：Cloud NEE shadow ray 命中 analytic arc emitter。
++		// 只有命中本次抽到的 rod 才累加；命中其他 rod 視為遮擋。
+ 		if (hitType == CLOUD_LIGHT && sampleLight == TRUE && uR3EmissionGate > 0.5)
+ 		{
+ 			int cloudRodIdx = int(hitObjectID - uCloudObjIdBase + 0.5);
+ 			cloudRodIdx = clamp(cloudRodIdx, 0, 3);
+-			bool cloudIsOuterLong = false;
+-			if (cloudRodIdx == 0)       cloudIsOuterLong = (hitNormal.x >  0.5);
+-			else if (cloudRodIdx == 1)  cloudIsOuterLong = (hitNormal.x < -0.5);
+-			else if (cloudRodIdx == 2)  cloudIsOuterLong = (hitNormal.z >  0.5);
+-			else                        cloudIsOuterLong = (hitNormal.z < -0.5);
+-			bool cloudIsEmissiveFace = (hitNormal.y > 0.5) || cloudIsOuterLong;
+-			if (cloudIsEmissiveFace)
++			if (diffuseCount == 0)
++				pixelSharpness = 1.0;
++			if (lastNeePickedIdx == cloudRodIdx + 7)
+ 			{
+-				if (diffuseCount == 0)
+-					pixelSharpness = 1.0;
+-				// R3-6 Phase-3：Cloud NEE 快速路徑。若 MIS 啟用且抽到 Cloud idx (7..10)，套 w_nee 權重。
+-				if (lastNeePickedIdx >= 7 && lastNeePickedIdx <= 10)
+-				{
+-					float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
+-					accumCol += mask * wNee;
+-				}
+-				else
+-				{
+-					accumCol += mask;
+-				}
+-				if (willNeedDiffuseBounceRay == TRUE)
+-				{
+-					mask = diffuseBounceMask * (indirectMultApplied ? 1.0 : uIndirectMultiplier); indirectMultApplied = true;
+-					rayOrigin = diffuseBounceRayOrigin;
+-					rayDirection = diffuseBounceRayDirection;
+-					willNeedDiffuseBounceRay = FALSE;
+-					bounceIsSpecular = FALSE;
+-					misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
+-					sampleLight = FALSE;
+-					diffuseCount++;
+-					continue;
+-				}
+-				break;
++				float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
++				accumCol += mask * wNee;
+ 			}
+-			// 非 emissive 面（-Y 底 / 內長側 / 兩短端）→ 落回 catch-all，視作 NEE miss 正常 break
++			if (willNeedDiffuseBounceRay == TRUE)
++			{
++				mask = diffuseBounceMask * (indirectMultApplied ? 1.0 : uIndirectMultiplier); indirectMultApplied = true;
++				rayOrigin = diffuseBounceRayOrigin;
++				rayDirection = diffuseBounceRayDirection;
++				willNeedDiffuseBounceRay = FALSE;
++				bounceIsSpecular = FALSE;
++				misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0;
++				sampleLight = FALSE;
++				diffuseCount++;
++				continue;
++			}
++			break;
+ 		}
+ 
+ 		if (sampleLight == TRUE)
+@@ -1668,111 +1741,47 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
+ 
+     if (hitType == CLOUD_LIGHT)
+     {
+-			// R3-3：gate-controlled emissive Lambertian 分支。gate=0 時 skip，落回 R2-17 DIFF-like 路徑保 ULP byte-identical。
++			// R6-3 Phase 1C：Cloud hit 來自 analytic 1/4 圓弧 diffuser，整個命中面皆為 emissive。
+ 			if (uR3EmissionGate > 0.5)
+ 			{
+ 				int rodIdx = int(hitObjectID - uCloudObjIdBase + 0.5);
+ 				rodIdx = clamp(rodIdx, 0, 3);
+-				// R3-5b (2-face 甲案): only +Y top + per-rod outer long-axis; drop -Y bottom, inner long, both short ends.
+-				bool isOuterLong = false;
+-				if (rodIdx == 0)       isOuterLong = (hitNormal.x >  0.5);
+-				else if (rodIdx == 1)  isOuterLong = (hitNormal.x < -0.5);
+-				else if (rodIdx == 2)  isOuterLong = (hitNormal.z >  0.5);
+-				else                   isOuterLong = (hitNormal.z < -0.5);
+-				bool isEmissiveFace = (hitNormal.y > 0.5) || isOuterLong;
+-				if (isEmissiveFace)
++				vec3 emission = min(uCloudEmission[rodIdx], vec3(uEmissiveClamp));
++				if (diffuseCount == 0)
++					pixelSharpness = 1.0;
++				if (sampleLight == TRUE)
+ 				{
+-					vec3 emission = min(uCloudEmission[rodIdx], vec3(uEmissiveClamp));
+-					if (diffuseCount == 0)
+-						pixelSharpness = 1.0;
+-					// R3-5b fix02：撤回 Plan Principle 5「刪 || sampleLight」——
+-					// NEE throughput 已 bake emission，NEE shadow ray 命中此處必須 accumCol += mask，
+-					// 否則 NEE 通道貢獻歸零（地板收不到 Cloud 光）。對齊 TRACK_LIGHT L925-928 += mask pattern。
+-					// R3-6 MIS 階段再考量雙累加防護（power heuristic + emit baked-once 契約）。
+-					// R3-6 Phase-3：NEE-hit 套 w_nee heuristic；BSDF-indirect 新增累加路徑，以 w_bsdf 防雙計。
+-					if (sampleLight == TRUE)
+-					{
+-						if (lastNeePickedIdx >= 7 && lastNeePickedIdx <= 10)
+-						{
+-							float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
+-							accumCol += mask * wNee;
+-						}
+-						else
+-						{
+-							accumCol += mask;
+-						}
+-					}
+-					else if (bounceIsSpecular == TRUE)
+-					{
+-						accumCol = min(mask * emission, vec3(uEmissiveClamp));
+-					}
+-					else if (diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
+-					{
+-						// BSDF-indirect bounce ray 命中 Cloud rod emissive face（R3-5b blocked）。
+-						// uCloudLightEnabled 三源 gate 對稱（primary 經 objectIsCulled + NEE pool + 本 BSDF-hit MIS 三處 < 0.5）。
+-						// reverse-NEE PDF 以 bounce 發射點 (misBsdfBounceOrigin) 為源，還原該 rod 之對角 face 參數。
+-						vec3 rodHalf = uCloudRodHalfExtent[rodIdx];
+-						vec3 faceNormal;
+-						vec3 faceOffset;
+-						if (rodIdx == 0)       { faceNormal = vec3( 0.7071067811865, 0.7071067811865, 0.0); faceOffset = vec3( rodHalf.x, rodHalf.y, 0.0); }
+-						else if (rodIdx == 1)  { faceNormal = vec3(-0.7071067811865, 0.7071067811865, 0.0); faceOffset = vec3(-rodHalf.x, rodHalf.y, 0.0); }
+-						else if (rodIdx == 2)  { faceNormal = vec3( 0.0, 0.7071067811865, 0.7071067811865); faceOffset = vec3(0.0, rodHalf.y, rodHalf.z); }
+-						else                   { faceNormal = vec3( 0.0, 0.7071067811865,-0.7071067811865); faceOffset = vec3(0.0, rodHalf.y,-rodHalf.z); }
+-						vec3 cloudTarget = uCloudRodCenter[rodIdx] + faceOffset;
+-						float cloudDiagArea = uCloudFaceArea[rodIdx] * CLOUD_DIAGONAL_FACE_AREA_SCALE;
+-						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, cloudTarget, faceNormal, cloudDiagArea, 1.0 / float(uActiveLightCount));
+-						float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
+-						accumCol += min(mask * emission * wBsdf, vec3(uEmissiveClamp));
+-					}
+-					if (willNeedDiffuseBounceRay == TRUE)
++					if (lastNeePickedIdx == rodIdx + 7)
+ 					{
+-						mask = diffuseBounceMask * (indirectMultApplied ? 1.0 : uIndirectMultiplier); indirectMultApplied = true;
+-						rayOrigin = diffuseBounceRayOrigin;
+-						rayDirection = diffuseBounceRayDirection;
+-						willNeedDiffuseBounceRay = FALSE;
+-						bounceIsSpecular = FALSE;
+-						misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
+-						sampleLight = FALSE;
+-						diffuseCount++;
+-						continue;
++						float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
++						accumCol += mask * wNee;
+ 					}
+-					break;
+ 				}
++				else if (bounceIsSpecular == TRUE)
++				{
++					accumCol = min(mask * emission, vec3(uEmissiveClamp));
++				}
++				else if (diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
++				{
++					float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
++					float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, hitNormal, cloudArcArea, 1.0 / float(uActiveLightCount));
++					float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
++					accumCol += min(mask * emission * wBsdf, vec3(uEmissiveClamp));
++				}
++				if (willNeedDiffuseBounceRay == TRUE)
++				{
++					mask = diffuseBounceMask * (indirectMultApplied ? 1.0 : uIndirectMultiplier); indirectMultApplied = true;
++					rayOrigin = diffuseBounceRayOrigin;
++					rayDirection = diffuseBounceRayDirection;
++					willNeedDiffuseBounceRay = FALSE;
++					bounceIsSpecular = FALSE;
++					misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0;
++					sampleLight = FALSE;
++					diffuseCount++;
++					continue;
++				}
++				break;
+ 			}
+-			// R2-17 Cloud 漫射燈條：emission=0 視覺幾何，行為同純 DIFF；真光源（lumens / lightNormal / MIS）留 R3
+-			// R2-18 Phase 2：軌道+燈具束包覆寫 + metal gate
+-			hitRoughness = uFixtureRoughness;
+-			hitMetalness = uFixtureMetalness;
+-			if (rand() < hitMetalness) {
+-				mask *= hitColor;
+-				vec3 reflDir = reflect(rayDirection, nl);
+-				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+-				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
+-				rayOrigin = x + nl * uEPS_intersect;
+-				continue;
+-			}
+-			diffuseCount++;
+-			mask *= hitColor;
+-						bounceIsSpecular = FALSE;
+-			misWPrimaryNeeLast = 0.0; misPBsdfNeeLast = 0.0; lastNeePickedIdx = -1; misBsdfBounceNl = vec3(0.0); misBsdfBounceOrigin = vec3(0.0); misPBsdfStashed = 0.0; // R3-6 R4: SPEC→DIFF state-clear
+-			rayOrigin = x + nl * uEPS_intersect;
+-			if (float(diffuseCount) < uMaxBounces)
+-			{
+-				diffuseBounceMask = mask;
+-				diffuseBounceRayOrigin = rayOrigin;
+-				diffuseBounceRayDirection = randomCosWeightedDirectionInHemisphere(nl);
+-				misBsdfBounceNl = nl; misBsdfBounceOrigin = x; misPBsdfStashed = cosWeightedPdf(diffuseBounceRayDirection, nl); // R3-6 Phase-3: cache BSDF-bounce state for MIS indirect-hit
+-				willNeedDiffuseBounceRay = TRUE;
+-			}
+-			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
+-			float neePdfOmega; int neePickedIdx;
+-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+-			mask *= weight * uLegacyGain;
+-			sampleLight = TRUE;
+-			misWPrimaryNeeLast = neePdfOmega;
+-			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
+-			lastNeePickedIdx = neePickedIdx;
+-			continue;
+     }
+ 
+     if (hitType == DIFF)
+@@ -1896,8 +1905,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
+ 			vec3(uCloudObjIdBase + uCloudFaceArea[0] + uCloudFaceArea[1] + uCloudFaceArea[2] + uCloudFaceArea[3] + uEmissiveClamp) +
+ 			vec3(uTrackWideBeamCos[0].x + uTrackWideBeamCos[0].y + uTrackWideBeamCos[1].x + uTrackWideBeamCos[1].y + uTrackWideLampIdBase);
+ 		accumCol += uCloudRodCenter[0] + uCloudRodCenter[1] + uCloudRodCenter[2] + uCloudRodCenter[3] +
+-			uCloudRodHalfExtent[0] + uCloudRodHalfExtent[1] + uCloudRodHalfExtent[2] + uCloudRodHalfExtent[3] +
+-			vec3(uCloudFaceCount);
++			uCloudRodHalfExtent[0] + uCloudRodHalfExtent[1] + uCloudRodHalfExtent[2] + uCloudRodHalfExtent[3];
+ 
+ 	}
+ 	return max(vec3(0), accumCol);

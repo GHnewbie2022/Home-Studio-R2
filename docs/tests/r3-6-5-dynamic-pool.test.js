@@ -9,7 +9,6 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
 // ---------------------------------------------------------------------------
 // Pure-logic clone of rebuildActiveLightLUT
@@ -81,16 +80,19 @@ function buildActiveLightLUT(config, cloudOn, trackOn, wideOn) {
 }
 
 // ---------------------------------------------------------------------------
-// U5: grep shaders/Home_Studio_Fragment.glsl for 'pdfNeeForLight(' → 11 matches
+// U5: shader Cloud contract checks for Phase 1C arc emitter
 // ---------------------------------------------------------------------------
 {
     const shaderPath = path.resolve(
         __dirname, '../../shaders/Home_Studio_Fragment.glsl'
     );
     const src = fs.readFileSync(shaderPath, 'utf8');
-    const matches = src.split('pdfNeeForLight(').length - 1; // count occurrences
-    assert.strictEqual(matches, 11, 'U5 pdfNeeForLight call count (expected 11, got ' + matches + ')');
-    console.log('U5 PASS  pdfNeeForLight( occurrences = ' + matches + ' (1 decl + 10 call sites)');
+    assert(src.includes('CLOUD_ARC_AREA_SCALE'), 'U5 CLOUD_ARC_AREA_SCALE missing');
+    assert(src.includes('CloudArcIntersect'), 'U5 CloudArcIntersect missing');
+    assert(src.includes('cloudArcArea'), 'U5 cloudArcArea missing');
+    assert(!src.includes('CLOUD_DIAGONAL_FACE_AREA_SCALE'), 'U5 old diagonal area scale still present');
+    assert(!src.includes('uCloudFaceCount'), 'U5 old Cloud face-count uniform still present');
+    console.log('U5 PASS  shader uses Phase 1C arc Cloud contract');
 }
 
 console.log('\nAll 5 contract tests PASSED.');
