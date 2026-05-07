@@ -68,6 +68,7 @@ const FRAME_INTERVAL_MS = 1000 / 60;
 let TWO_PI = Math.PI * 2;
 let sampleCounter = 0.0; // will get increased by 1 in animation loop before rendering
 let frameCounter = 1.0; // 1 instead of 0 because it is used as a rng() seed in pathtracing shader
+let samplingPaused = false;
 let firstFrameRecoveryEnabled = true;
 let firstFrameRecoveryTargetSamples = 4;
 let firstFrameRecoveryMovingTargetSamples = 1;
@@ -215,6 +216,22 @@ window.reportFirstFrameRecoveryConfig = function()
 	};
 };
 
+window.setSamplingPaused = function(paused)
+{
+	samplingPaused = !!paused;
+	if (typeof window.updateSamplingControls === 'function')
+		window.updateSamplingControls();
+	return window.reportSamplingPaused();
+};
+
+window.reportSamplingPaused = function()
+{
+	return {
+		paused: samplingPaused,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
+	};
+};
+
 window.setR71BlueNoiseSamplingEnabled = function(enabled)
 {
 	r71BlueNoiseSamplingEnabled = !!enabled;
@@ -227,7 +244,7 @@ window.setR71BlueNoiseSamplingEnabled = function(enabled)
 window.reportR71BlueNoiseSamplingConfig = function()
 {
 	return {
-		version: 'r7-1-blue-noise-sampling-v1',
+		version: 'r7-1-blue-noise-sampling-v2',
 		enabled: r71BlueNoiseSamplingEnabled,
 		uniformMode: pathTracingUniforms && pathTracingUniforms.uR71BlueNoiseSamplingMode
 			? pathTracingUniforms.uR71BlueNoiseSamplingMode.value
@@ -1635,14 +1652,18 @@ function animate()
 
 	// now update uniforms that are common to all scenes
 	var wasCameraRecentlyMoving = cameraRecentlyMoving;
+	var samplingPausedForFrame = samplingPaused && !cameraIsMoving;
 	if (!cameraIsMoving)
 	{
-		if (sceneIsDynamic)
-			sampleCounter = 1.0; // reset for continuous updating of image
-		else if (typeof MAX_SAMPLES === 'undefined' || sampleCounter < MAX_SAMPLES)
-			sampleCounter += 1.0; // for progressive refinement of image
+		if (!samplingPausedForFrame)
+		{
+			if (sceneIsDynamic)
+				sampleCounter = 1.0; // reset for continuous updating of image
+			else if (typeof MAX_SAMPLES === 'undefined' || sampleCounter < MAX_SAMPLES)
+				sampleCounter += 1.0; // for progressive refinement of image
 
-		frameCounter += 1.0;
+			frameCounter += 1.0;
+		}
 
 		cameraRecentlyMoving = false;
 	}
@@ -1713,7 +1734,7 @@ function animate()
 
 	// RENDERING in 3 steps
 	// 到達 MAX_SAMPLES 後跳過 STEP 1/2，凍結累加 buffer，只保留 STEP 3 顯示
-	var renderingStopped = (typeof MAX_SAMPLES !== 'undefined' && sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
+	var renderingStopped = samplingPausedForFrame || (typeof MAX_SAMPLES !== 'undefined' && sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
 	var firstFrameRecoveryWasCleared = accumulationWasClearedForThisFrame;
 	var firstFrameRecoveryPassTarget = sampleCounter;
 	var firstFrameRecoveryReason = 'normal';
@@ -1840,6 +1861,8 @@ function animate()
 			// This will be used as a new starting point for Step 1 above (essentially creating ping-pong buffers)
 			renderer.setRenderTarget(screenCopyRenderTarget);
 			renderer.render(screenCopyScene, orthoCamera);
+			if (typeof window.captureDueSnapshotsForCurrentSample === 'function')
+				window.captureDueSnapshotsForCurrentSample();
 
 			frameCounter += 1.0;
 		}

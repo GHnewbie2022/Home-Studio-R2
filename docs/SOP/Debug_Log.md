@@ -4731,9 +4731,9 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - setR71BlueNoiseSamplingEnabled(true / false)
         - reportR71BlueNoiseSamplingConfig()
     cache_bust:
-      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v1
-      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v1
-      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1
+      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v2
+      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v2
+      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v2
   validation:
     red_green:
       - node docs/tests/r7-1-blue-noise-sampling.test.js 先紅，缺 uR71BlueNoiseSamplingMode。
@@ -4767,7 +4767,28 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - firstFrameRecoveryMovingTargetSamples 預設改回 1。
     - firstFrameRecoveryTargetSamples 維持 4，停止後補幀路徑維持原本設定。
     - setFirstFrameRecoveryConfig({ movingTargetSamples: 2 }) 仍可手動切回 2 SPP 做比較。
-    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v1，避免瀏覽器沿用舊檔。
+    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v2，避免瀏覽器沿用舊檔。
   validation:
     - 新增 docs/tests/r7-1-blue-noise-sampling.test.js 合約檢查，要求 R7-1 C3 / C4 moving validation 可停在 1 SPP。
+
+- id: R7-1-snapshot-pause-and-global-blue-noise-followup
+  date: 2026-05-07
+  type: bugfix_and_ui_control
+  context:
+    - 使用者回報快照列出現 1 / 4 / 5 / 6 / 7 / 8 SPP，跳過 2 / 3 SPP。
+    - 使用者要求新增暫停採樣 / 繼續採樣按鈕。
+    - 使用者詢問 blue noise 對 C1 / C2 是否也有幫助，若有就要套用。
+  root_cause:
+    - 自動快照原本在 updateVariablesAndUniforms() 每個 animation frame 只檢查一次。
+    - first-frame recovery 會在同一個 frame 內執行多個 sample pass，例如從 1 跑到 4。
+    - 因此 2 / 3 SPP 已完成 render，但沒有經過快照檢查。
+  fix:
+    - 新增 captureDueSnapshotsForCurrentSample()，以 Math.round(sampleCounter) 判斷目前 SPP。
+    - render loop 每完成一個 STEP 1 / STEP 2 sample pass 後呼叫快照檢查。
+    - 新增 btn-toggle-sampling 與 setSamplingPaused() / reportSamplingPaused()。
+    - samplingPaused 只凍結靜止畫面的累積，繼續採樣時從目前 sampleCounter 往後跑。
+    - R7-1 blue noise seed mix 確認沒有 config gate，C1 / C2 / C3 / C4 全部套用。
+  validation:
+    - docs/tests/r6-3-max-samples.test.js 新增 per-sample 快照與採樣暫停合約。
+    - docs/tests/r7-1-blue-noise-sampling.test.js 新增 blue noise 無 config gate 合約。
 ```

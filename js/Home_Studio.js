@@ -4805,6 +4805,14 @@ function buildSnapshotBar() {
     updateSnapshotControls();
 }
 
+function updateSamplingControls() {
+    const samplingToggle = document.getElementById('btn-toggle-sampling');
+    if (!samplingToggle || typeof window.reportSamplingPaused !== 'function') return;
+    samplingToggle.textContent = window.reportSamplingPaused().paused ? '繼續採樣' : '暫停採樣';
+}
+
+window.updateSamplingControls = updateSamplingControls;
+
 function updateSnapshotControls() {
     const toggle = document.getElementById('btn-toggle-snapshots');
     const manual = document.getElementById('btn-manual-capture');
@@ -4812,6 +4820,7 @@ function updateSnapshotControls() {
     if (toggle) toggle.textContent = SNAPSHOT_CAPTURE_ENABLED ? '快照：開' : '快照：關';
     if (manual) manual.disabled = !SNAPSHOT_CAPTURE_ENABLED;
     if (saveAll) saveAll.disabled = !SNAPSHOT_CAPTURE_ENABLED || snapshots.length === 0;
+    updateSamplingControls();
 }
 
 function setSnapshotCaptureEnabled(enabled) {
@@ -4832,6 +4841,31 @@ function setSnapshotCaptureEnabled(enabled) {
 }
 
 window.setSnapshotCaptureEnabled = setSnapshotCaptureEnabled;
+
+function captureDueSnapshotsForCurrentSample() {
+    if (sampleCounter < lastSnapshotCheck) {
+        snapshots.length = 0;
+        capturedMilestones.clear();
+        const bar = document.getElementById('snapshot-bar');
+        if (bar) bar.innerHTML = '';
+    }
+    lastSnapshotCheck = sampleCounter;
+    if (!SNAPSHOT_CAPTURE_ENABLED) return;
+    const currentSamples = Math.round(sampleCounter);
+    if ((SNAPSHOT_MILESTONE_PRESET.includes(currentSamples) || (currentSamples % 10000 === 0 && currentSamples >= 10000)) && !capturedMilestones.has(currentSamples)) {
+        capturedMilestones.add(currentSamples);
+        const dataURL = captureSnapshot();
+        if (!dataURL) return;
+        snapshots.push({
+            samples: currentSamples,
+            src: dataURL,
+            filename: makeFilename(currentSamples)
+        });
+        buildSnapshotBar();
+    }
+}
+
+window.captureDueSnapshotsForCurrentSample = captureDueSnapshotsForCurrentSample;
 
 function downloadAllSnapshots() {
     if (!SNAPSHOT_CAPTURE_ENABLED) return;
@@ -4864,6 +4898,12 @@ function downloadAllSnapshots() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+    };
+    const samplingToggle = document.getElementById('btn-toggle-sampling');
+    if (samplingToggle) samplingToggle.onclick = function () {
+        if (typeof window.setSamplingPaused !== 'function' || typeof window.reportSamplingPaused !== 'function') return;
+        window.setSamplingPaused(!window.reportSamplingPaused().paused);
+        updateSamplingControls();
     };
     updateSnapshotControls();
 })();
@@ -4973,7 +5013,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v2';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -6730,25 +6770,6 @@ function updateVariablesAndUniforms() {
     var _displaySamples = _hibernating ? MAX_SAMPLES : sampleCounter;
     cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + _displaySamples + " / 耗時: " + _timeStr + (_hibernating ? " (休眠)" : "") + getCloudVisibilityProbeLabel() + getCloudThetaImportanceShaderABLabel() + getCloudMisWeightProbeLabel();
 
-    if (sampleCounter < lastSnapshotCheck) {
-        snapshots.length = 0;
-        capturedMilestones.clear();
-        const bar = document.getElementById('snapshot-bar');
-        if (bar) bar.innerHTML = '';
-    }
-    lastSnapshotCheck = sampleCounter;
-
-    if (SNAPSHOT_CAPTURE_ENABLED && (SNAPSHOT_MILESTONE_PRESET.includes(sampleCounter) || (sampleCounter % 10000 === 0 && sampleCounter >= 10000)) && !capturedMilestones.has(sampleCounter)) {
-        capturedMilestones.add(sampleCounter);
-        const dataURL = captureSnapshot();
-        if (!dataURL) return;
-        snapshots.push({
-            samples: sampleCounter,
-            src: dataURL,
-            filename: makeFilename(sampleCounter)
-        });
-        buildSnapshotBar();
-    }
 }
 
 init();
