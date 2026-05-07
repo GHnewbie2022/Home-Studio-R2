@@ -4726,14 +4726,14 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     behavior:
       - 新增 uR71BlueNoiseSamplingMode。
       - 新增 r71BlueNoiseSeedJitter()，把 blue noise、uSampleCounter、uFrameCounter 混入 rng() seed。
-      - R7 分支預設啟用 r71BlueNoiseSamplingEnabled = true。
+      - R7-1 v1 預設啟用 r71BlueNoiseSamplingEnabled = true；closeout 後已改為 false。
       - 新增 console 開關與回報：
         - setR71BlueNoiseSamplingEnabled(true / false)
         - reportR71BlueNoiseSamplingConfig()
     cache_bust:
-      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v5
-      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v5
-      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v5
+      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v6-no-go
+      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v6-no-go
+      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v6-no-go
   validation:
     red_green:
       - node docs/tests/r7-1-blue-noise-sampling.test.js 先紅，缺 uR71BlueNoiseSamplingMode。
@@ -4767,7 +4767,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - firstFrameRecoveryMovingTargetSamples 預設改回 1。
     - firstFrameRecoveryTargetSamples 維持 4，停止後補幀路徑維持原本設定。
     - setFirstFrameRecoveryConfig({ movingTargetSamples: 2 }) 仍可手動切回 2 SPP 做比較。
-    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v5，避免瀏覽器沿用舊檔。
+    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v6-no-go，避免瀏覽器沿用舊檔。
   validation:
     - 新增 docs/tests/r7-1-blue-noise-sampling.test.js 合約檢查，要求 R7-1 C3 / C4 moving validation 可停在 1 SPP。
 
@@ -4840,10 +4840,40 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - 新增 pendingCommonVertexShaderCallbacks 佇列。
     - 新增 runAfterCommonVertexShaderReady(callback) 與 flushCommonVertexShaderCallbacks()。
     - 新增 createCommonVertexShaderMaterial(params)，所有共用 vertex shader 的 ShaderMaterial 都經由此 helper 建立。
-    - InitCommon / Home_Studio / shader cache token 同步升到 r7-1-blue-noise-sampling-v5，避免瀏覽器沿用舊檔。
+    - InitCommon / Home_Studio / shader cache token 同步升到 r7-1-blue-noise-sampling-v6-no-go，避免瀏覽器沿用舊檔。
   validation:
     - 新增 docs/tests/r7-1-shader-load-order.test.js，先確認舊版缺少等待 common vertex shader 的合約會紅燈。
     - 實作後同一測試轉綠。
-    - headless Brave 載入 http://localhost:9002/Home_Studio.html 時讀到 r7-1-blue-noise-sampling-v5；Console logs 未再出現 vertexShader undefined。
+    - headless Brave 載入 http://localhost:9002/Home_Studio.html 時讀到 r7-1-blue-noise-sampling-v6-no-go；Console logs 未再出現 vertexShader undefined。
     - headless SwiftShader 仍會輸出 GPU / context lost 類測試環境訊息，和本次 THREE.Material warning 無關。
+
+- id: R7-1-blue-noise-seed-mix-no-go-closeout
+  date: 2026-05-07
+  type: no_go_closeout
+  context:
+    - 使用者保存 C3 Cam1 default 1~16 SPP 對照圖。
+    - 對照組為 R7-1 seed mix on / off。
+    - 使用者肉眼判斷結果幾乎一樣，無有效改善。
+  clarification:
+    - 專案原本 rand() 已固定讀 textures/BlueNoise_R_128.png。
+    - setR71BlueNoiseSamplingEnabled(false) 只關掉 R7-1 新增的 rng() seed mix。
+    - 因此這次 no-go 指向 R7-1 新增 seed mix，不代表完整 blue noise on/off 已完成。
+  measured_file_check:
+    - 兩張 2 SPP PNG hash 不同，表示指令有造成實際差異。
+    - 像素差存在，但肉眼觀感沒有達到可用改善。
+  decision:
+    - R7-1 blue noise seed mix 判定 NO-GO。
+    - r71BlueNoiseSamplingEnabled 預設改為 false。
+    - console 開關保留，供日後必要時重查。
+    - R7-1 分支停止新增實驗內容，作為封存證據。
+    - 下一步建立 R7-2 光源 importance sampling 小實驗分支。
+  keep_from_r7_1:
+    - C3 / C4 1 SPP 驗證。
+    - per-sample 快照檢查。
+    - 暫停 / 繼續採樣按鈕與 FPS / timer 暫停。
+    - 累積重啟時 timer 歸零。
+    - ShaderMaterial common vertex shader 載入順序修正。
+  validation:
+    - docs/tests/r7-1-blue-noise-sampling.test.js 新增 no-go closeout 合約。
+    - cache token 升為 r7-1-blue-noise-sampling-v6-no-go。
 ```

@@ -77,7 +77,7 @@ let firstFrameRecoveryClearWhileMoving = true;
 let firstFrameRecoveryLastPassCount = 1;
 let firstFrameRecoveryLastReason = 'normal';
 let firstFrameRecoveryLastFinalSamples = 0;
-let r71BlueNoiseSamplingEnabled = true;
+let r71BlueNoiseSamplingEnabled = false;
 let movementProtectionEnabled = true;
 let movementPreviewEnabled = false;
 let movementProtectionMovingBlend = 0.0;
@@ -271,7 +271,7 @@ window.setR71BlueNoiseSamplingEnabled = function(enabled)
 window.reportR71BlueNoiseSamplingConfig = function()
 {
 	return {
-		version: 'r7-1-blue-noise-sampling-v5',
+		version: 'r7-1-blue-noise-sampling-v6-no-go',
 		enabled: r71BlueNoiseSamplingEnabled,
 		uniformMode: pathTracingUniforms && pathTracingUniforms.uR71BlueNoiseSamplingMode
 			? pathTracingUniforms.uR71BlueNoiseSamplingMode.value

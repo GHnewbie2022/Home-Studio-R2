@@ -13,22 +13,27 @@ const homeStudioPath = path.join(root, 'js/Home_Studio.js');
 const pathTracingCommonPath = path.join(root, 'js/PathTracingCommon.js');
 const htmlPath = path.join(root, 'Home_Studio.html');
 const blueNoisePath = path.join(root, 'textures/BlueNoise_R_128.png');
+const r7SopPath = path.join(root, 'docs/SOP/R7：採樣演算法升級.md');
+const debugLogPath = path.join(root, 'docs/SOP/Debug_Log.md');
+const handoffPath = path.join(root, '.omc/HANDOFF-R7-1-no-go-to-R7-2.md');
 
 const initCommon = fs.readFileSync(initCommonPath, 'utf8');
 const homeStudio = fs.readFileSync(homeStudioPath, 'utf8');
 const pathTracingCommon = fs.readFileSync(pathTracingCommonPath, 'utf8');
 const html = fs.readFileSync(htmlPath, 'utf8');
+const r7Sop = fs.readFileSync(r7SopPath, 'utf8');
+const debugLog = fs.readFileSync(debugLogPath, 'utf8');
 
 assert(fs.existsSync(blueNoisePath), 'R7-1 must keep using textures/BlueNoise_R_128.png');
 assert(initCommon.includes("'textures/BlueNoise_R_128.png'"), 'InitCommon must load the existing blue-noise texture');
 assert(initCommon.includes('pathTracingUniforms.tBlueNoiseTexture'), 'Path tracing uniforms must pass the blue-noise texture');
 
 assert(pathTracingCommon.includes('uniform float uR71BlueNoiseSamplingMode;'), 'Path tracing common must expose the R7-1 sampling mode uniform');
-assert(initCommon.includes('let r71BlueNoiseSamplingEnabled = true'), 'R7-1 blue-noise sampling must default on in the R7 experiment branch');
+assert(initCommon.includes('let r71BlueNoiseSamplingEnabled = false'), 'R7-1 no-go closeout must default the added seed mix off');
 assert(initCommon.includes('pathTracingUniforms.uR71BlueNoiseSamplingMode'), 'InitCommon must create the R7-1 sampling mode uniform');
 assert(initCommon.includes('window.setR71BlueNoiseSamplingEnabled = function'), 'R7-1 must expose a console setter');
 assert(initCommon.includes('window.reportR71BlueNoiseSamplingConfig = function'), 'R7-1 must expose a console reporter');
-assert(initCommon.includes("version: 'r7-1-blue-noise-sampling-v5'"), 'R7-1 reporter must expose a version token');
+assert(initCommon.includes("version: 'r7-1-blue-noise-sampling-v6-no-go'"), 'R7-1 reporter must expose the no-go closeout version token');
 assert(initCommon.includes('blueNoiseTextureReady'), 'R7-1 reporter must expose blue-noise texture readiness');
 assert(initCommon.includes('let firstFrameRecoveryMovingTargetSamples = 1'), 'R7-1 C3/C4 visual validation must allow the 1 SPP moving frame');
 
@@ -38,8 +43,13 @@ assert(pathTracingCommon.includes('seed += r71BlueNoiseSeedJitter();'), 'R7-1 mu
 assert(pathTracingCommon.includes('uSampleCounter + uFrameCounter'), 'R7-1 seed mix must vary across samples and frames');
 assert(!pathTracingCommon.includes('uR71BlueNoiseSamplingMode > 0.5 &&'), 'R7-1 blue-noise seed mix must apply globally without a config gate');
 
-assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v5'), 'Home_Studio shader cache token must identify R7-1');
-assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v5'), 'HTML must cache-bust InitCommon.js for R7-1');
-assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v5'), 'HTML must cache-bust Home_Studio.js for R7-1');
+assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v6-no-go'), 'Home_Studio shader cache token must identify the R7-1 no-go closeout');
+assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v6-no-go'), 'HTML must cache-bust InitCommon.js for R7-1 no-go closeout');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v6-no-go'), 'HTML must cache-bust Home_Studio.js for R7-1 no-go closeout');
+
+assert(fs.existsSync(handoffPath), 'R7-1 no-go closeout must create a handoff MD for R7-2 takeover');
+assert(r7Sop.includes('R7-1：blue noise sampling 升級（NO-GO）'), 'R7 SOP must mark R7-1 as NO-GO');
+assert(r7Sop.includes('R7-2：光源 importance sampling 機率優化（下一步）'), 'R7 SOP must mark R7-2 as next');
+assert(debugLog.includes('R7-1-blue-noise-seed-mix-no-go-closeout'), 'Debug_Log must record the R7-1 no-go closeout');
 
 console.log('PASS  R7-1 blue noise sampling contract');
