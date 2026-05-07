@@ -4672,8 +4672,8 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - R6-3 的 WebGL path tracing 低 SPP 修補線停止加碼。
         - 1 / 2 / 4 SPP 直接顯示都不足以提供乾淨移動視線。
         - 舊畫面混合、顯示端模糊、簡化 preview、硬算更多樣本、2SPP 輕量路徑都已有 no-go 或低 ROI 證據。
-        - 下一階段先做 R7 甲 blue noise 小實驗，再評估 R7 乙光源機率優化。
-        - R7 丙 WebGPU / hybrid preview 保留為小型概念驗證，不做整套搬遷。
+        - 下一階段先做 R7-1 blue noise 小實驗，再評估 R7-2 光源機率優化。
+        - R7-3 WebGPU / hybrid preview 保留為小型概念驗證，不做整套搬遷。
       preserved_work:
         - 快照開關，預設關閉。
         - first-frame recovery，避免 1SPP 黑幕。
@@ -4692,14 +4692,14 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         path: .omc/HANDOFF-R6-3-closeout-to-R7-small-experiments.md
         scope:
           - 下一窗 AI 先讀交棒 MD。
-          - 下一階段先做 R7 甲 blue noise 小實驗。
-          - 第二順位是 R7 乙光源機率優化。
-          - R7 丙 WebGPU / hybrid preview 僅作第三順位小型概念驗證。
+          - 下一階段先做 R7-1 blue noise 小實驗。
+          - 第二順位是 R7-2 光源機率優化。
+          - R7-3 WebGPU / hybrid preview 僅作第三順位小型概念驗證。
 
       final_note:
         - 早期低 SPP shader 修補線停止。
         - v15 / v16 / v17 / v18a 的 probe 與 candidate 保留為歷史資料。
         - 下一步不再安排 v18a 肉眼 A/B。
-        - 下一窗 AI 先接 R7 甲 blue noise 小實驗。
-        - R7 丙 WebGPU / hybrid preview 小型概念驗證保留，整套搬遷暫緩。
+        - 下一窗 AI 先接 R7-1 blue noise 小實驗。
+        - R7-3 WebGPU / hybrid preview 小型概念驗證保留，整套搬遷暫緩。
 ```

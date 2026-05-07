@@ -9,7 +9,7 @@
 
 目標：
   不延續 R6-3 WebGL path tracing 低 SPP 修補線。
-  下一步先做 R7 甲 blue noise 小實驗。
+  下一步先做 R7-1 blue noise 小實驗。
   WebGPU / hybrid preview 只保留小型概念驗證。
 
 使用者決策：
@@ -107,7 +107,7 @@
 
 ```
 第一順位：
-  R7 甲 blue noise sampling 升級。
+  R7-1 blue noise sampling 升級。
 
 目標：
   讓低 SPP 黑白點變得比較不刺眼。
@@ -118,7 +118,7 @@
   靜止高 SPP 收斂不可走樣。
 
 第二順位：
-  R7 乙光源 importance sampling 機率優化。
+  R7-2 光源 importance sampling 機率優化。
 
 目標：
   在既有 R3-6 / R3-6.5 採樣架構內降低變異。
@@ -170,7 +170,7 @@ WebGPU 搬遷注意：
 ```
 1. 不要把 R6-3 的 no-go 路線重新包裝成新方案。
 2. 不要再要求使用者肉眼驗收 1 / 2 / 4 SPP path tracing 低樣本修補。
-3. 先做 R7 甲 blue noise 小實驗。
+3. 先做 R7-1 blue noise 小實驗。
 4. WebGPU 只做小範圍概念驗證，再談整體搬遷。
 5. 回覆使用國中生程度白話文。
 6. 技術縮寫第一次出現時給中文意思，後面優先用中文說明。

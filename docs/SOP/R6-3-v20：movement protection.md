@@ -567,13 +567,13 @@ v19 first-frame burst 已解掉 1 SPP 黑幕，但 4 SPP 畫面仍然太髒。v2
   5. v22d cache token 與合約測試。
 
 下一方向：
-  1. 先做 R7 甲 blue noise 小實驗。
+  1. 先做 R7-1 blue noise 小實驗。
      目標是讓低 SPP 顆粒比較不刺眼。
 
-  2. 若改善有限，再做 R7 乙光源機率優化。
+  2. 若改善有限，再做 R7-2 光源機率優化。
      目標是在既有 R3-6 / R3-6.5 採樣架構內降低變異。
 
-  3. R7 丙 WebGPU / hybrid preview 只保留小型概念驗證。
+  3. R7-3 WebGPU / hybrid preview 只保留小型概念驗證。
      目標是驗證移動時乾淨 preview，停止後再走高品質 path tracing 收斂。
      不進整套 WebGPU 搬遷。
 ```
