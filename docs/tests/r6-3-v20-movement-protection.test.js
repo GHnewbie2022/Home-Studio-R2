@@ -29,7 +29,7 @@ assert(sop.includes('保存上一張穩定畫面'), 'v20 SOP must include stable
 assert(sop.includes('移動時混入上一張穩定畫面'), 'v20 SOP must include moving blend');
 
 assert(initCommon.includes("version: 'r6-3-phase2-movement-protection-v22d'"), 'InitCommon must report v22d version');
-assert(initCommon.includes('let firstFrameRecoveryMovingTargetSamples = 2'), 'C3/C4 moving path must keep visible-frame work to 2 SPP');
+assert(initCommon.includes('let firstFrameRecoveryMovingTargetSamples = 1'), 'R7-1 C3/C4 moving validation must allow the 1 SPP visible frame');
 assert(initCommon.includes('movingTargetSamples: firstFrameRecoveryMovingTargetSamples'), 'First-frame reporter must expose moving target samples');
 assert(initCommon.includes('configTargetSamples: firstFrameRecoveryConfigTargetSamples(cameraIsMoving)'), 'First-frame reporter must expose the per-config active target');
 assert(initCommon.includes('function firstFrameRecoveryConfigTargetSamples(activeCameraMoving)'), 'First-frame recovery must choose target samples per config');
@@ -71,7 +71,7 @@ assert(initCommon.includes('updateMovementProtectionUniforms'), 'Movement protec
 assert(initCommon.includes('updateMovementProtectionUniforms(cameraIsMoving);'), 'Movement protection display blend must use actual camera movement, not first-frame burst render mode');
 assert(initCommon.includes('if (!cameraIsMoving)\n\t\t\tcaptureMovementProtectionStableFrame();'), 'Movement protection must capture stable frames only when the actual camera is still');
 assert(initCommon.includes('ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22d'), 'ScreenOutput shader cache token must identify v22d');
-assert(html.includes('InitCommon.js?v=r6-3-movement-protection-v22d'), 'HTML must cache-bust InitCommon for v22d');
+assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust InitCommon for R7-1');
 assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust Home_Studio for R7-1');
 assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1'), 'Home_Studio shader cache token must identify R7-1 blue noise sampling');
 

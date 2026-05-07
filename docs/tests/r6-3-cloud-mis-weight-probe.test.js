@@ -191,7 +191,7 @@ assert(js.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1'), '
 
 assert(js.includes('r6-3-phase2-first-frame-burst-v19'), 'JS must label the v19 first-frame recovery experiment');
 assert(initCommon.includes('firstFrameRecoveryTargetSamples = 4'), 'First-frame recovery must default to 4 SPP');
-assert(initCommon.includes('firstFrameRecoveryMovingTargetSamples = 2'), 'C3/C4 low-cost movement must keep current-frame samples at 2 for responsiveness');
+assert(initCommon.includes('firstFrameRecoveryMovingTargetSamples = 1'), 'R7-1 C3/C4 moving validation must allow the 1 SPP visible frame');
 assert(initCommon.includes('movingTargetSamples: firstFrameRecoveryMovingTargetSamples'), 'First-frame reporter must expose moving target samples');
 assert(initCommon.includes('configTargetSamples: firstFrameRecoveryConfigTargetSamples(cameraIsMoving)'), 'First-frame reporter must expose per-config target samples');
 assert(initCommon.includes('if (!movementProtectionConfigAllowed())\n\t\treturn 1;'), 'C1/C2 first-frame recovery must default to 1 SPP');
@@ -205,7 +205,7 @@ assert(initCommon.includes('firstFrameRecoveryClearWhileMoving = true'), 'First-
 assert(initCommon.includes('firstFrameRecoveryActiveRenderCameraMoving = false'), 'First-frame burst passes must render as still samples after clearing stale accumulation');
 assert(initCommon.includes('firstFrameRecoveryPassTarget = Math.max(firstFrameRecoveryPassTarget, firstFrameRecoveryActiveTargetSamples)'), 'First-frame recovery must use the active target selected for normal or moving preview frames');
 assert(initCommon.includes('for (var firstFrameRecoveryPassSample = sampleCounter; firstFrameRecoveryPassSample <= firstFrameRecoveryPassTarget; firstFrameRecoveryPassSample += 1.0)'), 'Render loop must execute multiple accumulation passes inside one visible frame');
-assert(html.includes('InitCommon.js?v=r6-3-movement-protection-v22d'), 'HTML must cache-bust InitCommon for the current R6-3 runtime');
+assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust InitCommon for R7-1');
 assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust Home_Studio JS for R7-1 blue noise sampling');
 
 console.log('PASS  R6-3 Cloud MIS weight probe contract');

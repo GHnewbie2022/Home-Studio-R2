@@ -4731,6 +4731,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - setR71BlueNoiseSamplingEnabled(true / false)
         - reportR71BlueNoiseSamplingConfig()
     cache_bust:
+      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v1
       Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v1
       Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1
   validation:
@@ -4751,4 +4752,22 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - 使用者開 http://localhost:9002/Home_Studio.html。
     - C3 / C4 看 1 / 2 / 4 / 8 SPP。
     - 對照 setR71BlueNoiseSamplingEnabled(true / false)，看黑白點是否比較不刺眼。
+
+- id: R7-1-c3-missing-1spp-followup
+  date: 2026-05-07
+  type: bugfix
+  context:
+    - 使用者回報 C3 畫面下方顯示 Samples: 2，R7-1 驗證缺少 1 SPP。
+    - R7-1 需要 C3 / C4 1 / 2 / 4 / 8 SPP 對照，才能判斷 blue noise 對低 SPP 顆粒是否有幫助。
+  root_cause:
+    - R6-3 v22d 保留 firstFrameRecoveryMovingTargetSamples = 2。
+    - 切換 C3 會被 render loop 視為 camera moving。
+    - firstFrameRecoveryConfigTargetSamples(cameraIsMoving) 因此回傳 movingTargetSamples，第一張可見畫面直接到 2 SPP。
+  fix:
+    - firstFrameRecoveryMovingTargetSamples 預設改回 1。
+    - firstFrameRecoveryTargetSamples 維持 4，停止後補幀路徑維持原本設定。
+    - setFirstFrameRecoveryConfig({ movingTargetSamples: 2 }) 仍可手動切回 2 SPP 做比較。
+    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v1，避免瀏覽器沿用舊檔。
+  validation:
+    - 新增 docs/tests/r7-1-blue-noise-sampling.test.js 合約檢查，要求 R7-1 C3 / C4 moving validation 可停在 1 SPP。
 ```
