@@ -4731,9 +4731,9 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - setR71BlueNoiseSamplingEnabled(true / false)
         - reportR71BlueNoiseSamplingConfig()
     cache_bust:
-      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v3
-      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v3
-      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v3
+      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v4
+      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v4
+      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v4
   validation:
     red_green:
       - node docs/tests/r7-1-blue-noise-sampling.test.js 先紅，缺 uR71BlueNoiseSamplingMode。
@@ -4767,7 +4767,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - firstFrameRecoveryMovingTargetSamples 預設改回 1。
     - firstFrameRecoveryTargetSamples 維持 4，停止後補幀路徑維持原本設定。
     - setFirstFrameRecoveryConfig({ movingTargetSamples: 2 }) 仍可手動切回 2 SPP 做比較。
-    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v3，避免瀏覽器沿用舊檔。
+    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v4，避免瀏覽器沿用舊檔。
   validation:
     - 新增 docs/tests/r7-1-blue-noise-sampling.test.js 合約檢查，要求 R7-1 C3 / C4 moving validation 可停在 1 SPP。
 
@@ -4809,4 +4809,20 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - 資訊列新增「暫停」狀態標籤。
   validation:
     - docs/tests/r6-3-max-samples.test.js 新增 FPS / timer pause 合約。
+
+- id: R7-1-render-timer-accumulation-reset-followup
+  date: 2026-05-07
+  type: bugfix
+  context:
+    - 使用者回報配置切換、視角切換、移動與轉動時，耗時都應該重置。
+  root_cause:
+    - render timer 原本只在 sampleCounter 小於 lastSnapshotCheck 時重置。
+    - 配置切換與視角切換會設定 needClearAccumulation。
+    - 移動與轉動會設定 cameraIsMoving。
+    - 這些都是累積重啟事件，但 render timer 沒有直接讀取這兩個狀態。
+  fix:
+    - 新增 resetRenderTimerForAccumulationRestart(nowMs)。
+    - updateVariablesAndUniforms() 看到 cameraIsMoving、needClearAccumulation 或 sampleCounter 回退時，重置 render timer。
+  validation:
+    - docs/tests/r6-3-max-samples.test.js 新增累積重啟會重置 render timer 的合約。
 ```

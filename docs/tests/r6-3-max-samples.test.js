@@ -60,5 +60,8 @@ assert(src.includes('pausedMs: 0'), 'Render timer must track total paused time')
 assert(src.includes('window._renderTimer.pausedMs += _nowT - window._renderTimer.pauseStartMs;'), 'Render timer must subtract paused duration after resume');
 assert(src.includes('_elapsedMs = window._renderTimer.pauseStartMs - window._renderTimer.startMs - window._renderTimer.pausedMs;'), 'Render timer must freeze elapsed time while sampling is paused');
 assert(src.includes('(_samplingPausedForMetrics ? " (暫停)" : "")'), 'Info line must label paused sampling state');
+assert(src.includes('function resetRenderTimerForAccumulationRestart(nowMs)'), 'Render timer must expose a reset helper for accumulation restarts');
+assert(src.includes('if (cameraIsMoving || needClearAccumulation || sampleCounter < lastSnapshotCheck)'), 'Camera/config accumulation restarts must reset the render timer');
+assert(src.includes('resetRenderTimerForAccumulationRestart(_nowT);'), 'Render timer reset must use the current frame timestamp');
 
 console.log('PASS  MAX_SAMPLES = 1000');

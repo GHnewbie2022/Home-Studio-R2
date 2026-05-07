@@ -244,7 +244,7 @@ window.setR71BlueNoiseSamplingEnabled = function(enabled)
 window.reportR71BlueNoiseSamplingConfig = function()
 {
 	return {
-		version: 'r7-1-blue-noise-sampling-v3',
+		version: 'r7-1-blue-noise-sampling-v4',
 		enabled: r71BlueNoiseSamplingEnabled,
 		uniformMode: pathTracingUniforms && pathTracingUniforms.uR71BlueNoiseSamplingMode
 			? pathTracingUniforms.uR71BlueNoiseSamplingMode.value

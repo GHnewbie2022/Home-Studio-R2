@@ -4867,6 +4867,16 @@ function captureDueSnapshotsForCurrentSample() {
 
 window.captureDueSnapshotsForCurrentSample = captureDueSnapshotsForCurrentSample;
 
+function resetRenderTimerForAccumulationRestart(nowMs) {
+    if (typeof window._renderTimer === 'undefined') return;
+    window._renderTimer.startMs = nowMs;
+    window._renderTimer.finalMs = 0;
+    window._renderTimer.frozen = false;
+    window._renderTimer.paused = false;
+    window._renderTimer.pauseStartMs = 0;
+    window._renderTimer.pausedMs = 0;
+}
+
 function downloadAllSnapshots() {
     if (!SNAPSHOT_CAPTURE_ENABLED) return;
     snapshots.forEach((snap, i) => {
@@ -5013,7 +5023,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v3';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v4';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -6750,13 +6760,8 @@ function updateVariablesAndUniforms() {
     if (typeof window._renderTimer === 'undefined') {
         window._renderTimer = { startMs: performance.now(), finalMs: 0, frozen: false, paused: false, pauseStartMs: 0, pausedMs: 0 };
     }
-    if (sampleCounter < lastSnapshotCheck) {
-        window._renderTimer.startMs = performance.now();
-        window._renderTimer.frozen = false;
-        window._renderTimer.paused = false;
-        window._renderTimer.pauseStartMs = 0;
-        window._renderTimer.pausedMs = 0;
-    }
+    if (cameraIsMoving || needClearAccumulation || sampleCounter < lastSnapshotCheck)
+        resetRenderTimerForAccumulationRestart(_nowT);
     if (_samplingPausedForMetrics) {
         if (!window._renderTimer.paused) {
             window._renderTimer.paused = true;
