@@ -75,6 +75,7 @@ let firstFrameRecoveryClearWhileMoving = true;
 let firstFrameRecoveryLastPassCount = 1;
 let firstFrameRecoveryLastReason = 'normal';
 let firstFrameRecoveryLastFinalSamples = 0;
+let r71BlueNoiseSamplingEnabled = true;
 let movementProtectionEnabled = true;
 let movementPreviewEnabled = false;
 let movementProtectionMovingBlend = 0.0;
@@ -210,6 +211,28 @@ window.reportFirstFrameRecoveryConfig = function()
 		lastPassCount: firstFrameRecoveryLastPassCount,
 		lastReason: firstFrameRecoveryLastReason,
 		lastFinalSamples: firstFrameRecoveryLastFinalSamples,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
+	};
+};
+
+window.setR71BlueNoiseSamplingEnabled = function(enabled)
+{
+	r71BlueNoiseSamplingEnabled = !!enabled;
+	if (pathTracingUniforms && pathTracingUniforms.uR71BlueNoiseSamplingMode)
+		pathTracingUniforms.uR71BlueNoiseSamplingMode.value = r71BlueNoiseSamplingEnabled ? 1.0 : 0.0;
+	cameraIsMoving = true;
+	return window.reportR71BlueNoiseSamplingConfig();
+};
+
+window.reportR71BlueNoiseSamplingConfig = function()
+{
+	return {
+		version: 'r7-1-blue-noise-sampling-v1',
+		enabled: r71BlueNoiseSamplingEnabled,
+		uniformMode: pathTracingUniforms && pathTracingUniforms.uR71BlueNoiseSamplingMode
+			? pathTracingUniforms.uR71BlueNoiseSamplingMode.value
+			: null,
+		blueNoiseTextureReady: !!blueNoiseTexture,
 		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 	};
 };
@@ -1008,6 +1031,7 @@ function initTHREEjs()
 	pathTracingUniforms.uSampleCounter = { type: "f", value: 0.0 }; //0.0
 	pathTracingUniforms.uPreviousSampleCount = { type: "f", value: 1.0 };
 	pathTracingUniforms.uFrameCounter = { type: "f", value: 1.0 }; //1.0
+	pathTracingUniforms.uR71BlueNoiseSamplingMode = { type: "f", value: r71BlueNoiseSamplingEnabled ? 1.0 : 0.0 };
 	pathTracingUniforms.uULen = { type: "f", value: 1.0 };
 	pathTracingUniforms.uVLen = { type: "f", value: 1.0 };
 	pathTracingUniforms.uApertureSize = { type: "f", value: apertureSize };

@@ -4973,7 +4973,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r6-3-movement-preview-v22d';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;

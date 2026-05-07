@@ -33,7 +33,7 @@ assert(js.includes("directIsolationControl: 'uIndirectMultiplier = 0'"), 'Cloud 
 assert(js.includes("baselineIndirectControl: 'uIndirectMultiplier = 1'"), 'Cloud sampling budget diagnostic must document baseline indirect control');
 assert(js.includes("recommendedNextStep: 'directVsIndirectScreenshotProbe'"), 'Cloud sampling budget diagnostic must recommend direct-vs-indirect screenshot probe');
 assert(js.includes('CLOUD_SAMPLING_BUDGET_DIAGNOSTIC_VERSION,'), 'Cloud sampling budget diagnostic must include version in returned report');
-assert(js.includes('r6-3-movement-preview-v22d'), 'JS shader cache token must identify latest R6-3 closeout version');
-assert(html.includes('Home_Studio.js?v=r6-3-movement-preview-v22d'), 'HTML must cache-bust JS for latest R6-3 closeout version');
+assert(js.includes('r7-1-blue-noise-sampling-v1'), 'JS shader cache token must identify latest R7-1 experiment version');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust JS for latest R7-1 experiment version');
 
 console.log('PASS  R6-3 Cloud sampling budget diagnostic contract');

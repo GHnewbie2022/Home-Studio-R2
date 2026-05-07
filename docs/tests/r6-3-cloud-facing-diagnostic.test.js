@@ -199,7 +199,7 @@ assert(js.includes('resetCloudVisibilityProbeAccumulation()'), 'shader A/B mode 
 assert(js.includes('shaderABMode: pathTracingUniforms.uCloudThetaImportanceShaderABMode.value'), 'JS shader A/B report must expose current mode');
 
 assert(js.includes('r6-3-phase2-sampling-budget-diagnostic'), 'JS probe version must report sampling-budget diagnostic version');
-assert(js.includes('r6-3-movement-preview-v22d'), 'JS shader cache token must identify latest R6-3 closeout version');
-assert(html.includes('Home_Studio.js?v=r6-3-movement-preview-v22d'), 'HTML must cache-bust JS for latest R6-3 closeout version');
+assert(js.includes('r7-1-blue-noise-sampling-v1'), 'JS shader cache token must identify latest R7-1 experiment version');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust JS for latest R7-1 experiment version');
 
 console.log('PASS  R6-3 Cloud facing diagnostic contract');

@@ -72,8 +72,8 @@ assert(initCommon.includes('updateMovementProtectionUniforms(cameraIsMoving);'),
 assert(initCommon.includes('if (!cameraIsMoving)\n\t\t\tcaptureMovementProtectionStableFrame();'), 'Movement protection must capture stable frames only when the actual camera is still');
 assert(initCommon.includes('ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22d'), 'ScreenOutput shader cache token must identify v22d');
 assert(html.includes('InitCommon.js?v=r6-3-movement-protection-v22d'), 'HTML must cache-bust InitCommon for v22d');
-assert(html.includes('Home_Studio.js?v=r6-3-movement-preview-v22d'), 'HTML must cache-bust Home_Studio for v22d');
-assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r6-3-movement-preview-v22d'), 'Home_Studio shader cache token must identify v22d movement preview');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v1'), 'HTML must cache-bust Home_Studio for R7-1');
+assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1'), 'Home_Studio shader cache token must identify R7-1 blue noise sampling');
 
 assert(homeStudio.includes('invalidateMovementProtectionStableFrame'), 'Home_Studio must invalidate stable frame for non-camera content changes');
 assert(homeStudio.includes("invalidateMovementProtectionStableFrame('applyPanelConfig')"), 'Panel config changes must drop stale stable frame');

@@ -17,6 +17,7 @@ uniform bool uCameraIsMoving;
 uniform bool uUseOrthographicCamera;
 uniform bool uSceneIsDynamic;
 uniform float uMovementPreviewMode;
+uniform float uR71BlueNoiseSamplingMode;
 
 in vec2 vUv;
 
@@ -3088,9 +3089,19 @@ uvec2 seed;
 float rng()
 {
 	seed += uvec2(1);
-    	uvec2 q = 1103515245U * ( (seed >> 1U) ^ (seed.yx) );
-    	uint  n = 1103515245U * ( (q.x) ^ (q.y >> 3U) );
+	uvec2 q = 1103515245U * ( (seed >> 1U) ^ (seed.yx) );
+	uint  n = 1103515245U * ( (q.x) ^ (q.y >> 3U) );
 	return float(n) * ONE_OVER_MAX_INT;// (1.0 / float(0xffffffffU));
+}
+
+uvec2 r71BlueNoiseSeedJitter()
+{
+	float samplePhase = mod(uSampleCounter + uFrameCounter, 128.0);
+	vec2 blueNoiseCoord = mod(floor(gl_FragCoord.xy) + vec2(samplePhase, samplePhase * 17.0), 128.0);
+	float r71BlueNoise = texelFetch(tBlueNoiseTexture, ivec2(blueNoiseCoord), 0).r;
+	uint blueNoiseMix = uint(floor(r71BlueNoise * 65535.0));
+	uint phaseMix = uint(floor(samplePhase));
+	return uvec2(blueNoiseMix, (blueNoiseMix * 1667U) + (phaseMix * 131U));
 }
 
 vec3 randomSphereDirection()
@@ -3242,11 +3253,13 @@ void main( void )
 	// the following is not needed - three.js has a built-in uniform named cameraPosition
 	//vec3 camPos   = vec3( uCameraMatrix[3][0],  uCameraMatrix[3][1],  uCameraMatrix[3][2]);
 
-	// calculate unique seed for rng() function
-	seed = uvec2(uFrameCounter, uFrameCounter + 1.0) * uvec2(gl_FragCoord);
 	// initialize rand() variables
 	randNumber = 0.0; // the final randomly-generated number (range: 0.0 to 1.0)
 	blueNoise = texelFetch(tBlueNoiseTexture, ivec2(mod(floor(gl_FragCoord.xy), 128.0)), 0).r;
+	// calculate unique seed for rng() function
+	seed = uvec2(uFrameCounter, uFrameCounter + 1.0) * uvec2(gl_FragCoord);
+	if (uR71BlueNoiseSamplingMode > 0.5)
+		seed += r71BlueNoiseSeedJitter();
 
 	vec2 pixelOffset;
 	

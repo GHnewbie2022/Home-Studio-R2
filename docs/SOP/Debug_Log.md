@@ -4703,3 +4703,52 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - 下一窗 AI 先接 R7-1 blue noise 小實驗。
         - R7-3 WebGPU / hybrid preview 小型概念驗證保留，整套搬遷暫緩。
 ```
+
+---
+
+## R7-1：blue noise sampling 小實驗（2026-05-07）
+
+```
+- id: R7-1-blue-noise-sampling-v1
+  date: 2026-05-07
+  type: small_reversible_sampling_experiment
+  context:
+    - R6-3 已結案，低 SPP 移動畫面 1 / 2 / 4 SPP 仍會形成黑白點視覺障礙。
+    - 使用者確認 R7-1 先做 blue noise sampling。
+    - 專案既有 textures/BlueNoise_R_128.png，且 InitCommon 已載入為 tBlueNoiseTexture。
+  implementation:
+    files:
+      - js/PathTracingCommon.js
+      - js/InitCommon.js
+      - js/Home_Studio.js
+      - Home_Studio.html
+      - docs/tests/r7-1-blue-noise-sampling.test.js
+    behavior:
+      - 新增 uR71BlueNoiseSamplingMode。
+      - 新增 r71BlueNoiseSeedJitter()，把 blue noise、uSampleCounter、uFrameCounter 混入 rng() seed。
+      - R7 分支預設啟用 r71BlueNoiseSamplingEnabled = true。
+      - 新增 console 開關與回報：
+        - setR71BlueNoiseSamplingEnabled(true / false)
+        - reportR71BlueNoiseSamplingConfig()
+    cache_bust:
+      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v1
+      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v1
+  validation:
+    red_green:
+      - node docs/tests/r7-1-blue-noise-sampling.test.js 先紅，缺 uR71BlueNoiseSamplingMode。
+      - 實作後同一測試轉綠。
+    contract:
+      - 全部 docs/tests/*.test.js 通過。
+      - node --check js/InitCommon.js 通過。
+      - node --check js/Home_Studio.js 通過。
+      - node --check js/PathTracingCommon.js 通過。
+      - git diff --check 通過。
+    browser_smoke:
+      - headless Brave 可載入 http://localhost:9002/Home_Studio.html 並讀到 r7-1 cache token。
+      - 未看到 shader compile error / JS exception 字樣。
+      - headless SwiftShader 會輸出 GPU warning 並卡住，肉眼驗收仍以正常瀏覽器為準。
+  next_verification:
+    - 使用者開 http://localhost:9002/Home_Studio.html。
+    - C3 / C4 看 1 / 2 / 4 / 8 SPP。
+    - 對照 setR71BlueNoiseSamplingEnabled(true / false)，看黑白點是否比較不刺眼。
+```
