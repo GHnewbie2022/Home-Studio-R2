@@ -42,6 +42,7 @@ const ROD_HALF_EXTENTS = [
     { x: 0.884, y: 0.008, z: 0.008 },  // S
     { x: 0.884, y: 0.008, z: 0.008 },  // N
 ];
+const shader = require('fs').readFileSync(require('path').resolve(__dirname, '../../shaders/Home_Studio_Fragment.glsl'), 'utf8');
 
 let failed = 0;
 function pass(label, extra) { console.log(`  PASS  ${label}${extra ? '  ' + extra : ''}`); }
@@ -137,6 +138,23 @@ assertRelErr(r_EW, r_SN, 0.001, '所有 rod 同 K 下 radiance 同值');
 // [L] radiometric 量綱範圍確認：current 1600 lm/m Cloud rod radiance 應落 O(10~100) W/(sr·m²)
 console.log('\n[L] Cloud radiance 量綱範圍 O(10~100):');
 assertTrue(r_EW > 10 && r_EW < 100, 'Cloud radiance 在合理量綱範圍', `actual=${r_EW}`);
+
+// [M] Cloud arc emission normal：probe 模式可用反向法線分類，但正常渲染維持既有 localNormal 亮度
+console.log('\n[M] Cloud arc emission normal is probe-only:');
+assertTrue(shader.includes('vec3 cloudArcEmissionNormal'), 'shader exposes Cloud emission-normal helper');
+assertTrue(shader.includes('return -cloudArcNormal(rodIdx, theta);'), 'Cloud emission normal is inverse of geometric arc normal');
+assertTrue(shader.includes('vec3 cloudArcRenderNormal'), 'Cloud render normal helper keeps probe normal selection centralized');
+assertTrue(shader.includes('return (uCloudVisibilityProbeMode > 0) ? cloudArcEmissionNormal(rodIdx, theta) : cloudArcNormal(rodIdx, theta);'), 'Cloud NEE uses emission normal only when probe is enabled');
+assertTrue(shader.includes('vec3 emissionNormal = cloudArcRenderNormal(rodIdx, theta);'), 'Cloud NEE reads normal through the probe-gated helper');
+assertTrue(shader.includes('dot(-cloudDir, emissionNormal)'), 'Cloud NEE facing term uses emission normal');
+assertTrue(shader.includes('pdfNeeForLight(x, cloudTarget, emissionNormal'), 'Cloud NEE PDF uses emission normal');
+assertTrue(shader.includes('vec3 reverseEmissionNormal = (uCloudVisibilityProbeMode > 0) ? -hitNormal : hitNormal;'), 'Cloud reverse-NEE PDF uses room-facing normal only when probe is enabled');
+assertTrue(shader.includes('pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal'), 'Cloud reverse-NEE PDF uses the selected normal');
+assertTrue(shader.includes('float cloudPdfArea = cloudThetaImportanceEffectiveArcArea(cloudArcArea, thetaPdfCompensationMultiplier);'), 'Cloud NEE uses theta-importance effective area');
+assertTrue(shader.includes('throughput = cloudEmit * cloudGeom * cloudPdfArea / selectPdf;'), 'Cloud NEE throughput uses theta PDF compensation');
+assertTrue(shader.includes('pdfNeeForLight(x, cloudTarget, emissionNormal, cloudPdfArea, selectPdf);'), 'Cloud NEE PDF uses theta PDF compensation');
+assertTrue(shader.includes('float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);'), 'Cloud reverse-NEE PDF uses theta-importance effective area');
+assertTrue(shader.includes('pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea'), 'Cloud reverse-NEE PDF applies theta PDF compensation');
 
 console.log(`\n=== 結果：${failed === 0 ? 'PASS' : `FAIL (${failed})`} ===`);
 process.exit(failed === 0 ? 0 : 1);

@@ -1454,3 +1454,3252 @@ box 27（窗外景色背板）位於 z=14.9~15.0、cullable=1 → 當 cam1 / cam
 
  詳細交接：.omc/HANDOFF-R6-r30-final.md
 ```
+
+---
+
+## R6-3 Phase2｜Cloud visibility probe v4/v5 亮度回歸教訓（2026-05-03）
+
+### 範圍
+
+R6-3 Phase2 Step2 原本目標是降低 Cloud NEE probe 裡的 `zeroCloudFacing`。v4 用反向 emission normal 讓 probe 數字變好，但後續 v5 嘗試與回退過程造成 C3 正常畫面偏暗。使用者肉眼回報後，用 systematic-debugging 重新追根因，最後把 v4 normal 改為 probe-only。
+
+### 症狀
+
+```
+ 1. C3 正常畫面明顯偏暗
+ 2. C3 uniform 狀態正確：
+      Cloud on
+      Track off
+      Wide off
+      Cloud slider = 1600 lm/m
+      activeLightIndex = [7, 8, 9, 10]
+ 3. 頁面已載到 v4 / v5 回退後檔案，已排除快取為主因
+```
+
+### 根因
+
+v4 把 Cloud 弧面反向 normal 直接套進正常渲染：
+
+```glsl
+vec3 emissionNormal = cloudArcEmissionNormal(rodIdx, theta);
+float cloudCosLight = max(0.0, dot(-cloudDir, emissionNormal));
+pdfNeeOmega = pdfNeeForLight(x, cloudTarget, emissionNormal, cloudArcArea, selectPdf);
+```
+
+這會讓 probe 分類看到較少 `zeroCloudFacing`，但同時改變 C3 真正畫面的 Cloud NEE 能量分佈。結果是 probe 數字改善，正常渲染亮度被拉低。
+
+### 量測證據
+
+同一台 headless Brave、同一 C3、同一 cam3、同一 64 spp、同一 1600 lm/m：
+
+```
+ 1. HEAD 原始版
+      roomCenter avgLuma = 0.274220
+
+ 2. 壞掉 v4
+      roomCenter avgLuma = 0.158872
+      約為 HEAD 的 58%
+
+ 3. 修正後 v4-probe-only
+      roomCenter avgLuma = 0.274170
+      與 HEAD 差 0.000050
+```
+
+### 修法
+
+只在 probe 模式使用反向 emission normal；正常渲染維持既有 `localNormal / hitNormal`：
+
+```glsl
+vec3 emissionNormal =
+    (uCloudVisibilityProbeMode > 0) ? cloudArcEmissionNormal(rodIdx, theta) : localNormal;
+
+vec3 reverseEmissionNormal =
+    (uCloudVisibilityProbeMode > 0) ? -hitNormal : hitNormal;
+```
+
+cache token 同步更新：
+
+```
+ 1. Home_Studio.html
+      js/Home_Studio.js?v=r6-3-cloud-visibility-probe-v4-probe-only
+
+ 2. js/Home_Studio.js
+      CLOUD_VISIBILITY_PROBE_VERSION = r6-3-phase2-mode3-emission-normal-v4-probe-only
+      Home_Studio_Fragment.glsl?v=r6-3-cloud-visibility-probe-emission-normal-v4-probe-only
+```
+
+### 這次浪費時間的原因
+
+```
+ 1. 一開始只看 probe 數字，沒有同步做 C3 正常畫面亮度 A/B
+
+ 2. v5 修法失敗後，只確認 v5 visible-arc 程式碼已移除，沒有立刻確認 v4 本身仍會改正常渲染
+
+ 3. 把「debug probe 的分類 normal」跟「production render 的 energy normal」綁在一起
+
+ 4. CDP 直接從 WebGL canvas drawImage 算 luma 曾回傳接近 0，後續改用 Page.captureScreenshot 存 PNG，再用 PIL 算 luma 才穩定
+```
+
+### 新硬規則
+
+```
+ 1. 任何 Cloud NEE / normal / PDF / MIS 改動，必須同時做兩組驗證：
+      A. probe 數字
+      B. probe off 的 C3 正常畫面亮度 A/B
+
+ 2. probe 用的診斷 normal、分類顏色、blocker class，不可直接影響正常渲染能量。
+    若要共用 shader helper，必須被 uCloudVisibilityProbeMode gate 包住。
+
+ 3. 若使用者回報「畫面變暗 / 變亮 / 變髒」，第一步先量：
+      scriptSrc
+      shaderFile
+      configRadio
+      uCloudLightEnabled / uTrackLightEnabled / uWideTrackLightEnabled
+      uActiveLightIndex
+      uCloudEmission
+      screenshot PNG luma
+
+ 4. probe 數字通過只代表診斷畫面通過，不能代表正常畫面通過。
+
+ 5. v5 類型修改若要再做，先建立 baseline：
+      HEAD 或目前穩定版 C3 64 spp screenshot luma
+      目前穩定版 mode3 zeroCloudFacing selectedClassRatio
+      修改後同條件重跑兩者
+```
+
+### 這次已跑驗證
+
+```
+ 1. rtk node docs/tests/r6-3-cloud-visibility-probe.test.js
+ 2. rtk node docs/tests/r6-3-max-samples.test.js
+ 3. rtk node docs/tests/r3-3-cloud-radiance.test.js
+ 4. rtk node docs/tests/r3-5b-cloud-area-nee.test.js
+ 5. rtk node docs/tests/r3-6-5-dynamic-pool.test.js
+ 6. rtk node --check js/Home_Studio.js
+ 7. rtk git diff --check
+ 8. CDP C3 64 spp screenshot luma：
+      修後 roomCenter avgLuma = 0.274170
+ 9. CDP mode3 probe：
+      probeVersion = r6-3-phase2-mode3-emission-normal-v4-probe-only
+      zeroCloudFacing selectedClassRatio = 0.1464 at 3 samples
+```
+
+### v5b-normal-sampling no-go 紀錄（2026-05-03）
+
+v5b-normal-sampling 嘗試讓 Cloud NEE 先用正常渲染的 Cloud normal 挑可見 theta，再把有效 theta 面積同步套進 throughput 與 `pdfNeeForLight(...)`。使用者以 cam1、target 200 samples、8 theta bins 做肉眼與 Console 驗證。
+
+使用者回傳表格：
+
+```text
+thetaLabel  samples  selectedClassRatio  waitTimedOut  thetaStartDeg  thetaEndDeg
+all         202      0.3282              false         0              90
+0/8         202      0.5052              false         0              11.25
+1/8         202      0.4603              false         11.25          22.5
+2/8         202      0.4197              false         22.5           33.75
+3/8         202      0.3960              false         33.75          45
+4/8         202      0.3804              false         45             56.25
+5/8         202      0.3695              false         56.25          67.5
+6/8         202      0.3665              false         67.5           78.75
+7/8         202      0.3942              false         78.75          90
+```
+
+判讀：
+
+```text
+ 1. v5b-normal-sampling 已正確載入。
+    Console scriptSrc 顯示 v5b-normal-sampling。
+
+ 2. 自動等待成功。
+    每列 samples 約 202，waitTimedOut 全部 false。
+
+ 3. zeroCloudFacing 變差。
+    v5a wait-fix2 使用者驗證 all = 0.2105。
+    v5b-normal-sampling 使用者驗證 all = 0.3282。
+
+ 4. 初版 v5b 的 all = 0.1233 不可當正式改善證據。
+    根因是初版 v5b 讓 probe normal 影響 theta sampling。
+```
+
+目前根因判斷：
+
+```text
+ 1. v5b-normal-sampling 用正常渲染的 Cloud normal 篩 theta：
+      cloudArcThetaFacesPoint(...)
+      vec3 renderNormal = cloudArcNormal(rodIdx, theta);
+
+ 2. mode3 probe 判斷 zeroCloudFacing 時，仍用 probe 的反向 emission normal：
+      vec3 emissionNormal = cloudArcRenderNormal(rodIdx, theta);
+      float cloudCosLight = max(0.0, dot(-cloudDir, emissionNormal));
+
+ 3. 因此 v5b 篩 theta 的方向，與 probe 分類 zeroCloudFacing 的方向不一致。
+    這會讓樣本更集中到「正常渲染覺得可見」的位置，但 probe 又用反向 normal 判定，導致 zeroCloudFacing 比 v5a 更高。
+```
+
+結論：
+
+```text
+ 1. v5b-normal-sampling 視為 no-go。
+ 2. 不要在這條 visible-theta-normal-sampling 路線上疊更多修補。
+ 3. 下一步先做診斷版，不先改能量：
+      A. 同一個樣本同時回報 normal-facing 與 probe-facing 的分類。
+      B. 分開統計 source-facing、normal cloud-facing、probe cloud-facing。
+      C. 確認 zeroCloudFacing 到底是 probe 定義問題，或是真正的 PDF / 面積 / MIS 問題。
+ 4. 任何後續修改仍需同時檢查：
+      A. probe 數字
+      B. probe off 的 C3 正常亮度 A/B
+```
+
+### mode4 facing diagnostic 欄位定義整理（2026-05-04）
+
+整理目標：
+
+```text
+ 1. 把正常 C3 畫面用的 Cloud normal 與 probe 分類用的 Cloud normal 分清楚。
+ 2. 保留舊 mode3 `zeroCloudFacing` 入口，避免舊 Console 指令失效。
+ 3. 正式比較改看 mode4 的兩個拆分欄位：
+      A. normalCloudFacingZero
+      B. probeCloudFacingZero
+```
+
+欄位定義：
+
+```text
+ 1. sourceFacingZero
+      代表 shading point 的 normal 看不到 Cloud sample。
+      shader 對應：
+        cloudSourceCos = max(0.0, dot(nl, cloudDir))
+
+ 2. normalCloudFacingZero
+      代表正常 C3 畫面能量用的 Cloud normal 看不到 shading point。
+      shader 對應：
+        normalEmissionNormal = cloudArcNormal(rodIdx, theta)
+        normalCloudCos = max(0.0, dot(-cloudDir, normalEmissionNormal))
+
+ 3. probeCloudFacingZero
+      代表 probe 分類用的反向 Cloud normal 看不到 shading point。
+      shader 對應：
+        probeEmissionNormal = cloudArcEmissionNormal(rodIdx, theta)
+        probeCloudCos = max(0.0, dot(-cloudDir, probeEmissionNormal))
+
+ 4. zeroCloudFacing
+      舊 mode3 selected-class 名稱。
+      目前語意對齊 probeCloudFacingZero，保留作舊指令相容欄位。
+```
+
+本次量測結果：
+
+```text
+ 1. mode3 zeroCloudFacing selectedClassRatio
+      180 samples = 0.2107
+      判讀：回到 v5a wait-fix2 基準附近。
+
+ 2. mode4 facing diagnostic
+      sourceFacingZeroRatio = 0.1457
+      normalCloudFacingZeroRatio = 0.6851
+      probeCloudFacingZeroRatio = 0.1692
+      normalMinusProbeFacingZeroRatio = 0.5159
+
+ 3. C3 正常亮度 A/B
+      舊 v4-probe-only baseline avgLuma = 0.274360
+      新 mode4-facing-diagnostic avgLuma = 0.274307
+      差值 = -0.000053
+      判讀：mode4 診斷沒有污染正常 C3 亮度。
+```
+
+mode4 theta scan 快速診斷：
+
+```text
+ 1. 測試條件
+      targetSamples = 8
+      thetaBinCount = 8
+      configRadio = 3
+      Cloud on、Track off、Wide off
+      Cloud slider = 1600 lm/m
+      waitTimedOut 全部 false
+
+ 2. 每段結果
+      thetaLabel  normalCloudFacingZeroRatio  probeCloudFacingZeroRatio  normalMinusProbeFacingZeroRatio
+      0/8         0.4634                      0.2617                     0.2017
+      1/8         0.4743                      0.2505                     0.2238
+      2/8         0.4901                      0.2347                     0.2554
+      3/8         0.5047                      0.2201                     0.2846
+      4/8         0.5165                      0.2081                     0.3084
+      5/8         0.5258                      0.1990                     0.3268
+      6/8         0.5325                      0.1923                     0.3402
+      7/8         0.5295                      0.1951                     0.3344
+
+ 3. 判讀
+      normal/probe 差距從 0/8 到 6/8 逐步變大，7/8 仍維持高差距。
+      這代表差距跟 Cloud 弧面角度有明顯關係，後續若要碰 PDF / 面積 / MIS，先用這張表當定位入口。
+```
+
+mode4 theta scan 自動摘要 helper：
+
+```text
+ 1. 新增目的
+      reportCloudFacingDiagnosticThetaScanAfterSamples(...) 回傳 summary。
+      summary 會自動整理 minDiffBin、maxDiffBin、ratio range、diffTrend。
+
+ 2. 真頁面快速驗證
+      pageUrl = http://localhost:9003/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-mode4-facing-theta-scan
+      probeVersion = r6-3-phase2-mode4-facing-theta-scan
+      targetSamples = 8
+      thetaBinCount = 8
+      waitTimedOutCount = 0
+
+ 3. 摘要結果
+      minDiffBin = 0/8
+      minDiffValue = 0.2015
+      maxDiffBin = 6/8
+      maxDiffValue = 0.3402
+      diffTrend = risesAndStaysHigh
+      normalMinusProbeFacingZeroRatioRange.spread = 0.1387
+
+ 4. 判讀方式
+      minDiffBin 代表 normal/probe 差距最小的角度段。
+      maxDiffBin 代表 normal/probe 差距最大的角度段。
+      diffTrend = risesAndStaysHigh 代表差距往後段變大，最後一段仍留在高差距區。
+```
+
+mode4 theta geometry hint：
+
+```text
+ 1. 新增目的
+      summary.geometryHint 會把 theta bin 對應到 Cloud 弧面 normal 方向。
+      這讓 6/8 最大差距可以接回幾何原因，而不只是一張數字表。
+
+ 2. 真頁面快速驗證
+      pageUrl = http://localhost:9003/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-mode4-facing-geometry-hint
+      probeVersion = r6-3-phase2-mode4-facing-geometry-hint
+      targetSamples = 8
+      thetaBinCount = 8
+      waitTimedOutCount = 0
+
+ 3. 幾何摘要
+      cloudArcNormalFormula = outAxis * cos(theta) + up * sin(theta)
+      cloudArcEmissionNormalRelation = -cloudArcNormal
+      normalUpwardTrend = increasesWithTheta
+      highUpwardBinStart = 6
+      maxNormalUpwardBin = 7/8
+      maxDiffNearHighUpwardEnd = true
+
+ 4. 對照結果
+      minDiffBin = 0/8
+      maxDiffBin = 6/8
+      6/8 的 normalUpward = 0.9569
+      7/8 的 normalUpward = 0.9952
+      判讀：差距最大段落在 normal 向上成分很高的區域。
+      6/8 比 7/8 稍高，代表場景內的 shade point 分布也有影響。
+```
+
+mode4 rod-by-rod theta scan 快速診斷：
+
+```text
+ 1. 新增目的
+      reportCloudFacingDiagnosticRodThetaScanAfterSamples(...) 會逐支跑 E/W/S/N。
+      用途是判斷 6/8 高差距來自共同弧面角度，或某支 Cloud 燈條特別高。
+
+ 2. 真頁面快速驗證
+      pageUrl = http://localhost:9003/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-mode4-facing-rod-theta-scan
+      probeVersion = r6-3-phase2-mode4-facing-rod-theta-scan
+      targetSamples = 2
+      thetaBinCount = 8
+      waitTimedOutCount = 0 for E/W/S/N
+
+ 3. 每支最大差距
+      E maxDiffBin = 6/8, maxDiffValue = 0.2278
+      W maxDiffBin = 6/8, maxDiffValue = 0.2242
+      S maxDiffBin = 6/8, maxDiffValue = 0.2171
+      N maxDiffBin = 6/8, maxDiffValue = 0.2376
+
+ 4. 總摘要
+      uniqueMaxDiffBins = [6]
+      sharedMaxDiffBin = 6
+      maxDiffBinPattern = same
+      allRodsMaxDiffNearHighUpwardEnd = true
+      dominantRod = N
+      maxDiffValueRange.spread = 0.0205
+
+ 5. 判讀
+      四支 Cloud 的最大差距都落在 6/8。
+      這表示主要方向是共同弧面角度問題。
+      N 的數字最高，但四支最大差距 spread 只有 0.0205，先當次要線索。
+      這輪 targetSamples = 2，只用來看型態；精密數值仍要用較高 samples 重跑。
+      8 samples × 32 段超過 CDP 等待時間，後續若要精密版，需分批跑每支或提高 CDP timeout。
+```
+
+後續 SOP：
+
+```text
+ 1. 若任務是看正常 C3 畫面能量：
+      先看 renderEnergyNormal = cloudArcNormal。
+
+ 2. 若任務是看 probe 分類：
+      先看 probeClassificationNormal = cloudArcEmissionNormal。
+
+ 3. 若任務是比較兩種 normal 的差距：
+      使用 window.reportCloudFacingDiagnosticAfterSamples(...)
+      讀取 normalCloudFacingZeroRatio 與 probeCloudFacingZeroRatio。
+
+ 4. 若任務是看兩種 normal 的差距集中在哪些角度：
+      使用 window.reportCloudFacingDiagnosticThetaScanAfterSamples(-1, 8, 200, 120000)
+      先讀取 summary，再看 geometryHint 與每個 theta bin 的 normalCloudFacingZeroRatio、probeCloudFacingZeroRatio、normalMinusProbeFacingZeroRatio。
+
+ 5. 若任務是分別看四支 Cloud：
+      使用 window.reportCloudFacingDiagnosticRodThetaScanAfterSamples(8, 2, 120000)
+      先讀 summary.maxDiffByRod、summary.sharedMaxDiffBin、summary.maxDiffBinPattern。
+      targetSamples = 2 只適合快速看型態。
+      需要精密比較時，改成分批跑單支 rod 的 theta scan。
+
+ 6. 若舊文件或舊 Console 指令提到 zeroCloudFacing：
+      當成 legacy probe-facing 名稱。
+      新報告要同步列 probeCloudFacingZero，避免名稱誤導。
+
+ 7. 任何 Cloud NEE / normal / PDF / MIS 改動後，仍要同時跑：
+      A. mode3 或 mode4 probe 數字
+      B. probe off 的 C3 正常亮度 A/B
+```
+
+theta importance candidate probe-only helper（2026-05-04）：
+
+```text
+ 1. 新增目的
+      summarizeCloudThetaImportanceSamplingCandidate(scan)
+      用上一輪 rod-by-rod theta scan 的結果，產生一份「角度抽樣候選表」。
+      這份表目前只做分析，不改正式 C3 畫面，不改 shader。
+
+ 2. 安全邊界
+      analysisScope = probeOnlyThetaImportanceCandidate
+      renderPathMutation = false
+      shaderMutation = false
+      metric = normalMinusProbeFacingZeroRatio
+      renderEnergyNormal = cloudArcNormal
+      probeClassificationNormal = cloudArcEmissionNormal
+      requiresThetaPdfCompensation = true
+      protectedFloor = 0.65
+
+ 3. TDD 與版本
+      先讓 docs/tests/r6-3-cloud-facing-diagnostic.test.js 紅燈：
+        JS missing theta-importance candidate version label
+      補 JS helper 與 cache token 後轉綠。
+      script token = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-theta-importance-candidate
+      probeVersion = r6-3-phase2-theta-importance-candidate
+      candidateVersion = r6-3-phase2-theta-importance-candidate-v1
+
+ 4. 真頁面驗證前置
+      pageUrl = http://localhost:9004/Home_Studio.html
+      必須先切到 applyPanelConfig(3) 與 switchCamera('cam1')。
+      若用新開頁面的預設 config 1 跑，theta 結果會全平，不能拿來判讀 C3。
+
+ 5. 真頁面 C3/cam1 快速驗證
+      targetSamples = 2
+      thetaBinCount = 8
+      waitTimedOutCount = 0 for E/W/S/N
+
+      E maxDiffBin = 6/8, maxDiffValue = 0.2278
+      W maxDiffBin = 7/8, maxDiffValue = 0.2326
+      S maxDiffBin = 6/8, maxDiffValue = 0.2171
+      N maxDiffBin = 6/8, maxDiffValue = 0.2376
+
+      uniqueMaxDiffBins = [6, 7]
+      maxDiffBinPattern = mixed
+      allRodsMaxDiffNearHighUpwardEnd = true
+      dominantRod = N
+      maxDiffValueRange.spread = 0.0205
+
+ 6. candidate 計算結果
+      maxPdfCompensationMultiplier = 1.1956
+      maxReductionBin = 6/8
+      6/8 averageNormalMinusProbeFacingZeroRatio = 0.2267
+      6/8 relativeToUniform = 0.8364
+      6/8 pdfCompensationMultiplier = 1.1956
+
+      reducedBins:
+        3/8 relativeToUniform = 0.9721
+        4/8 relativeToUniform = 0.9132
+        5/8 relativeToUniform = 0.8740
+        6/8 relativeToUniform = 0.8364
+        7/8 relativeToUniform = 0.8455
+
+      boostedBins:
+        0/8 relativeToUniform = 1.2868
+        1/8 relativeToUniform = 1.2007
+        2/8 relativeToUniform = 1.0713
+
+ 7. 判讀
+      這輪確認：有機會針對高向上角度做 importance sampling 候選。
+      最大 PDF 補償約 1.1956，屬於溫和候選。
+      目前只代表「可進入 probe-only A/B」，還不能直接上正式 C3 shader。
+
+ 8. 下一步 SOP
+      A. 做 probe-only A/B helper：同一份 C3/cam1 場景，輸出 uniform theta 與 candidate theta 的預估表。
+      B. A/B helper 必須明列每個 theta bin 的 candidateThetaBinPdf 與 pdfCompensationMultiplier。
+      C. 若 probe-only A/B 通過，再做 shader A/B。
+      D. shader A/B 通過後，才做 probe off 的 C3 正常亮度 A/B。
+```
+
+theta importance probe-only A/B helper（2026-05-04）：
+
+```text
+ 1. 新增目的
+      summarizeCloudThetaImportanceProbeAB(scan)
+      用同一份 rod-by-rod theta scan，同時輸出：
+        A. uniformTheta baseline
+        B. thetaImportanceCandidate candidate
+
+      這是估算工具，不改正式 C3 畫面，不改 shader。
+
+ 2. 安全邊界
+      analysisScope = probeOnlyThetaImportanceAB
+      renderPathMutation = false
+      shaderMutation = false
+      baselineStrategy = uniformTheta
+      candidateStrategy = thetaImportanceCandidate
+      estimateBasis = rodThetaScanBinAverages
+      metric = normalMinusProbeFacingZeroRatio
+
+ 3. TDD 與版本
+      先讓 docs/tests/r6-3-cloud-facing-diagnostic.test.js 紅燈：
+        JS missing theta-importance probe-only A/B version label
+      補 JS helper 與 cache token 後轉綠。
+      script token = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-theta-importance-probe-ab
+      probeVersion = r6-3-phase2-theta-importance-probe-ab
+      abVersion = r6-3-phase2-theta-importance-probe-ab-v1
+
+ 4. 真頁面 C3/cam1 快速驗證
+      pageUrl = http://localhost:9004/Home_Studio.html
+      前置狀態：
+        applyPanelConfig(3)
+        switchCamera('cam1')
+
+      targetSamples = 2
+      thetaBinCount = 8
+      waitTimedOutCount = 0 for E/W/S/N
+
+      E maxDiffBin = 6/8, maxDiffValue = 0.2392
+      W maxDiffBin = 6/8, maxDiffValue = 0.2349
+      S maxDiffBin = 6/8, maxDiffValue = 0.2290
+      N maxDiffBin = 6/8, maxDiffValue = 0.2491
+
+      uniqueMaxDiffBins = [6]
+      sharedMaxDiffBin = 6
+      maxDiffBinPattern = same
+      allRodsMaxDiffNearHighUpwardEnd = true
+      dominantRod = N
+      maxDiffValueRange.spread = 0.0201
+
+ 5. candidate 抽樣比例
+      maxReductionBin = 6/8
+      maxPdfCompensationMultiplier = 1.2354
+
+      6/8:
+        averageNormalMinusProbeFacingZeroRatio = 0.2380
+        candidateToUniformSampleRatio = 0.8095
+        pdfCompensationMultiplier = 1.2354
+
+      7/8:
+        averageNormalMinusProbeFacingZeroRatio = 0.2240
+        candidateToUniformSampleRatio = 0.8848
+        pdfCompensationMultiplier = 1.1302
+
+ 6. A/B 估算結果
+      estimatedUniformWasteProxy = 0.202625
+      estimatedCandidateWasteProxy = 0.198770
+      estimatedWasteProxyDelta = 0.003855
+      estimatedWasteProxyReductionRatio = 0.0190
+
+ 7. 判讀
+      A/B helper 工作正常，也再次確認 6/8 是共同高差距角度。
+      candidate 會把抽樣從 6/8、7/8 移到 0/8、1/8、2/8。
+      最大 PDF 補償 1.2354，仍屬溫和範圍。
+      估算下降比例約 1.9%，幅度偏小。
+      這表示方向可繼續，但不能期待下一輪馬上有很大的肉眼改善。
+
+ 8. 下一步 SOP
+      A. 先做 candidate strength sweep，仍維持 probe-only。
+      B. strength sweep 比較 protectedFloor = 0.50 / 0.65 / 0.80。
+      C. 每個版本都列 maxPdfCompensationMultiplier 與 estimatedWasteProxyReductionRatio。
+      D. 若較強版本仍只有小幅改善，再評估 shader A/B 是否值得做。
+      E. 若某個版本明顯改善且 PDF 補償不爆衝，再進 shader A/B。
+```
+
+theta importance strength sweep probe-only helper（2026-05-04）：
+
+```text
+ 1. 新增目的
+      summarizeCloudThetaImportanceStrengthSweep(scan)
+      用同一份 rod-by-rod theta scan 比較三個 protectedFloor：
+        0.50 / 0.65 / 0.80
+
+      這是 probe-only 估算工具，不改正式 C3 畫面，不改 shader。
+
+ 2. 安全邊界
+      analysisScope = probeOnlyThetaImportanceStrengthSweep
+      renderPathMutation = false
+      shaderMutation = false
+      baselineStrategy = uniformTheta
+      candidateStrategy = thetaImportanceCandidate
+      estimateBasis = rodThetaScanBinAverages
+      recommendedNextStep = reviewStrengthSweepBeforeShaderAB
+
+ 3. TDD 與版本
+      先讓 docs/tests/r6-3-cloud-facing-diagnostic.test.js 紅燈：
+        JS missing theta-importance strength sweep version label
+      補 JS helper 與 cache token 後轉綠。
+      script token = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-theta-importance-strength-sweep
+      probeVersion = r6-3-phase2-theta-importance-strength-sweep
+      sweepVersion = r6-3-phase2-theta-importance-strength-sweep-v1
+
+ 4. 真頁面 C3/cam1 快速驗證
+      pageUrl = http://localhost:9004/Home_Studio.html
+      前置狀態：
+        applyPanelConfig(3)
+        switchCamera('cam1')
+
+      targetSamples = 2
+      thetaBinCount = 8
+      waitTimedOutCount = 0 for E/W/S/N
+
+      E maxDiffBin = 5/8, maxDiffValue = 0.2282
+      W maxDiffBin = 6/8, maxDiffValue = 0.2242
+      S maxDiffBin = 7/8, maxDiffValue = 0.2221
+      N maxDiffBin = 6/8, maxDiffValue = 0.2376
+
+      uniqueMaxDiffBins = [5, 6, 7]
+      sharedMaxDiffBin = null
+      maxDiffBinPattern = mixed
+      allRodsMaxDiffNearHighUpwardEnd = false
+      dominantRod = N
+      maxDiffValueRange.spread = 0.0155
+
+ 5. strength sweep 結果
+      protectedFloor = 0.50
+        estimatedWasteProxyReductionRatio = 0.0325
+        maxPdfCompensationMultiplier = 1.3716
+        maxReductionBin = 6/8
+        candidateToUniformSampleRatio = 0.7291
+
+      protectedFloor = 0.65
+        estimatedWasteProxyReductionRatio = 0.0200
+        maxPdfCompensationMultiplier = 1.2001
+        maxReductionBin = 6/8
+        candidateToUniformSampleRatio = 0.8333
+
+      protectedFloor = 0.80
+        estimatedWasteProxyReductionRatio = 0.0102
+        maxPdfCompensationMultiplier = 1.0929
+        maxReductionBin = 6/8
+        candidateToUniformSampleRatio = 0.9150
+
+ 6. 判讀
+      0.50 是目前最佳 probe-only 候選，預估下降約 3.25%。
+      PDF 補償最高到 1.3716，仍在可做 shader A/B 的觀察範圍內。
+      0.65 較保守，預估下降約 2.00%。
+      0.80 很保守，預估下降約 1.02%。
+      這輪快速 scan 的 rod max bin 從前一輪 same 變 mixed，後續 shader A/B 需要保留正常亮度與肉眼噪點驗收。
+
+ 7. 下一步 SOP
+      A. 做 shader A/B 候選，protectedFloor 先採 0.50。
+      B. shader A/B 必須明列 theta PDF 與補償倍率。
+      C. 預設保留原本 uniform theta 作為 A 組。
+      D. B 組只開在可回退的 debug flag 或版本 token 內。
+      E. shader A/B 後要做 C3/cam1 肉眼驗收：
+           1. 亮度不能變暗或漂白。
+           2. Cloud 早期噪點若有改善，才進更長 spp 比對。
+           3. 若肉眼無改善，這條路徑標 no-go。
+```
+
+theta importance shader A/B 候選（2026-05-04）：
+
+```text
+ 1. 新增目的
+      把上一輪 protectedFloor = 0.50 的 theta importance candidate 放進 shader。
+      A 組維持原本 uniform theta。
+      B 組用 debug flag 開啟 theta importance candidate。
+      這一輪只建立可切換版本與亮度安全證據，肉眼噪點改善另外驗收。
+
+ 2. 安全邊界
+      uCloudThetaImportanceShaderABMode = 0 為預設值。
+      window.setCloudThetaImportanceShaderAB(0) 進 A 組。
+      window.setCloudThetaImportanceShaderAB(1) 進 B 組。
+      B 組畫面左下 camera info 會出現 CloudTheta: B0.50。
+
+ 3. PDF 補償契約
+      B 組 theta bin PDF：
+        [0.182214, 0.164555, 0.139731, 0.124376, 0.108893, 0.094690, 0.091107, 0.094434]
+
+      B 組補償倍率：
+        [0.6860, 0.7596, 0.8946, 1.0050, 1.1479, 1.3201, 1.3720, 1.3237]
+
+      NEE throughput 使用 cloudPdfArea：
+        throughput = cloudEmit * cloudGeom * cloudPdfArea / selectPdf
+
+      pdfNeeForLight 正向與 reverse MIS 也使用 cloudPdfArea / reverseCloudPdfArea。
+      這代表抽樣比例改變時，亮度權重同步補回來。
+
+ 4. TDD 與版本
+      先讓 docs/tests/r6-3-cloud-facing-diagnostic.test.js 紅燈：
+        JS missing theta-importance shader A/B version label
+
+      先讓 docs/tests/r3-5b-cloud-area-nee.test.js 紅燈：
+        Cloud NEE missing effective area with theta PDF compensation
+
+      補 JS helper、shader helper、cache token 後轉綠。
+
+      script token = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-theta-importance-shader-ab
+      shader token = Home_Studio_Fragment.glsl?v=r6-3-cloud-visibility-probe-theta-importance-shader-ab
+      sourceProbeVersion = r6-3-phase2-theta-importance-shader-ab
+      shaderABVersion = r6-3-phase2-theta-importance-shader-ab-v1
+
+ 5. 真頁面 C3/cam1 64 spp screenshot 驗證
+      pageUrl = http://localhost:9004/Home_Studio.html
+      configRadio = 3
+      camera = cam1
+      Cloud = on
+      Track = off
+      Wide = off
+      activeLightCount = 4
+      activeLightIndex = [7, 8, 9, 10]
+
+      A 組：
+        screenshotPath = /private/tmp/home_studio_theta_ab_cam1_64_A.png
+        shaderABMode = 0
+        modeLabel = uniformThetaBaseline
+        samples = 66
+        cameraInfo = FPS: 0 / FOV: 55 / Samples: 65 / 耗時: 02m29s
+
+      B 組：
+        screenshotPath = /private/tmp/home_studio_theta_ab_cam1_64_B.png
+        shaderABMode = 1
+        modeLabel = thetaImportanceCandidateProtectedFloor050
+        samples = 65
+        cameraInfo = FPS: 0 / FOV: 55 / Samples: 64 / 耗時: 02m23s / CloudTheta: B0.50
+
+ 6. screenshot PNG luma
+      A full.avgLuma = 0.289289
+      B full.avgLuma = 0.287709
+      delta = -0.001580
+
+      A roomCenter.avgLuma = 0.420130
+      B roomCenter.avgLuma = 0.417592
+      delta = -0.002538
+
+      A cloudArea.avgLuma = 0.392840
+      B cloudArea.avgLuma = 0.390498
+      delta = -0.002342
+
+      判讀：
+        B 組沒有黑畫面。
+        B 組亮度與 A 組接近。
+        這次沒有重演 v4/v5b 的 C3 正常畫面亮度污染。
+
+ 7. 下一步 SOP
+      A. 請使用者肉眼比較 A 組與 B 組。
+      B. 驗收重點：
+           1. B 組左下角要顯示 CloudTheta: B0.50。
+           2. B 組整體亮度不能明顯變暗。
+           3. B 組整體亮度不能明顯漂白。
+           4. B 組 Cloud 早期噪點若有改善，再進長時間 A/B。
+      C. 若 B 組肉眼有改善且亮度正常，下一輪做 200 / 500 spp screenshot A/B。
+      D. 若 B 組肉眼無改善，這條 shader A/B 路線標 no-go。
+```
+
+theta importance shader A/B 肉眼 no-go（2026-05-04）：
+
+```text
+ 1. 使用者驗收
+      使用者提供 48 spp A / B0.50 對照圖：
+        /Users/eajrockmacmini/Downloads/260504-cam1-default-48spp A.png
+        /Users/eajrockmacmini/Downloads/260504-cam1-default-48spp B.png
+
+      使用者判斷：
+        48 SPP A 跟 B0.5 幾乎一樣，沒改善。
+
+ 2. 數字對照
+      A full.avgLuma = 0.435436
+      B full.avgLuma = 0.433194
+      delta = -0.002242
+
+      A roomCenter.avgLuma = 0.401842
+      B roomCenter.avgLuma = 0.399848
+      delta = -0.001994
+
+      A cloudArea.avgLuma = 0.611325
+      B cloudArea.avgLuma = 0.607842
+      delta = -0.003483
+
+      highFreqDelta：
+        full = -0.001087
+        roomCenter = -0.001250
+        cloudArea = -0.000374
+
+ 3. 判讀
+      B0.50 沒有明顯污染 C3 亮度。
+      B0.50 也沒有造成可用的 C3 早期噪點改善。
+      protectedFloor = 0.50 theta-importance shader A/B 路線標 no-go。
+
+ 4. 下一步 SOP
+      A. 改查 C3 active light pool。
+      B. 改查 Cloud 與其他燈的抽樣競爭。
+      C. 改查 Cloud MIS 權重套用點。
+      D. 改查直接 NEE 與間接反彈哪段更可疑。
+```
+
+Cloud sampling budget diagnostic（2026-05-04）：
+
+```text
+ 1. 新增目的
+      reportCloudSamplingBudgetDiagnostic()
+      用現有 uniform / active light LUT 回答四個問題：
+        A. Cloud light 被抽到的比例夠不夠。
+        B. Cloud 跟其他燈的選擇權重有沒有讓 C3 太吃虧。
+        C. MIS 權重在哪些 Cloud 路徑套用。
+        D. 直接光跟間接反彈要如何隔離。
+
+      這是 JS 診斷 helper。
+      renderPathMutation = false
+      shaderMutation = false
+
+ 2. TDD 與版本
+      先讓 docs/tests/r6-3-cloud-sampling-budget-diagnostic.test.js 紅燈：
+        JS missing Cloud sampling budget diagnostic version label
+
+      補 helper 與 cache token 後轉綠。
+
+      script token = js/Home_Studio.js?v=r6-3-cloud-visibility-probe-sampling-budget-diagnostic
+      shader token = Home_Studio_Fragment.glsl?v=r6-3-cloud-visibility-probe-sampling-budget-diagnostic
+      probeVersion = r6-3-phase2-sampling-budget-diagnostic
+      diagnosticVersion = r6-3-phase2-sampling-budget-diagnostic-v1
+
+ 3. 真頁面 C3/cam1 診斷
+      pageUrl = http://localhost:9004/Home_Studio.html
+      currentPanelConfig = 3
+      activeLightCount = 4
+      activeLightIndex = [7, 8, 9, 10]
+      activeLightBreakdown:
+        ceiling = 0
+        track = 0
+        wide = 0
+        cloud = 4
+
+      cloudPickRatio = 1.000000
+      perCloudRodPickRatio = 0.250000
+      otherLightPickRatio = 0.000000
+      selectPdf = 0.25
+      otherLightsCompeteWithCloud = false
+      c3CloudSampleBudgetVerdict = cloudOwnsActivePool
+
+ 4. 四個問題的目前答案
+      A. Cloud light 被抽到的比例夠不夠：
+           C3 裡 Cloud 佔 active pool 100%。
+           每支 rod 25%。
+
+      B. Cloud 跟其他燈的選擇權重有沒有讓 C3 太吃虧：
+           C3 裡其他燈沒有進 active pool。
+           這一輪證據不支持「其他燈吃掉 Cloud 抽樣」。
+
+      C. MIS 權重有沒有讓有效樣本被稀釋：
+           Cloud direct NEE 使用：
+             wNee = powerHeuristic(pNee, pBsdf)
+
+           Cloud BSDF hit reverse MIS 使用：
+             wBsdf = powerHeuristic(pBsdf, pNeeReverse)
+
+           目前已定位套用點。
+           權重分布尚未量化，下一輪需做 MIS weight histogram / heat probe。
+
+      D. 直接光跟間接反彈哪一段在製造主要顆粒：
+           使用 uIndirectMultiplier 做快速隔離：
+             baseline = 1
+             directOnly = 0
+
+           8 spp screenshot：
+             baseline path = /private/tmp/home_studio_sampling_budget_baseline_indirect1_8.png
+             directOnly path = /private/tmp/home_studio_sampling_budget_direct_only_8.png
+
+           full.avgLuma:
+             baseline = 0.224045
+             directOnly = 0.115403
+
+           roomCenter.avgLuma:
+             baseline = 0.347328
+             directOnly = 0.232511
+
+           cloudArea.avgLuma:
+             baseline = 0.369614
+             directOnly = 0.348745
+
+           highFreq：
+             full baseline = 0.039583
+             full directOnly = 0.021028
+             roomCenter baseline = 0.040482
+             roomCenter directOnly = 0.017664
+             cloudArea baseline = 0.022661
+             cloudArea directOnly = 0.018231
+
+ 5. 判讀
+      C3 採樣名額分配本身看起來正常。
+      C3 主要問題不像是 Cloud 被抽太少。
+      直接 NEE 跟反彈段關聯要繼續拆。
+      8 spp 快速隔離顯示，房間中間區的顆粒與間接反彈有明顯關聯。
+      Cloud 區域亮度在 directOnly 下接近 baseline，表示 Cloud 直射區仍要另外看 MIS 權重與可見命中率。
+
+ 6. 下一步 SOP
+      A. 做 Cloud MIS weight probe。
+      B. 分開輸出：
+           direct NEE wNee
+           BSDF-hit reverse wBsdf
+           pNee / pBsdf 比值區間
+      C. 若 wNee 長期偏低，查 pNee 面積 PDF 或 pBsdf 估算。
+      D. 若 reverse wBsdf 分布造成少量高能樣本，查間接反彈路徑。
+```
+
+Cloud MIS weight probe（2026-05-04）：
+
+```text
+ 1. 新增目的
+      reportCloudMisWeightProbeAfterSamples()
+      用 Console helper 量 C3 Cloud 兩段 MIS：
+        A. direct NEE：
+             wNee = powerHeuristic(pNee, pBsdf)
+        B. BSDF-hit reverse：
+             wBsdf = powerHeuristic(pBsdf, pNeeReverse)
+
+      probe 預設 mode = 0。
+      mode = 0 時正常渲染不走診斷輸出。
+
+ 2. 實作護欄
+      新增 shader uniform：
+        uCloudMisWeightProbeMode
+
+      新增 4 個讀回模式：
+        1 = directNeeWeight
+        2 = directNeePdf
+        3 = bsdfHitWeight
+        4 = bsdfHitPdf
+
+      後續發現 raw bsdfHitWeight channel 會混到 PDF channel 型資料。
+      主報告改用 PDF 比值反推穩定 MIS 權重：
+        direct NEE:
+          weight = ratio^2 / (ratio^2 + 1)
+          ratio = pNee / pBsdf
+
+        BSDF-hit:
+          weight = 1 / (ratio^2 + 1)
+          ratio = pNeeReverse / pBsdf
+
+      raw channel 仍保留在：
+        directNeeWeightChannelAverage
+        bsdfHitWeightChannelAverage
+
+ 3. 真頁面條件
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      mode = 趨近真實
+      currentIndirectMultiplier = 1
+      currentMaxBounces = 14
+      targetSamples = 4 isolated samples
+
+ 4. 真頁面結果
+      activeLightCount = 4
+      activeLightIndex = [7, 8, 9, 10]
+      cloudPickRatio = 1
+      otherLightPickRatio = 0
+
+      directNeeAverageWeight = 1
+      directNeeAveragePdfRatio = 44993661.245384
+      directNeeAveragePnee = 7062341
+      directNeeAveragePbsdf = 0.156963
+      directNeeEventMass = 2057211.683012
+
+      bsdfHitAverageWeight = 0.264908
+      bsdfHitAveragePdfRatio = 1.6658
+      bsdfHitAveragePneeReverse = 4.042537
+      bsdfHitAveragePbsdf = 2.426785
+      bsdfHitEventMass = 6719.683012
+
+ 5. 判讀
+      C3 Cloud direct NEE 權重接近 1，沒有被 MIS 稀釋。
+      C3 Cloud BSDF-hit reverse 權重約 0.265，會被 MIS 壓低。
+      BSDF-hit eventMass 比 direct NEE eventMass 小很多。
+      目前證據指向：
+        C3 主要顆粒更像來自間接反彈 / 少量 BSDF-hit 路徑。
+        Cloud 抽燈名額不足與其他燈競爭可先排後。
+
+ 6. 下一步 SOP
+      A. 不優先改 direct NEE。
+      B. 先做 BSDF-hit / indirect isolation patch。
+      C. 候選方向：
+           提高間接段對 Cloud 的有效命中率。
+           或把 BSDF-hit reverse MIS 的 PDF 契約拆更細。
+      D. 每個候選改動都要先用 probe 量，再做 48 spp 肉眼驗收。
+```
+
+BSDF-hit contribution probe smoke（2026-05-05）：
+
+```text
+ 1. 新增目的
+      在原本 Cloud MIS weight probe 上補兩個 contribution 讀回模式：
+        directNeeContribution
+        bsdfHitContribution
+
+      目標是先量「實際亮度貢獻量」，再決定 BSDF-hit / indirect 要不要進 patch。
+
+ 2. 實作護欄
+      新增 uCloudContributionProbeMode，將 contribution 讀回跟原本 MIS weight / PDF 讀回分開。
+      mode = 0 時正常渲染維持原狀。
+      report 會輸出：
+        directNeeContributionMass
+        bsdfHitContributionMass
+        bsdfHitContributionAliasedToPdf
+        bsdfHitContributionReadbackReliable
+
+ 3. 真頁面 1 sample smoke
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-bsdf-hit-contribution-probe-v4
+      shaderFile = Home_Studio_Fragment.glsl?v=r6-3-cloud-bsdf-hit-contribution-probe-v2
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      activeLightIndex = [7, 8, 9, 10]
+      currentIndirectMultiplier = 1
+      currentMaxBounces = 14
+
+      directNeeContributionMass = 262644.639078
+      directNeeAverageContributionLuma = 0.5106808
+      directNeeAverageUnweightedContributionLuma = 0.7632675
+
+      bsdfHitContributionMass = 2798.411238
+      bsdfHitAverageContributionLuma = 1.6658
+      bsdfHitAverageUnweightedContributionLuma = 0.4120678
+      bsdfHitContributionAliasedToPdf = true
+      bsdfHitContributionPhysicallyPlausible = false
+      bsdfHitContributionReadbackReliable = false
+
+ 4. 判讀
+      directNeeContribution 讀回可用。
+      BSDF-hit contribution 讀回目前會跟 BSDF PDF channel 同形。
+      因此 BSDF-hit contribution 欄位目前只能當「讀回失敗警示」，不能拿來判斷畫面噪點或修法方向。
+
+ 5. 下一步 SOP
+      A. 先修 BSDF-hit contribution 讀回隔離。
+      B. 修好後重跑 reportCloudMisWeightProbeAfterSamples(1, 120000) smoke。
+      C. smoke 顯示 bsdfHitContributionReadbackReliable = true 後，再跑 4 samples。
+      D. 4 samples 通過後，再決定是否進 48 spp 肉眼 A/B。
+```
+
+BSDF-hit contribution sentinel v6 追查（2026-05-05）：
+
+```text
+ 1. 追查目的
+      使用者手動 report 顯示：
+        directNeeContribution 可讀。
+        bsdfHitContributionReadbackReliable = false。
+        bsdfHitContribution channel 仍與 BSDF PDF 同形。
+
+      因此新增 probe-only sentinel，先確認問題卡在哪一層。
+
+ 2. 新增 probe-only 模式
+      mode 7 = bsdfHitContributionSentinel
+        預期每個有效 BSDF-hit Cloud event 輸出：
+          r/g = 0.125
+          b/g = 0.5
+
+      mode 8 = probeUniformSentinel
+        預期整張圖輸出：
+          r/g = 0.25
+          b/g = 0.75
+
+      mode 9 = contributionUniformSentinel
+        預期整張圖輸出：
+          r/g = 0.375
+          b/g = 0.875
+
+ 3. 真頁面 1 sample smoke
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-bsdf-hit-contribution-sentinel-v6
+      shaderFile = Home_Studio_Fragment.glsl?v=r6-3-cloud-bsdf-hit-contribution-sentinel-v6
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      activeLightIndex = [7, 8, 9, 10]
+
+      probeUniformSentinelPass = true
+      contributionUniformSentinelPass = true
+      bsdfHitContributionSentinelPass = false
+
+      raw mode 7:
+        actualMisUniformMode = 7
+        actualContributionUniformMode = 3
+        channelMass = { r: 2798.411238, g: 1679.920753, b: 692.241295 }
+        averageContributionLuma = 1.6658
+        averageUnweightedContributionLuma = 0.4120678
+
+      normal report mode 6:
+        bsdfHitContributionAliasedToPdf = true
+        bsdfHitContributionPhysicallyPlausible = false
+        bsdfHitContributionReadbackReliable = false
+
+ 4. 判讀
+      mode 8 通過，代表主 probe mode uniform 與 readback 是活的。
+      mode 9 通過，代表 contribution uniform 與 readback 是活的。
+      mode 7 失敗，且 raw mode 7 仍讀成 BSDF PDF channel。
+      mode 3、mode 6、mode 7 目前都會讀到同一組 BSDF PDF 形狀。
+
+      可用結論：
+        direct Cloud NEE contribution 讀回可用。
+        BSDF-hit contribution 讀回仍不可用。
+        BSDF-hit contribution 欄位目前只能當故障警示，不能拿來判斷修法方向。
+
+ 5. 下一步 SOP
+      A. 先查 BSDF-hit probe readback 為何固定掉到 PDF channel。
+      B. 不准用 bsdfHitContributionMass 或 bsdfHitAverageContributionLuma 做亮度修法。
+      C. 修到 mode 7 sentinel 通過後，才恢復 mode 6 contribution 判讀。
+      D. mode 6 顯示 bsdfHitContributionReadbackReliable = true 後，再進 4 samples 與 48 spp 肉眼 A/B。
+```
+
+BSDF-hit terminal isolation v7 追查（2026-05-05）：
+
+```text
+ 1. 追查目的
+      v6 mode 7 讀到的 1.675999 形狀原先看似 BSDF PDF。
+      追加暫時 shader patch 後確認：
+        A. mode 7 放到 CalculateRadiance() 開頭可正確輸出 sentinel。
+        B. mode 8 / mode 9 uniform sentinel 仍正常。
+        C. 關掉非 Cloud 終端顏色後，mode 7 的 1.675999 假訊號消失。
+
+ 2. 根因
+      BSDF-hit mode3 / mode4 / mode6 / mode7 讀回混入正常畫面的終端顏色。
+      主要污染來源是：
+        A. BACKDROP branch 的貼圖顏色
+        B. LAMP_SHELL branch 的 specular terminal emission
+
+      因此 v6 的：
+        bsdfHitAverageWeight
+        bsdfHitAveragePdfRatio
+        bsdfHitContributionMass
+        bsdfHitAverageContributionLuma
+      都不可用。
+
+ 3. v7 修法
+      probe mode 開啟時，禁止上述非 Cloud 終端顏色寫入 readback：
+        if (hitType == BACKDROP) 且 uCloudMisWeightProbeMode > 0 時直接 break。
+        if (hitType == LAMP_SHELL && bounceIsSpecular == TRUE) 且 uCloudMisWeightProbeMode > 0 時直接 break。
+
+      JS 判讀同步補強：
+        A. zero-event BSDF PDF 不再算 alias。
+        B. null PDF ratio 不再推導成 BSDF weight = 1。
+        C. sentinel report 增加：
+             bsdfHitContributionSentinelNoEvent
+             bsdfHitContributionSentinelContaminated
+
+ 4. 真頁面 v7 smoke
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-bsdf-hit-terminal-isolation-v7
+      shaderFile = Home_Studio_Fragment.glsl?v=r6-3-cloud-bsdf-hit-terminal-isolation-v7
+
+      reportCloudBsdfContributionSentinelAfterSamples(1, 120000):
+        probeUniformSentinelPass = true
+        contributionUniformSentinelPass = true
+        bsdfHitContributionSentinelPass = false
+        bsdfHitContributionSentinelNoEvent = true
+        bsdfHitContributionSentinelContaminated = false
+        mode7 eventMass = 0
+
+      reportCloudMisWeightProbeAfterSamples(1, 120000):
+        directNeeAverageWeight = 1
+        directNeeAveragePdfRatio = 45951758.143125
+        directNeeContributionMass = 259846.227839
+        bsdfHitAverageWeight = null
+        bsdfHitEventMass = 0
+        bsdfHitAveragePdfRatio = null
+        bsdfHitContributionMass = 0
+        bsdfHitContributionObserved = false
+        bsdfHitPdfObserved = false
+        bsdfHitContributionAliasedToPdf = false
+        bsdfHitContributionReadbackReliable = false
+
+ 5. 判讀
+      v7 已清掉 BSDF-hit probe 的假訊號。
+      目前 1 isolated sample 沒觀察到真正的 BSDF-hit Cloud event。
+      所以現在不能用 BSDF-hit contribution 欄位做亮度修法。
+
+ 6. 下一步 SOP
+      A. 增加 isolated samples，確認真 BSDF-hit event 是否只是太少。
+      B. 若仍沒有 event，新增 forced-BSDF-hit probe。
+      C. forced probe 能穩定打進 Cloud 後，再恢復 mode6 contribution 判讀。
+      D. mode6 真的觀察到 event 且 readbackReliable = true 後，再進 4 samples 與 48 spp 肉眼 A/B。
+```
+
+Forced BSDF-hit probe v8b（2026-05-05）：
+
+```text
+ 1. 新增目的
+      v7 已清掉 BSDF-hit probe 的終端顏色污染。
+      使用者實測 1 samples 與 4 samples 都沒有自然 BSDF-hit Cloud event：
+        bsdfHitEventMass = 0
+        bsdfHitContributionReadbackReliable = false
+
+      因此新增 forced analytic BSDF-hit probe：
+        reportForcedCloudBsdfHitProbeAfterSamples()
+
+      目的不是量自然命中頻率。
+      目的只是在 probe-only 路徑強制產生一個 Cloud BSDF-hit 分析樣本，
+      先確認 BSDF-hit 權重 / PDF / contribution 編碼與 readback 能穩定工作。
+
+ 2. 實作護欄
+      新增 mode labels：
+        10 = forcedBsdfHitSentinel
+        11 = forcedBsdfHitContribution
+        12 = forcedBsdfHitPdf
+        13 = forcedBsdfHitWeight
+
+      forced helper：
+        cloudMisWeightProbeForcedBsdfHit()
+
+      scope：
+        forcedAnalyticBsdfHitIgnoresOcclusion = true
+
+      這代表它只測「如果 BSDF-hit 到 Cloud，PDF / 權重 / contribution 怎麼算」。
+      它不測自然隨機樣本多久會打到 Cloud。
+
+ 3. 真頁面條件
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-forced-bsdf-hit-v8b
+      shaderFile = Home_Studio_Fragment.glsl?v=r6-3-cloud-forced-bsdf-hit-v8b
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      activeLightIndex = [7, 8, 9, 10]
+
+ 4. 真頁面結果
+      reportForcedCloudBsdfHitProbeAfterSamples(1, 120000):
+        forcedBsdfHitEventObserved = true
+        forcedSentinelPass = true
+        forcedBsdfHitAverageWeight = 0.004869
+        forcedBsdfHitDerivedWeightFromAveragePdfRatio = 0
+        forcedBsdfHitWeightChannelAverage = 0.004869
+        forcedBsdfHitAveragePdfRatio = 1639.395956
+        forcedBsdfHitContributionMass = 69711.185801
+        forcedBsdfHitAverageContributionLuma = 0.1665238
+        forcedBsdfHitAverageUnweightedContributionLuma = 38.55344
+
+      same page natural report:
+        directNeeAverageWeight = 1
+        directNeeAveragePdfRatio = 43637709.640688
+        directNeeEventMass = 1058252
+        directNeeContributionMass = 1214002.240876
+        bsdfHitAverageWeight = null
+        bsdfHitAveragePdfRatio = null
+        bsdfHitEventMass = 0
+        bsdfHitContributionMass = 0
+        bsdfHitContributionReadbackReliable = false
+
+ 5. 判讀
+      forced probe 已能穩定打進 Cloud BSDF-hit 分析路徑。
+      sentinel 通過，代表 forced BSDF-hit branch 與 readback 活著。
+      自然 4 samples 仍沒有 BSDF-hit event，代表自然命中頻率極低或目前樣本太少。
+
+      forced path 的權重很低：
+        forcedBsdfHitAverageWeight = 0.004869
+
+      PDF 比值很大：
+        forcedBsdfHitAveragePdfRatio = 1639.395956
+
+      注意：
+        forcedBsdfHitDerivedWeightFromAveragePdfRatio = 0
+      這是因為「先平均 PDF ratio 再推權重」會被極端比值壓到 6 位小數以下。
+      目前以 forcedBsdfHitWeightChannelAverage / forcedBsdfHitAverageWeight 為主要判讀。
+
+ 6. 下一步 SOP
+      A. 不回頭使用 v6 / v7 之前的 bsdfHitAverageWeight 舊污染讀值。
+      B. 先把自然 BSDF-hit 稀有程度量清楚：
+           增加 isolated samples，或新增自然事件計數專用 probe。
+      C. 若自然事件長期接近 0：
+           C3 早期髒感主因更可能是 direct NEE 可見性 / 間接 diffuse cleanup tail，
+           而不是大量 BSDF-hit contribution。
+      D. 若自然事件在更高 samples 才出現：
+           用 forced v8b 的 PDF / 權重欄位當公式參考，再設計自然 event histogram。
+```
+
+Natural BSDF-hit frequency probe v9（2026-05-05）：
+
+```text
+ 1. 新增目的
+      v8b 已證明：
+        A. forced BSDF-hit probe 可以穩定打進 Cloud BSDF-hit 分析路徑。
+        B. forced BSDF-hit 權重很低。
+        C. 但 forced probe 不量自然出現頻率。
+
+      因此 v9 新增：
+        reportNaturalCloudBsdfHitFrequencyAfterSamples()
+
+      目標是直接回答：
+        自然隨機渲染裡，Cloud BSDF-hit 到底多久出現一次。
+
+ 2. 實作護欄
+      使用既有自然 sentinel mode：
+        mode 7 = bsdfHitContributionSentinel
+
+      先跑 forced mode 10 當參考：
+        forcedReferencePass 必須為 true。
+
+      再跑自然 sentinel plan：
+        [1, 4, 16, 64]
+
+      報告欄位：
+        naturalBsdfHitFrequencyPlan
+        naturalBsdfHitObserved
+        naturalBsdfHitFirstObservedAtSamples
+        naturalBsdfHitNoEventUpToSamples
+        naturalBsdfHitEventMass
+        naturalBsdfHitEventsPerIsolatedSample
+        naturalBsdfHitEventRatePerPixelSample
+
+ 3. 真頁面條件
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-natural-bsdf-frequency-v9
+      shaderFile = Home_Studio_Fragment.glsl?v=r6-3-cloud-natural-bsdf-frequency-v9
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      activeLightIndex = [7, 8, 9, 10]
+
+ 4. 真頁面結果
+      reportNaturalCloudBsdfHitFrequencyAfterSamples([1, 4, 16, 64], 120000):
+        forcedReferencePass = true
+        naturalBsdfHitObserved = false
+        naturalBsdfHitFirstObservedAtSamples = null
+        naturalBsdfHitNoEventUpToSamples = 64
+        naturalBsdfHitEventMass = 0
+        naturalBsdfHitEventsPerIsolatedSample = 0
+        naturalBsdfHitEventRatePerPixelSample = 0
+
+      rows:
+        1 samples  -> eventMass = 0, noEvent = true, contaminated = false
+        4 samples  -> eventMass = 0, noEvent = true, contaminated = false
+        16 samples -> eventMass = 0, noEvent = true, contaminated = false
+        64 samples -> eventMass = 0, noEvent = true, contaminated = false
+
+      same page forced reference:
+        forcedBsdfHitEventObserved = true
+        forcedSentinelPass = true
+        forcedBsdfHitAverageWeight = 0.004869
+        forcedBsdfHitAveragePdfRatio = 1639.395956
+        forcedBsdfHitContributionMass = 69711.185801
+        forcedBsdfHitAverageContributionLuma = 0.1665238
+        forcedBsdfHitAverageUnweightedContributionLuma = 38.55344
+
+ 5. 判讀
+      forcedReferencePass = true，代表工具與讀回仍正常。
+      自然 sentinel 到 64 isolated samples 仍是 0 event。
+      這代表 Cloud BSDF-hit 在目前 C3 / cam1 條件下非常稀有。
+
+      因此：
+        A. 不應再把 v6 / v7 之前的 bsdfHitAverageWeight 舊污染讀值當依據。
+        B. Cloud BSDF-hit 不適合當目前 C3 早期髒點主嫌。
+        C. 下一輪優先回到 direct NEE 可見性、間接 diffuse cleanup tail、或其他自然頻率較高的路徑。
+
+ 6. 下一步 SOP
+      A. 若還要保留 BSDF-hit 線，最多跑更大的自然 plan：
+           [128, 256]
+         但 ROI 變低。
+
+      B. 主線建議改查：
+           direct NEE 可見 / 不可見事件的貢獻分布
+           indirect diffuse tail 的空間分布
+           8 / 16 / 48 spp 亮點座標是否固定
+
+      C. 每一條新線仍要維持：
+           probe-only
+           normal render mode = 0
+           先量測，再做肉眼 A/B
+```
+
+Direct NEE screen-band probe v10（2026-05-05）：
+
+```text
+ 1. 新增目的
+      使用者追問早期觀察：
+        Cloud 打出去的光靠近畫面上方時，髒感比較重。
+
+      v9 已把自然 Cloud BSDF-hit 降優先度：
+        naturalBsdfHitEventMass = 0
+        naturalBsdfHitNoEventUpToSamples = 64
+
+      因此 v10 回到 direct NEE：
+        reportCloudDirectNeeScreenBandProbeAfterSamples()
+
+      目標：
+        把畫面分成 top / upperMid / lowerMid / bottom 四段，
+        直接量 Cloud direct NEE contribution 是否集中在畫面上方。
+
+ 2. 實作護欄
+      JS-only helper，沿用既有 mode 5：
+        directNeeContribution
+
+      沒有修改 normal render。
+      沒有新增 shader branch。
+      新增 uniform sentinel 分帶檢查：
+        uniformBandSentinelPass
+
+      若 uniform sentinel 通過，代表分帶讀回方向與 buffer 對齊。
+
+ 3. 真頁面條件
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-direct-nee-screen-bands-v10
+      shaderFile = Home_Studio_Fragment.glsl?v=r6-3-cloud-direct-nee-screen-bands-v10
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      activeLightIndex = [7, 8, 9, 10]
+
+ 4. 真頁面結果
+      reportCloudDirectNeeScreenBandProbeAfterSamples(64, 120000):
+        uniformBandSentinelPass = true
+        directNeeTotal.eventMass = 16932032
+        directNeeTotal.contributionMass = 19424035.854042
+        directNeeTotal.averageContributionLuma = 1.147177
+
+      top:
+        eventMass = 5296448
+        contributionMass = 10593673.056151
+        averageContributionLuma = 2.000147
+        contributionShare = 0.54539
+        eventShare = 0.312806
+        averageContributionLift = 1.743538
+
+      upperMid:
+        eventMass = 5834432
+        contributionMass = 5199963.20296
+        averageContributionLuma = 0.8912544
+        contributionShare = 0.267708
+        eventShare = 0.34458
+
+      lowerMid:
+        eventMass = 3266752
+        contributionMass = 1717297.169004
+        averageContributionLuma = 0.5256895
+        contributionShare = 0.088411
+        eventShare = 0.192933
+
+      bottom:
+        eventMass = 2534400
+        contributionMass = 1913102.425926
+        averageContributionLuma = 0.7548542
+        contributionShare = 0.098491
+        eventShare = 0.149681
+
+      derived:
+        topVsBottomAverageContributionRatio = 2.649713
+        topContributionLiftVsEvents = 1.743541
+        topBandContributionDominatesEvents = true
+        topAverageContributionDominatesBottom = true
+
+      BSDF frequency regression on same page:
+        forcedReferencePass = true
+        naturalBsdfHitObserved = false
+        naturalBsdfHitNoEventUpToSamples = 64
+        naturalBsdfHitEventMass = 0
+
+ 5. 判讀
+      這次取得新的可量化證據：
+        top 1/4 畫面只佔約 31.3% direct NEE events，
+        卻佔約 54.5% direct NEE weighted contribution。
+
+      top 每次事件平均亮度約為 bottom 的 2.65 倍。
+
+      所以上方髒感路線目前指向：
+        direct NEE contribution spatial concentration
+
+      這比繼續追自然 BSDF-hit 更有價值，因為同頁 v9 regression 仍是 0 event。
+
+ 6. 下一步 SOP
+      A. 先用使用者 Console 驗收 v10：
+           await reportCloudDirectNeeScreenBandProbeAfterSamples(64, 120000)
+
+      B. 驗收重點：
+           uniformBandSentinelPass 要是 true。
+           topContributionShare 約 0.545。
+           topEventShare 約 0.313。
+           topVsBottomAverageContributionRatio 約 2.65。
+
+      C. 下一輪建議：
+           針對 top band 做 hotspot / percentile probe，
+           再決定要做 Cloud direct NEE 多樣本、分層抽樣，或保留物理亮度但加快收斂。
+```
+
+Direct NEE screen-band probe v10 使用者驗收補記（2026-05-05）：
+
+```text
+ 1. 使用者真頁面驗收
+      command:
+        await reportCloudDirectNeeScreenBandProbeAfterSamples(64, 120000)
+
+      script token:
+        Home_Studio.js?v=r6-3-cloud-direct-nee-screen-bands-v10
+
+      table:
+        top:
+          eventMass = 34439808
+          contributionMass = 42246025.511841
+          averageContributionLuma = 1.226663
+          contributionShare = 0.593603
+          eventShare = 0.262761
+          averageContributionLift = 2.259101
+
+        upperMid:
+          eventMass = 38079488
+          contributionMass = 16611670.949211
+          averageContributionLuma = 0.4362367
+          contributionShare = 0.233412
+          eventShare = 0.29053
+          averageContributionLift = 0.803401
+
+        lowerMid:
+          eventMass = 30555136
+          contributionMass = 6098551.40605
+          averageContributionLuma = 0.1995917
+          contributionShare = 0.085691
+          eventShare = 0.233122
+          averageContributionLift = 0.367581
+
+        bottom:
+          eventMass = 27994688
+          contributionMass = 6212613.045704
+          averageContributionLuma = 0.2219211
+          contributionShare = 0.087294
+          eventShare = 0.213587
+          averageContributionLift = 0.408704
+
+      derived:
+        topVsBottomAverageContributionRatio = 5.527474
+        topContributionLiftVsEvents = 2.259099
+
+ 2. 使用者追問後的判讀修正
+      使用者指出：
+        Cloud 燈具本來在上方，上方自然會比較亮。
+        Cloud 燈條很細，直射光自然也容易變成少數樣本。
+
+      因此 v10 的結論要收斂成：
+        A. v10 支持「上方 direct NEE 貢獻集中」。
+        B. 這個現象符合細長燈條的物理直覺。
+        C. v10 本身不構成修法依據。
+        D. 下一步要量的是「少數高亮樣本是否拖慢早期收斂」。
+
+ 3. probe 目前看的是什麼
+      mode 5 / reportCloudDirectNeeScreenBandProbeAfterSamples() 量的是：
+        Cloud direct NEE hit 事件。
+        事件必須命中 Cloud rod。
+        contribution 會包含接收點的 path mask 與 wNee。
+        分帶依最後畫面 pixel 的位置切 top / upperMid / lowerMid / bottom。
+
+      目前尚未拆開：
+        primary-surface Cloud NEE
+        bounced-surface Cloud NEE
+
+      這代表 v10 已經看進接收者 path mask，
+      但還不能回答「第一次看到的表面」與「反彈後表面」各自佔多少。
+
+ 4. 需要避開的地雷
+      A. 不把「上方比較亮」當成 bug。
+      B. 不把 v10 解讀成 Cloud 亮度公式錯。
+      C. 不回頭使用 v7 前 BSDF-hit 污染讀值。
+      D. 不重跑 Phase 1A / 1B target-shape no-go 路線。
+      E. 不先上大型後處理遮掉現象。
+
+ 5. 目前 ROI 最高項目
+      第一順位：
+        top band hotspot / percentile probe
+
+      要量：
+        p50 / p90 / p99 / max contribution
+        top band 裡少數樣本是否主導 contributionMass
+
+      第二順位：
+        direct NEE diffuseCount split probe
+
+      要分：
+        primary-surface Cloud NEE
+        bounced-surface Cloud NEE
+
+      判讀：
+        primary 主導 → 細長燈條 direct sampling 問題。
+        bounced 主導 → indirect diffuse cleanup tail 問題。
+
+ 6. 未來實驗路徑
+      A. 先做 top band hotspot / percentile probe。
+      B. 再做 primary / bounced split。
+      C. 依結果選 Cloud direct NEE 多抽、4 rod 分層輪抽，或 indirect cleanup tail 追查。
+      D. 每次修法只做最小 A/B。
+      E. 驗收看 8 / 16 / 48 spp，並確認 1024 spp 不偏離既有畫面。
+```
+
+Direct NEE top-band percentile probe v11（2026-05-05）：
+
+```text
+ 1. 新增目的
+      v10 已確認 top 1/4 畫面的 Cloud direct NEE weighted contribution 高度集中。
+      使用者提醒：Cloud 燈具本來就在上方，上方較亮符合物理直覺。
+
+      因此 v11 的問題改成：
+        top band 裡面，是整段一起偏亮，
+        還是少數超亮 direct NEE events 拉高平均值。
+
+ 2. 實作護欄
+      新增 JS-only helper：
+        reportCloudDirectNeeTopBandPercentileProbeAfterSamples()
+
+      沿用既有 mode 5：
+        directNeeContribution
+
+      沒有新增 shader branch。
+      沒有修改 normal render。
+      新增 uniformTopBandSentinelPass，確認 top band readback 與 contribution encoding 正常。
+
+      分位數使用 log2 histogram 估算：
+        p50 / p90 / p99 / max
+
+ 3. 真頁面條件
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-direct-nee-top-band-percentiles-v11
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+      targetSamples = 64
+
+ 4. 真頁面結果
+      reportCloudDirectNeeTopBandPercentileProbeAfterSamples(64, 120000):
+        version = r6-3-phase2-cloud-direct-nee-top-band-percentiles-v11
+        analysisScope = cloudDirectNeeTopBandPercentileProbe
+        renderPathMutation = false
+        probeShaderMutation = false
+        normalRenderProbeMode = 0
+        uniformTopBandSentinelPass = true
+
+      topBand:
+        activePixels = 5296448
+        eventMass = 5296448
+        contributionMass = 10593673.056151
+        averageContributionLuma = 2.000147
+        averageUnweightedContributionLuma = 3.071524
+
+      topBandContributionPercentiles:
+        method = log2Histogram
+        p50 = 0.1886456
+        p90 = 4.087589
+        p99 = 38.88792
+        max = 165.7287
+        min = 0
+
+      ratios:
+        topBandP90ToP50Ratio = 21.668086
+        topBandP99ToP50Ratio = 206.142735
+        topBandHotspotDominanceRatio = 878.518767
+        topBandHotspotDominatesMedian = true
+        topBandP99DominatesMedian = true
+
+ 5. 判讀
+      top band 的典型 direct NEE event 偏低：
+        p50 = 0.1886456
+
+      top band 的亮尾端非常高：
+        p99 = 38.88792
+        max = 165.7287
+
+      p99 約為 p50 的 206 倍。
+      max 約為 p50 的 879 倍。
+
+      這輪結果支持：
+        C3 Cloud 上方早期髒感主要來自少數超亮 direct NEE events。
+
+      這輪結果也表示：
+        v10 的 top contribution concentration 具有明顯亮尾端。
+        目前要追「哪些 surface / bounce state 產生這些超亮 direct NEE events」。
+
+ 6. 下一步 SOP
+      A. 做 direct NEE diffuseCount split probe。
+      B. 把 Cloud direct NEE 分成：
+           primary-surface Cloud NEE
+           bounced-surface Cloud NEE
+      C. 若 primary 主導：
+           先試 Cloud direct NEE 多抽 / 4 rod 分層輪抽 / top band targeted sampling。
+      D. 若 bounced 主導：
+           先查天花板 / 牆面 indirect diffuse cleanup tail。
+      E. 每個候選修法仍維持：
+           probe-only 先量測
+           再做 8 / 16 / 48 spp 肉眼 A/B
+           1024 spp 不偏離既有畫面
+```
+
+Direct NEE diffuseCount split probe v12（2026-05-05）：
+
+```text
+ 1. 新增目的
+      v11 已確認 top band 有少數超亮 direct NEE events。
+
+      v12 的問題是：
+        這些 Cloud direct NEE 貢獻主要發生在第一次看到的表面，
+        還是反彈後才看到的表面。
+
+ 2. 實作護欄
+      新增 helper：
+        reportCloudDirectNeeDiffuseCountSplitProbeAfterSamples()
+
+      量測分成三組：
+        allDirectNeeContribution
+        primaryDirectNeeContribution
+        bouncedDirectNeeContribution
+
+      probe branch 使用：
+        uCloudContributionProbeMode = 4 → diffuseCount == 0
+        uCloudContributionProbeMode = 5 → diffuseCount >= 1
+
+      normal render 維持：
+        normalRenderProbeMode = 0
+        renderPathMutation = false
+
+      shader 只新增 probe-only 分流。
+
+ 3. 真頁面條件
+      pageUrl = http://127.0.0.1:9004/Home_Studio.html
+      scriptSrc = js/Home_Studio.js?v=r6-3-cloud-direct-nee-diffuse-count-split-v12
+      currentPanelConfig = 3
+      currentCameraPreset = cam1
+
+ 4. 真頁面結果
+      reportCloudDirectNeeDiffuseCountSplitProbeAfterSamples(8, 120000):
+        version = r6-3-phase2-cloud-direct-nee-diffuse-count-split-v12
+        analysisScope = cloudDirectNeeDiffuseCountSplitProbe
+        renderPathMutation = false
+        probeShaderMutation = true
+        normalRenderProbeMode = 0
+        targetSamples = 8
+
+      allDirectNeeContribution:
+        activePixels = 2116504
+        eventMass = 2116504
+        contributionMass = 2428004.481752
+        averageContributionLuma = 1.147177
+        averageUnweightedContributionLuma = 1.759664
+
+      primaryDirectNeeContribution:
+        activePixels = 0
+        eventMass = 0
+        contributionMass = 0
+
+      bouncedDirectNeeContribution:
+        activePixels = 2116504
+        eventMass = 2116504
+        contributionMass = 2428004.481752
+        averageContributionLuma = 1.147177
+        averageUnweightedContributionLuma = 1.759664
+
+      ratios:
+        primaryContributionShare = 0
+        bouncedContributionShare = 1
+        primaryVsBouncedContributionRatio = 0
+        splitVsAllContributionRatio = 1
+        splitMassMatchesAllContribution = true
+        dominantDirectNeeSurfaceClass = bouncedSurface
+        recommendedNextStep = inspectIndirectDiffuseCloudNeeTail
+
+      使用者端 Console 驗收補記：
+        command = await reportCloudDirectNeeDiffuseCountSplitProbeAfterSamples(8, 120000)
+        script token = Home_Studio.js?v=r6-3-cloud-direct-nee-diffuse-count-split-v12
+        allContributionMass = 8896107.614104
+        primaryContributionMass = 0
+        bouncedContributionMass = 8896107.614104
+        splitContributionMass = 8896107.614104
+        primaryContributionShare = 0
+        bouncedContributionShare = 1
+        primaryVsBouncedContributionRatio = 0
+        splitVsAllContributionRatio = 1
+        dominantDirectNeeSurfaceClass = bouncedSurface
+
+ 5. 判讀
+      8 samples 下，Cloud direct NEE contribution 全部落在 bounced-surface 分流。
+
+      splitVsAllContributionRatio = 1，代表 primary + bounced 分流總量與 all direct NEE 相符。
+
+      使用者端驗收與自動化實頁驗證比例一致：
+        primary = 0
+        bounced = 1
+        split/all = 1
+
+      目前最高 ROI 已從 Cloud direct NEE primary sampling 轉到：
+        indirect diffuse cleanup tail
+
+ 6. 下一步 SOP
+      A. 做 bounced direct NEE hotspot / surface-class probe。
+      B. 優先分辨是天花板、北牆、東牆、西牆或 acoustic panel 拉出亮尾端。
+      C. 若單一表面類別主導：
+           先做局部 sampling / clamp candidate。
+      D. 若多表面平均分散：
+           先查 indirect diffuse path mask 分布。
+      E. 每個候選修法仍維持：
+           probe-only 先量測
+           8 / 16 / 48 spp 肉眼 A/B
+           1024 spp 不偏離既有畫面
+```
+
+Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
+
+```text
+ 1. 觸發原因
+      使用者看圖指出：
+        髒點看起來地板與 GIK 板最多。
+
+      v12 已確認 C3 Cloud direct NEE contribution 全部落在 bounced-surface。
+      因此先做 floor + GIK priority probe，再把剩餘 otherSurface 拆成 ceiling / wall / object。
+
+ 2. v13 floor/GIK priority probe
+      新增 helper：
+        reportCloudBouncedDirectNeeFloorGikProbeAfterSamples()
+
+      分類：
+        floorBouncedSurface = uCloudContributionProbeMode 6
+        gikBouncedSurface = uCloudContributionProbeMode 7
+        otherBouncedSurface = uCloudContributionProbeMode 8
+
+      實頁條件：
+        pageUrl = http://127.0.0.1:9004/Home_Studio.html
+        scriptSrc = js/Home_Studio.js?v=r6-3-cloud-bounced-nee-floor-gik-v13
+        currentPanelConfig = 3
+        currentCameraPreset = cam1
+        targetSamples = 1
+
+      實頁結果：
+        bouncedContributionMass = 303500.560219
+        floorContributionMass = 174.911961
+        gikContributionMass = 1474.276134
+        otherContributionMass = 301851.372125
+        floorContributionShare = 0.000576
+        gikContributionShare = 0.004858
+        otherContributionShare = 0.994566
+        floorPlusGikContributionShare = 0.005434
+        classifiedVsBouncedContributionRatio = 1
+        dominantBouncedDirectNeeReceiverClass = otherSurface
+
+      判讀：
+        使用者肉眼看到地板 / GIK 板附近髒。
+        但 energy contribution 主體落在 otherSurface。
+        需要把 otherSurface 再拆細。
+
+ 3. v14 receiver-class probe
+      新增 helper：
+        reportCloudBouncedDirectNeeReceiverClassProbeAfterSamples()
+
+      分類：
+        floor = uCloudContributionProbeMode 6
+        gikPanel = uCloudContributionProbeMode 7
+        ceiling = uCloudContributionProbeMode 9
+        wall = uCloudContributionProbeMode 10
+        object = uCloudContributionProbeMode 11
+
+      實頁條件：
+        pageUrl = http://127.0.0.1:9004/Home_Studio.html
+        scriptSrc = js/Home_Studio.js?v=r6-3-cloud-bounced-nee-receiver-class-v14
+        currentPanelConfig = 3
+        currentCameraPreset = cam1
+        targetSamples = 4
+
+      實頁結果：
+        bouncedContributionMass = 1214002.240876
+        classifiedContributionMass = 1214002.240876
+        classifiedVsBouncedContributionRatio = 1
+
+        classMasses:
+          floor = 699.647844
+          gikPanel = 5897.104536
+          ceiling = 771758.441084
+          wall = 417358.017508
+          object = 18289.029904
+
+        receiverClassShares:
+          floor = 0.000576
+          gikPanel = 0.004858
+          ceiling = 0.635714
+          wall = 0.343787
+          object = 0.015065
+
+        dominantBouncedDirectNeeReceiverClass = ceiling
+        dominantReceiverClassContributionShare = 0.635714
+        recommendedNextStep = testCeilingBouncedNeeCleanupCandidate
+
+ 4. 白話判讀
+      看圖最髒的位置像是在地板與 GIK 板。
+      量測顯示製造 Cloud bounced direct NEE 亮尾端的主要接收面是 ceiling，其次是 wall。
+
+      目前比例：
+        ceiling 約 63.6%
+        wall 約 34.4%
+        floor + GIK 約 0.54%
+
+      這代表：
+        畫面髒點會出現在地板 / GIK 板附近，
+        但高亮 contribution 的主要來源是天花板與牆面接收 Cloud 後的 bounced NEE。
+
+ 4b. 使用者修正與判讀降級
+      使用者指出：
+        反彈光總 contribution 最大來自天花板，其次是牆壁，這符合直覺。
+        這和「地板 / GIK 可見螢火蟲很多」是不同問題。
+
+      因此 v14 判讀降級為：
+        A. receiver-class probe 證明分類讀值路徑有接對。
+        B. classifiedVsBouncedContributionRatio = 1 主要是儀器檢查。
+        C. ceiling / wall 佔比最大主要確認常識與分類沒有明顯錯位。
+        D. v14 沒有回答地板 / GIK 可見 firefly 密度。
+
+      後續規則：
+        如果 probe 只是確認 uniform、cache-bust、readback、分類加總或分類是否錯位，
+        必須在回報中明講「這是儀器檢查」。
+        不得把儀器檢查無限上綱成任務已解決。
+        需要另做 visible-surface firefly / hotspot probe，依第一眼可見表面分類異常高亮點。
+
+ 4c. v15 visible-surface hotspot probe
+      新增 helper：
+        reportCloudVisibleSurfaceHotspotProbeAfterSamples()
+
+      分類：
+        floor = uCloudContributionProbeMode 12 / visiblePixelMode 17
+        gikPanel = uCloudContributionProbeMode 13 / visiblePixelMode 18
+        ceiling = uCloudContributionProbeMode 14 / visiblePixelMode 19
+        wall = uCloudContributionProbeMode 15 / visiblePixelMode 20
+        object = uCloudContributionProbeMode 16 / visiblePixelMode 21
+
+      實頁條件：
+        pageUrl = http://127.0.0.1:9004/Home_Studio.html
+        scriptSrc = js/Home_Studio.js?v=r6-3-cloud-visible-surface-hotspot-v15
+        currentPanelConfig = 3
+        currentCameraPreset = cam1
+        targetSamples = 8
+
+      實頁結果：
+        dominantVisibleSurfaceHotspotClass = ceiling
+        dominantVisibleSurfaceHotspotDensity = 0.079704
+        floorGikHotspotPixelDensity = 0.036074
+        floorGikHotspotPixelCount = 73616
+        floorGikVisiblePixelSamples = 2040704
+
+        ceiling:
+          hotspotPixelDensity = 0.079704
+          p50 = 0.1454656
+          p99 = 52.66418
+          max = 67.18923
+          maxToP50Ratio = 461.890853
+
+        wall:
+          hotspotPixelDensity = 0.057561
+          p50 = 0.1074137
+          p99 = 12.07332
+          max = 165.7287
+          maxToP50Ratio = 1542.900952
+
+        gikPanel:
+          hotspotPixelDensity = 0.043426
+          p50 = 0.01231235
+          p99 = 6.303923
+          max = 58.44717
+          maxToP50Ratio = 4747.036106
+
+        object:
+          hotspotPixelDensity = 0.039702
+          p50 = 0.02804233
+          p99 = 7.496671
+          max = 124.8972
+          maxToP50Ratio = 4453.880972
+
+        floor:
+          hotspotPixelDensity = 0.023925
+          p50 = 0.06116075
+          p99 = 26.33209
+          max = 82.06091
+          maxToP50Ratio = 1341.725044
+
+      判讀：
+        以每個可見像素的異常高亮密度看，天花板最高，牆面第二。
+        GIK 板密度第三，但 maxToP50Ratio 最高。
+        白話說：GIK 板平常偏暗，亮點一冒出來就特別刺眼，所以肉眼會覺得它很髒。
+        地板也有亮點，但每個可見像素的異常高亮密度最低。
+
+      限制：
+        targetSamples = 8 與 targetSamples = 4 呈現等倍放大。
+        目前 v15 可用來比較同一張隔離樣本內的表面排序。
+        目前不能拿來證明跨隨機樣本的穩定性。
+        若下一步要確認穩定性，需要補能推進隨機樣本的讀回方式。
+
+ 4d. v16 dark visible-surface source probe
+      新增 helper：
+        reportCloudDarkVisibleSurfaceHotspotSourceProbeAfterSamples()
+
+      目的：
+        只看肉眼髒的暗表面 floor / GIK。
+        拆它們的亮點是由哪一類反彈來源製造。
+
+      實頁條件：
+        pageUrl = http://127.0.0.1:9004/Home_Studio.html
+        scriptSrc = js/Home_Studio.js?v=r6-3-cloud-dark-visible-source-v16
+        currentPanelConfig = 3
+        currentCameraPreset = cam1
+        targetSamples = 4
+
+      共同可見表面門檻：
+        floor = 0.6116075
+        gikPanel = 0.1231235
+
+      實頁結果：
+        dominantDarkVisibleSurfaceHotspotSource:
+          visibleSurface = gikPanel
+          sourceSurface = ceiling
+          absoluteHotspotPixelDensity = 0.016336
+
+        groupedByVisibleSurface:
+          floor:
+            dominantSourceSurface = ceiling
+            dominantSourceAbsoluteHotspotPixelDensity = 0.015659
+
+          gikPanel:
+            dominantSourceSurface = ceiling
+            dominantSourceAbsoluteHotspotPixelDensity = 0.016336
+
+        floor 來源排序：
+          ceiling = 0.015659
+          wall = 0.007882
+          object = 0.00025
+          gikPanel = 0.000135
+          floor = 0
+
+        GIK 來源排序：
+          ceiling = 0.016336
+          wall = 0.01324
+          gikPanel = 0.012799
+          object = 0.001051
+          floor = 0
+
+      判讀：
+        天花板可見表面本身不一定異常。
+        但天花板作為反彈來源時，確實會在 GIK / 地板暗表面製造尖峰亮點。
+        牆面是第二來源。
+        因此修法不應壓天花板本身，應壓「暗可見表面上，由天花板 / 牆面來源造成的尖峰」。
+
+ 4e. v16 dark visible-surface cleanup candidate
+      新增 helper：
+        setCloudDarkSurfaceCleanupCandidate()
+        reportCloudDarkSurfaceCleanupCandidateAfterSamples()
+
+      候選範圍：
+        visible surface = floor 或 GIK
+        source surface = ceiling 或 wall
+        clamp luma = 1.0
+        default = off
+
+      實頁條件：
+        reportCloudDarkSurfaceCleanupCandidateAfterSamples(4, 120000, 1.0)
+
+      結果：
+        floor:
+          baselineHotspotPixelDensity = 0.023925
+          candidateHotspotPixelDensity = 0.023925
+          hotspotDensityReductionRatio = 0
+          baselineP99 = 26.33209
+          candidateP99 = 1.021897
+          p99ReductionRatio = 0.961192
+          baselineMax = 82.06091
+          candidateMax = 5.912088
+          maxReductionRatio = 0.927955
+
+        gikPanel:
+          baselineHotspotPixelDensity = 0.043426
+          candidateHotspotPixelDensity = 0.043426
+          hotspotDensityReductionRatio = 0
+          baselineP99 = 6.303923
+          candidateP99 = 1.021897
+          p99ReductionRatio = 0.837895
+          baselineMax = 58.44717
+          candidateMax = 1.867045
+          maxReductionRatio = 0.968056
+
+        ceiling / wall / object:
+          p99ReductionRatio = 0
+          maxReductionRatio = 0
+
+      判讀：
+        這個候選沒有減少亮點顆數。
+        它降低的是亮點尖銳程度。
+        目前數據顯示對 floor / GIK 的 p99 與 max 有明顯壓制。
+        目前數據顯示可見 ceiling / wall / object 未被影響。
+
+      低 SPP 圖面驗證：
+        已輸出：
+          /private/tmp/home_studio_cleanup_off_16spp.png
+          /private/tmp/home_studio_cleanup_on_16spp.png
+
+      下一步：
+        使用者肉眼檢查 8 / 16 / 48 SPP。
+        若接受，再跑 256 / 1024 SPP 高採樣保護。
+
+ 4f. 使用者肉眼 no-go 與方向修正
+      使用者回報：
+        v16 cleanup candidate 雖然消掉部分亮點，
+        但 GIK 變土色，地板變霧面。
+        觀感像把物體該有的反光硬拔掉，只剩泥土感。
+
+      判定：
+        v16 hard clamp cleanup candidate = NO-GO。
+        此候選只能作為診斷證據，不能進正常 render。
+
+      新判讀：
+        低 SPP 髒感可能主要來自正常亮色出來太慢。
+        一開始畫面有很多暗點，少數像素先抽到正常亮光，
+        人眼會把「暗點太多 + 局部正常亮點」看成髒點。
+        時間拉長後，亮樣本慢慢補齊，暗點變少，最後畫面才接近正確光照。
+
+      新方向：
+        亮樣本覆蓋率。
+
+      要回答的問題：
+        GIK / 地板在低 SPP 時，有多少像素已經抽到該有亮度？
+        同一片 GIK / 地板上，有多少像素還沒抽到該有亮度？
+        問題主要是亮點太尖，還是暗點太多、亮度補得太慢？
+
+      下一個最高 ROI：
+        A. 找出同一片 GIK / 地板上，哪些像素已經抽到正常亮光。
+        B. 用附近相似像素的資訊，補給還沒抽到亮度的暗像素。
+        C. 用法線、材質、距離守門，避免跨邊界把牆光抹到物件上。
+        D. 只在低 SPP 開強一點，SPP 變高後慢慢退場。
+
+      回報紀律：
+        這條線要直接回答低 SPP 降噪。
+        若只是在確認資料通道、分類、readback、cache-bust 或數值是否接對，
+        必須明講「這是儀器檢查」。
+        不得把儀器檢查包裝成已改善畫面。
+
+ 4g. v17 bright sample coverage probe
+      新增 helper：
+        reportCloudBrightSampleCoverageProbeAfterSamples()
+
+      目的：
+        量 floor / GIK 低 SPP 時，已抽到正常 Cloud NEE 亮度的可見樣本比例。
+        同時量還在等亮度補齊的比例。
+
+      實頁條件：
+        pageUrl = http://127.0.0.1:9005/Home_Studio.html
+        scriptSrc = js/Home_Studio.js?v=r6-3-cloud-bright-sample-coverage-v17
+        currentPanelConfig = 3
+        currentCameraPreset = cam1
+        targetSamples = 4
+        resultJson = /private/tmp/home_studio_coverage_probe_c3_result.json
+
+      實頁結果：
+        floor + GIK:
+          visiblePixelSamples = 1020352
+          medianBrightPixelCount = 89664
+          medianBrightCoverage = 0.087876
+          darkWaitingShareAtMedian = 0.912124
+          strongBrightCoverage = 0.017833
+          darkWaitingShareAtStrong = 0.982167
+
+        floor:
+          visiblePixelSamples = 384696
+          contributionEventSamples = 49464
+          contributionEventDensity = 0.128579
+          normalBrightThreshold = 0.06116075
+          medianBrightCoverage = 0.064612
+          darkWaitingShareAtMedian = 0.935388
+          maxToP50Ratio = 1341.725044
+          coverageVerdict = coverageInsufficient
+
+        gikPanel:
+          visiblePixelSamples = 635656
+          contributionEventSamples = 129296
+          contributionEventDensity = 0.203406
+          normalBrightThreshold = 0.01231235
+          medianBrightCoverage = 0.101955
+          darkWaitingShareAtMedian = 0.898045
+          maxToP50Ratio = 4747.036106
+          coverageVerdict = coverageInsufficient
+
+      交叉檢查：
+        C1 預設頁面跑同一 helper 時，floor / GIK 皆沒有 Cloud NEE 事件。
+        切回 C3 後，p50 / p99 / max 對上 v15 visible-surface hotspot probe 的既有數字。
+        因此 v17 helper 沒有重算亮度分布，它新增的是可見樣本覆蓋率分母與覆蓋率判讀。
+
+      判讀：
+        floor / GIK 可見樣本很多，但已拿到一般亮度的比例很低。
+        合計只有約 8.8% 可見樣本拿到同片表面一般 Cloud NEE 亮度。
+        約 91.2% 可見樣本仍在等亮度補齊。
+        這支持低 SPP 髒感主要來自正常亮樣本覆蓋不足。
+        v16 hard clamp 會破壞材質觀感；下一步改做補暗候選。
+
+      下一步：
+        設計 guarded same-surface dark-fill candidate。
+        候選必須預設關閉，先用 A/B toggle 驗證。
+        作用範圍先限制 floor / GIK。
+        借樣條件需守住同片表面、相似法線、相似材質、近距離。
+        低 SPP 作用較強，SPP 增加後退場。
+
+ 4h. v18a same-surface dark-fill candidate
+      新增 helper：
+        setCloudSameSurfaceDarkFillCandidate()
+        reportCloudSameSurfaceDarkFillCandidateAfterSamples()
+
+      目的：
+        針對 floor / GIK 上已經有 Cloud NEE 事件、但亮度仍低於該表面一般亮度的樣本，
+        把它往該表面一般亮度補一點。
+        候選預設關閉。
+        只在低 SPP 早期作用，SPP 增加後退場。
+
+      守門：
+        visible surface 只限 floor / GIK。
+        只作用 diffuse bounce 後的 Cloud NEE contribution。
+        使用 sampleCounter fade：
+          strength = 1.0
+          maxSamples = 64
+        補光目標：
+          baseline measured p50 * 1.25
+
+      實頁條件：
+        pageUrl = http://127.0.0.1:9005/Home_Studio.html
+        scriptSrc = js/Home_Studio.js?v=r6-3-cloud-same-surface-dark-fill-v18a
+        currentPanelConfig = 3
+        currentCameraPreset = cam1
+        targetSamples = 4
+        resultJson = /private/tmp/home_studio_same_surface_dark_fill_c3_v18a_result.json
+
+      實頁結果：
+        medianBrightCoverageLiftAverage = 0.029199
+        candidatePassesFirstMetric = true
+
+        floor:
+          baselineMedianBrightCoverage = 0.064612
+          candidateMedianBrightCoverageAtBaselineThreshold = 0.094298
+          medianBrightCoverageLift = 0.029686
+          darkWaitingShareReductionRatio = 0.031737
+          candidateMaxToP50Ratio = 1080.417537
+
+        gikPanel:
+          baselineMedianBrightCoverage = 0.101955
+          candidateMedianBrightCoverageAtBaselineThreshold = 0.130668
+          medianBrightCoverageLift = 0.028713
+          darkWaitingShareReductionRatio = 0.031973
+          candidateMaxToP50Ratio = 3822.527385
+
+      判讀：
+        v18a 有把 floor / GIK 的一般亮度覆蓋率往上推。
+        幅度偏保守，平均多約 2.9 個百分點。
+        暗等待比例約下降 3.2%。
+        maxToP50Ratio 也下降，表示亮尾端相對一般亮度沒有那麼誇張。
+        使用者肉眼回報：
+          8 SPP 以下好像有改善。
+          更高 SPP 差異不大。
+        這符合候選設計：早期幫忙，後面退場或影響變小。
+        這是第一版候選，不能直接開成正式值。
+
+    - id: R6-3-Phase2-v18b-same-surface-dark-fill-curve
+      date: 2026-05-06
+      type: candidate_curve_adjustment
+      files:
+        - shaders/Home_Studio_Fragment.glsl
+        - js/Home_Studio.js
+        - Home_Studio.html
+        - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+      version: r6-3-phase2-cloud-same-surface-dark-fill-v18b
+      user_report:
+        - v18a 在 8 SPP 以下好像有改善。
+        - 更高 SPP 差異不大。
+        - 目前退場太快。
+        - 肉眼來看，64 SPP 前都要有作用會比較好。
+      old_curve_v18a:
+        maxSamples: 64
+        meaning: 從第 1 SPP 開始線性退場，到 64 SPP 幾乎關閉。
+        values:
+          spp_1: 1.000
+          spp_8: 0.891
+          spp_16: 0.766
+          spp_32: 0.516
+          spp_48: 0.266
+          spp_64: 0.016
+          spp_65_plus: 0.000
+      new_curve_v18b:
+        maxSamples: 64
+        meaning: 1 到 64 SPP 維持完整作用，64 到 128 SPP 用 smoothstep 平順退場。
+        values:
+          spp_1: 1.000
+          spp_8: 1.000
+          spp_16: 1.000
+          spp_32: 1.000
+          spp_48: 1.000
+          spp_64: 1.000
+          spp_80: 0.844
+          spp_96: 0.500
+          spp_112: 0.156
+          spp_128: 0.000
+      browser_probe:
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v18b-candidate
+        currentPanelConfig: 3
+        targetSamples: 4
+        resultJson: /private/tmp/home_studio_same_surface_dark_fill_c3_v18b_result.json
+        medianBrightCoverageLiftAverage: 0.029199
+        candidatePassesFirstMetric: true
+        rows:
+          floor:
+            baselineMedianBrightCoverage: 0.064612
+            candidateMedianBrightCoverageAtBaselineThreshold: 0.094298
+            medianBrightCoverageLift: 0.029686
+            darkWaitingShareReductionRatio: 0.031737
+          gikPanel:
+            baselineMedianBrightCoverage: 0.101955
+            candidateMedianBrightCoverageAtBaselineThreshold: 0.130668
+            medianBrightCoverageLift: 0.028713
+            darkWaitingShareReductionRatio: 0.031973
+        interpretation: 4 SPP 位於 v18a 與 v18b 的強作用區，數字相同屬於合理結果；v18b 主要差異需看 32 到 64 SPP。
+      validation_focus:
+        - 開啟候選後，1 到 64 SPP 都應該有可見補暗效果。
+        - 96 SPP 附近效果應該開始明顯變弱。
+        - 128 SPP 後回到保護材質與收斂結果優先。
+
+    - id: R6-3-Phase2-v18b-user-screenshot-no-visible-delta
+      date: 2026-05-06
+      type: user_visual_regression_report
+      files:
+        - /Users/eajrockmacmini/Downloads/260506-cam1-default-4spp (on).png
+        - /Users/eajrockmacmini/Downloads/260506-cam1-default-4spp (off).png
+      user_report:
+        - 有開與沒開看起來完全一樣。
+        - 先前覺得有改善屬於心理作用。
+      image_measurement:
+        dimensions: 2560x1440
+        full_mean_abs_rgb:
+          r: 15.0672
+          g: 14.9132
+          b: 13.8369
+        full_luma:
+          on: 91.1775
+          off: 97.5957
+          delta: -6.4182
+        center_panels_luma:
+          on: 71.5918
+          off: 78.0030
+          delta: -6.4112
+        right_gik_luma:
+          on: 81.6637
+          off: 88.3503
+          delta: -6.6867
+      revised_interpretation:
+        - v18b 的診斷數字沒有轉成主畫面可見差異。
+        - 同表面補暗候選目前視覺 no-go。
+        - 先前 probe 量到的是 Cloud contribution 診斷通道覆蓋率，不等於一般 render 的肉眼改善。
+      next_step:
+        - 暫停沿 v18b 調 strength 或退場曲線。
+        - 下一步改做主畫面 screen-delta probe，或回頭查 4 SPP 主要噪點來源。
+
+    - id: R6-3-Phase2-1spp-screen-dark-hole-probe
+      date: 2026-05-06
+      type: screen_probe
+      trigger:
+        user_report:
+          - 最該查的是 1 SPP。
+          - 因為黑點最多，等於每次移動都要被閃一次黑幕。
+      page:
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=screen-dark-1spp
+        currentPanelConfig: 3
+        currentCameraPreset: cam1
+        scriptSrc: js/Home_Studio.js?v=r6-3-cloud-same-surface-dark-fill-v18b
+        shaderFile: Home_Studio_Fragment.glsl?v=r6-3-cloud-same-surface-dark-fill-v18b
+        cloudSameSurfaceDarkFillMode: 0
+        cloudMisWeightProbeMode: 0
+        activeLightIndex: [7, 8, 9, 10]
+      screenshots:
+        - /private/tmp/home_studio_1spp_dark_probe/cam1-c3-1spp.png
+        - /private/tmp/home_studio_1spp_dark_probe/cam1-c3-2spp.png
+        - /private/tmp/home_studio_1spp_dark_probe/cam1-c3-4spp.png
+        - /private/tmp/home_studio_1spp_dark_probe/cam1-c3-8spp.png
+        - /private/tmp/home_studio_1spp_dark_probe/cam1-c3-16spp.png
+      local_dark_hole_metric:
+        definition: local45_min30 means local average luma >= 30 and pixel luma < 45 percent of local average.
+        full:
+          spp_1: 0.010699
+          spp_2: 0.010047
+          spp_4: 0.008776
+          spp_8: 0.006014
+          spp_16: 0.003624
+        lower_floor:
+          spp_1: 0.025070
+          spp_2: 0.020000
+          spp_4: 0.017680
+          spp_8: 0.011690
+          spp_16: 0.006743
+        right_gik:
+          spp_1: 0.018313
+          spp_2: 0.013280
+          spp_4: 0.013015
+          spp_8: 0.010382
+          spp_16: 0.007933
+      cloud_bright_sample_coverage_1spp:
+        resultJson: /private/tmp/home_studio_coverage_probe_c3_1spp_result.json
+        floorGikMedianBrightCoverage: 0.087876
+        floorGikDarkWaitingShareAtMedian: 0.912124
+        coverageInsufficientSurfaces: [floor, gikPanel]
+        floor:
+          visiblePixelSamples: 96174
+          contributionEventDensity: 0.128579
+          medianBrightCoverage: 0.064612
+          darkWaitingShareAtMedian: 0.935388
+          maxToP50Ratio: 1341.725044
+        gikPanel:
+          visiblePixelSamples: 158914
+          contributionEventDensity: 0.203406
+          medianBrightCoverage: 0.101955
+          darkWaitingShareAtMedian: 0.898045
+          maxToP50Ratio: 4747.036106
+      revised_interpretation:
+        - 使用者判斷正確，1 SPP 是最該先解的痛點。
+        - 第一張主畫面的黑點集中在 lower_floor、right_gik、深色物件區。
+        - floor / GIK 約九成可見像素在 1 SPP 還沒達到一般亮度。
+        - same-surface dark-fill 只改已經抽到 Cloud contribution 的樣本，無法補第一張沒有抽到有效亮度的像素。
+      next_step:
+        - 停止沿 v18b 補暗候選微調。
+        - 建立主畫面 screen-delta / local dark-hole probe 作為新指標。
+        - 優先研究移動後前 1 到 4 SPP 的顯示端保護。
+        - 若改採樣端，目標要能增加第一張 floor/GIK 有效 coverage。
+
+    - id: R6-3-Phase2-v19-first-frame-burst
+      date: 2026-05-06
+      type: implementation_and_screen_probe
+      trigger:
+        user_decision:
+          - 先做 first-frame 相關治療。
+          - 目標是降低移動後 1 SPP 黑幕感。
+      version:
+        label: r6-3-phase2-first-frame-burst-v19
+        html_cache:
+          InitCommon: js/InitCommon.js?v=r6-3-first-frame-burst-v19
+          Home_Studio: js/Home_Studio.js?v=r6-3-first-frame-burst-v19
+          Fragment: Home_Studio_Fragment.glsl?v=r6-3-first-frame-burst-v19
+      implementation:
+        files:
+          - js/InitCommon.js
+          - js/Home_Studio.js
+          - Home_Studio.html
+          - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+        config:
+          firstFrameRecoveryEnabled: true
+          firstFrameRecoveryTargetSamples: 4
+          firstFrameRecoveryClearWhileMoving: true
+        console_helpers:
+          - reportFirstFrameRecoveryConfig()
+          - setFirstFrameRecoveryConfig({ enabled: false })
+          - setFirstFrameRecoveryConfig({ enabled: true, targetSamples: 4, clearWhileMoving: true })
+        behavior:
+          - 第一張可見畫面先跑到 4 SPP。
+          - 移動中預設先清掉舊累積，再用目前視角跑 4 次。
+          - 這是顯示節奏治療，不改 Cloud 採樣公式。
+      measurement:
+        browser: headless Brave CDP
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v19-first-frame-on
+        currentPanelConfig: 3
+        currentCameraPreset: cam1
+        scripts:
+          capture: /private/tmp/home_studio_1spp_dark_probe.mjs
+        screenshots:
+          - /private/tmp/home_studio_v19_first_frame_probe_on/cam1-c3-on-1spp.png
+          - /private/tmp/home_studio_v19_first_frame_probe_on/cam1-c3-on-2spp.png
+          - /private/tmp/home_studio_v19_first_frame_probe_on/cam1-c3-on-4spp.png
+          - /private/tmp/home_studio_v19_first_frame_probe_on/cam1-c3-on-8spp.png
+          - /private/tmp/home_studio_v19_first_frame_probe_on/cam1-c3-on-16spp.png
+        summaryJson: /private/tmp/home_studio_v19_first_frame_probe_on/capture-summary.json
+        first_visible_frame:
+          requestedSamples: 1
+          actualSamples: 4
+          firstFrameRecovery:
+            enabled: true
+            targetSamples: 4
+            lastPassCount: 4
+            clearWhileMoving: true
+          metrics:
+            full:
+              local45Min30Ratio: 0.023737544
+              veryDarkRatio: 0.023590874
+              meanLuma: 121.279218
+            lower_floor:
+              local45Min30Ratio: 0.050730684
+              veryDarkRatio: 0.062237687
+              meanLuma: 79.175004
+            right_gik:
+              local45Min30Ratio: 0.051921169
+              veryDarkRatio: 0.063606532
+              meanLuma: 84.142870
+      validation:
+        contract:
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+        result: pass
+      interpretation:
+        - v19 已確認 requested 1 SPP 時，第一張實際顯示為 4 SPP。
+        - 黑幕感應可明顯下降。
+        - 噪點仍存在，因為它沒有增加總照明命中率，只是讓第一眼不再停在 1 SPP。
+        - GPU 成本會增加，需使用者用互動手感驗收。
+      next_step:
+        - 先請使用者用 http://localhost:9005/Home_Studio.html 檢查 C3 / cam1 移動後是否不再黑一下。
+        - 若手感變慢，將 targetSamples 先測 2 或 3。
+        - 若手感可接受但噪點仍刺眼，再研究局部 dark-hole repair 或 history hold。
+
+    - id: R6-3-Phase2-v19a-snapshot-toggle-default-off
+      date: 2026-05-06
+      type: user_report_and_implementation
+      trigger:
+        user_report:
+          - v19 first-frame burst 已經不黑。
+          - 但看起來像先不顯示畫面，移動時會有卡手感。
+          - 自動 SPP 快照也會造成卡頓，會干擾真實手感判斷。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/Home_Studio.js
+          - docs/tests/r6-3-max-samples.test.js
+        html:
+          - 保留 snapshot-bar。
+          - 保留手動存圖與打包下載。
+          - 新增 btn-toggle-snapshots，預設文字為「快照：關」。
+        js:
+          SNAPSHOT_CAPTURE_ENABLED: false
+          SNAPSHOT_MILESTONES: []
+          SNAPSHOT_MILESTONE_PRESET: [1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32, 48, 64, 80, 100, 150, 200, 300, 500, 750, 1000]
+          console_helper: setSnapshotCaptureEnabled(enabled)
+        behavior:
+          - 預設不跑自動快照。
+          - 預設手動存圖不會進入 PNG 編碼。
+          - 開啟後恢復原本節點式 SPP 快照。
+      validation:
+        contract:
+          - node docs/tests/r6-3-max-samples.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node --check js/Home_Studio.js
+          - node --check js/InitCommon.js
+        result: pass
+      interpretation:
+        - 接下來使用者測到的卡頓會更接近 first-frame burst 與 renderer 本身的成本。
+        - 若快照關閉後仍卡，下一輪先調 targetSamples 2 或 3，再評估是否改成 history hold。
+
+    - id: R6-3-Phase2-v19a-user-handfeel-and-visibility-report
+      date: 2026-05-06
+      type: user_visual_and_handfeel_report
+      user_report:
+        - 關閉快照確實很順。
+        - 沒有 1 SPP 黑幕後，閃黑幕消失。
+        - 4 SPP 還是很髒，移動時視線仍受阻礙。
+      interpretation:
+        - 快照造成的卡頓已被使用者排除。
+        - first-frame burst 的成果是消除黑幕，不足以解決移動期視線可讀性。
+        - 繼續提高 first-frame targetSamples 可能讓等待更明顯，ROI 下降。
+      next_step:
+        - 下一輪優先做 movement visibility protection。
+        - 方案候選包含短暫沿用上一張穩定畫面、淡入新累積、或移動期間局部 dark-hole / firefly 緩和。
+        - 必須保留 A/B 開關，且不污染靜止後最終收斂畫面。
+
+    - id: R6-3-Phase2-v20-movement-protection
+      date: 2026-05-06
+      type: sop_and_implementation
+      sop:
+        path: docs/SOP/R6-3-v20：movement protection.md
+        scope:
+          - 總開關與量測框架。
+          - 保存上一張穩定畫面。
+          - 移動時混入上一張穩定畫面。
+        deferred:
+          - edge / normal 保護。
+          - depth / velocity 類判斷。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - shaders/ScreenOutput_Fragment.glsl
+          - docs/tests/r6-3-v20-movement-protection.test.js
+        js:
+          movementProtectionRenderTarget: true
+          movementProtectionEnabled: true
+          movementProtectionMovingBlend: 0.65
+          movementProtectionMinStableSamples: 16
+          movementProtectionStableReady: false
+          console_helpers:
+            - setMovementProtectionConfig()
+            - reportMovementProtectionConfig()
+        shader:
+          uniforms:
+            - tMovementProtectionStableTexture
+            - uMovementProtectionMode
+            - uMovementProtectionBlend
+          behavior:
+            - moving 時 displayColor 混入 movementStableColor。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20a
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v20
+      smoke_test:
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v20-movement-protection-cache-smoke
+        summaryJson: /private/tmp/home_studio_v20_movement_probe_cache/capture-summary.json
+        state:
+          version: r6-3-phase2-movement-protection-v20a
+          enabled: true
+          stableReady: true
+          movingBlend: 0.65
+          minStableSamples: 16
+          lastCaptureSamples: 18
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - git diff --check
+        result: pass
+      interpretation:
+        - v20 首輪已具備 A/B 開關與上一張穩定畫面保存。
+        - 使用者需肉眼驗收 movingBlend 是否降低移動期視線遮擋。
+        - 若拖影明顯，下一輪先做 edge / normal 保護。
+
+    - id: R6-3-Phase2-v20a-movement-protection-active-blend-fix
+      date: 2026-05-06
+      type: user_no_go_root_cause_and_fix
+      user_report:
+        - v20 開啟後，4 SPP 還是很髒。
+      root_cause:
+        - v20 已能在靜止後保存 movementProtectionRenderTarget。
+        - 移動開始時，needClearAccumulation 與 firstFrameRecoveryWasCleared 又把 movementProtectionStableReady 清為 false。
+        - Step 3 顯示合成使用 firstFrameRecoveryActiveRenderCameraMoving；first-frame burst 會把它改成 false。
+        - 兩個條件合在一起，移動期間 uMovementProtectionBlend 實際保持 0。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        js:
+          version: r6-3-phase2-movement-protection-v20a
+          movementProtectionPreserveStableAcrossCameraReset: true
+          behavior:
+            - 移動清除與 first-frame 清除期間保留穩定畫面。
+            - Step 3 用實際 cameraIsMoving 決定 movement protection blend。
+            - cameraIsMoving 為 false 時才 captureMovementProtectionStableFrame。
+        html:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20a
+      cdp_movement_check:
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v20a-movement-protection-active-blend-2
+        summaryJson: /private/tmp/home_studio_v20a_movement_probe_2/capture-summary.json
+        before_move:
+          stableReady: true
+          lastCaptureSamples: 21
+          lastBlend: 0
+        during_move:
+          cameraIsMoving: true
+          currentSamples: 4
+          stableReady: true
+          lastBlend: 0.65
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - git diff --check
+        result: pass
+      interpretation:
+        - v20a 已確認移動中的 4 SPP frame 會混入上一張穩定畫面。
+        - 是否足夠降低肉眼髒點遮擋，需要使用者在 http://localhost:9005/Home_Studio.html 重整後驗收。
+        - 若仍覺得髒，下一輪直接提高 movingBlend 或導入 edge / normal 保護。
+
+    - id: R6-3-Phase2-v20b-movement-protection-stale-stable-invalidation
+      date: 2026-05-06
+      type: user_no_go_root_cause_and_fix
+      user_report:
+        - 配置 1 移動時，4 SPP 變得超暗。
+      root_cause:
+        - v20a 保留穩定畫面的範圍太大。
+        - 配置切換、視角按鈕、燈光池重建、參數變動也沿用上一張穩定畫面。
+        - 移動時混入舊狀態，配置 1 會被舊暗圖壓低亮度。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/Home_Studio.js
+          - js/InitCommon.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        js:
+          version: r6-3-phase2-movement-protection-v20b
+          invalidateMovementProtectionStableFrame: true
+          invalidation_sources:
+            - applyPanelConfig
+            - switchCamera
+            - rebuildActiveLightLUT
+            - sceneParamsChanged
+          preserved_source:
+            - 一般滑鼠移動仍保留穩定畫面。
+        html:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20b
+      cdp_movement_check:
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v20b-config1-movement-dark-fix
+        summaryJson: /private/tmp/home_studio_v20b_config1_movement_probe/capture-summary.json
+        screenshot: /private/tmp/home_studio_v20b_config1_movement_probe/cam1-c3-on-18spp.png
+        during_move:
+          currentPanelConfig: 1
+          cameraIsMoving: true
+          currentSamples: 4
+          stableReady: true
+          lastBlend: 0.65
+          meanLumaFull: 141.035252
+          veryDarkRatioFull: 0
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - git diff --check
+        result: pass
+      interpretation:
+        - v20b 已把內容狀態變更與一般滑鼠移動分開。
+        - 配置 1 CDP 截圖不再出現使用者回報的超暗狀態。
+        - 下一輪仍需使用者肉眼驗收真實互動手感與拖影程度。
+
+    - id: R6-3-Phase2-v20c-movement-protection-config-gate
+      date: 2026-05-06
+      type: user_no_go_scope_gate_and_fix
+      user_report:
+        - v20b 後，配置 1 移動時 4 SPP 仍然超暗。
+      interpretation:
+        - 配置 1 / 2 不是 R6-3 movement protection 的主要痛點。
+        - 這兩個配置套 movement protection 會增加混合風險。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        js:
+          version: r6-3-phase2-movement-protection-v20c
+          movementProtectionConfigAllowed: true
+          allowed_configs:
+            - 3
+            - 4
+          blocked_configs:
+            - 1
+            - 2
+          reporter:
+            - configAllowed
+        html:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20c
+      cdp_movement_check:
+        pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v20c-config1-gate-check
+        summaryJson: /private/tmp/home_studio_v20c_config1_gate_probe/capture-summary.json
+        during_move:
+          currentPanelConfig: 1
+          configAllowed: false
+          currentSamples: 4
+          lastBlend: 0
+          meanLumaFull: 140.744454
+          veryDarkRatioFull: 0
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+        result: pass
+      interpretation_after_probe:
+        - 配置 1 在 v20c 已確認不再跑 movement protection 混合。
+        - 若使用者仍看到配置 1 超暗，下一步先確認瀏覽器是否載到 v20c，再查 first-frame burst 的配置 1 行為。
+
+    - id: R6-3-Phase2-v20d-c3-c4-low-spp-preview-fallback
+      date: 2026-05-06
+      type: user_no_go_root_cause_and_fix
+      user_report:
+        - C3 / C4 也是 4 SPP 超暗，不能只排除 C1 / C2。
+      root_cause:
+        - C3 / C4 切換後立刻移動時，還沒有 Samples >= 16 的穩定畫面。
+        - v20 / v20a / v20b 的 history mix 路線無圖可混，最後仍顯示原始 4 SPP 暗畫面。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - shaders/ScreenOutput_Fragment.glsl
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        js:
+          version: r6-3-phase2-movement-protection-v20d
+          movementProtectionLowSppPreviewStrength: 0.55
+          reporter:
+            - lowSppPreviewStrength
+            - lastPreviewStrength
+        shader:
+          uniform:
+            - uMovementProtectionLowSppPreviewStrength
+          behavior:
+            - C3 / C4 移動中用 display-space preview curve 提亮低 SPP 可視性。
+        html:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20d
+      cdp_movement_check:
+        c3:
+          pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v20d-c3-4spp-preview-check
+          summaryJson: /private/tmp/home_studio_v20d_c3_4spp_preview_probe/capture-summary.json
+          before_preview:
+            meanLumaFull: 95.351693
+            veryDarkRatioFull: 0.082047
+          during_preview:
+            lastPreviewStrength: 0.55
+            meanLumaFull: 110.437023
+            veryDarkRatioFull: 0.016100
+        c4:
+          pageUrl: http://127.0.0.1:9005/Home_Studio.html?probe=v20d-c4-4spp-preview-check
+          summaryJson: /private/tmp/home_studio_v20d_c4_4spp_preview_probe/capture-summary.json
+          before_preview:
+            meanLumaFull: 87.920790
+            veryDarkRatioFull: 0.053099
+          during_preview:
+            lastPreviewStrength: 0.55
+            meanLumaFull: 104.796660
+            veryDarkRatioFull: 0.009472
+      interpretation:
+        - v20d 先處理 C3 / C4 4SPP 超暗。
+        - 4SPP 髒點仍存在，下一輪需要針對移動期 dirty 視線遮擋做 spatial / firefly preview。
+
+    - id: R6-3-Phase2-v20e-screenoutput-reinhard-compile-fix
+      date: 2026-05-06
+      type: user_console_error_root_cause_and_fix
+      user_report:
+        - 重新整理後 Console 出現 ScreenOutput fragment shader compile error。
+        - 錯誤指向 ReinhardToneMapping(filteredPixelColor) 不接受 vec3。
+      root_cause:
+        - ScreenOutput_Fragment.glsl 呼叫 Three 注入的 ReinhardToneMapping(filteredPixelColor)。
+        - 目前 three 版本注入函式不接受 vec3，導致 ScreenOutput shader 編譯失敗。
+        - ScreenOutput 壞掉後，movement protection 的亮度驗證全部失去意義。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - shaders/ScreenOutput_Fragment.glsl
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        shader:
+          - 新增 HomeStudioReinhardToneMap(vec3 color)。
+          - ScreenOutput 改呼叫本地 vec3 helper。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20e
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v20e
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - git diff --check
+        result: pass
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v20e 後，先確認 Console 不再出現 ScreenOutput shader compile error。
+        - compile error 消失後，再重新判斷 C3 / C4 4SPP movement protection 是否有效。
+
+    - id: R6-3-Phase2-v20f-c3-c4-ghosting-default-history-off
+      date: 2026-05-06
+      type: user_visual_no_go_and_targeted_fix
+      user_report:
+        - C3 4SPP 不會暗畫面了，但是有殘影問題。
+        - 截圖顯示舊視角透明雙影，尤其天花板雲燈與牆面物件錯位明顯。
+      root_cause:
+        - v20e 修掉 ScreenOutput shader 後，movement history mix 開始正常作用。
+        - movementProtectionMovingBlend 預設 0.65，移動時會把上一張穩定畫面混進目前畫面。
+        - 這個預設值直接造成舊視角殘影。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - movementProtectionMovingBlend 預設改為 0.0。
+          - C3 / C4 low-SPP preview fallback 保持開啟。
+          - history mix 保留 Console 手動 A/B 能力。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20f
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v20f
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+        expected_runtime_report:
+          - reportMovementProtectionConfig().version = r6-3-phase2-movement-protection-v20f
+          - reportMovementProtectionConfig().movingBlend = 0
+          - reportMovementProtectionConfig().lastBlend = 0
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v20f 後，測 C3 / C4 4SPP 移動。
+        - 驗收重點是移動時沒有舊視角透明雙影，且低 SPP 提亮仍有效。
+
+    - id: R6-3-Phase2-v20g-c3-c4-moving-spatial-preview
+      date: 2026-05-06
+      type: user_visual_no_go_and_targeted_fix
+      user_report:
+        - v20f 不會有殘影了。
+        - C3 4SPP 看起來跟今天一開始相比沒有明顯差別。
+      root_cause:
+        - v20f 的 low-SPP display lift 只提亮目前 4SPP 畫面。
+        - C3 / C4 4SPP 的主要遮擋來自高頻亮暗雜點，白色亮點也會被一起提亮。
+        - history mix 已造成殘影，不能再作為預設路線。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - shaders/ScreenOutput_Fragment.glsl
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - movementProtectionLowSppPreviewStrength 降為 0.35。
+          - 新增 movementProtectionSpatialPreviewStrength，預設 0.90。
+          - C3 / C4 移動中啟用 uMovementProtectionSpatialPreviewStrength。
+          - ScreenOutput 在 tone mapping 前建立 movementSpatialPreviewHdr。
+          - 使用 movementBrightLimit 壓回局部過亮 speckle。
+          - 對過暗點做少量 local lift。
+          - path tracing accumulation 不讀 preview 結果。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20g
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v20g
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+        expected_runtime_report:
+          - reportMovementProtectionConfig().version = r6-3-phase2-movement-protection-v20g
+          - reportMovementProtectionConfig().movingBlend = 0
+          - reportMovementProtectionConfig().lowSppPreviewStrength = 0.35
+          - reportMovementProtectionConfig().spatialPreviewStrength = 0.90
+          - moving 時 reportMovementProtectionConfig().uniformSpatialPreviewStrength = 0.90
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v20g 後，測 C3 / C4 4SPP 移動。
+        - 驗收重點是白色亮點密度與黑點突兀感低於 v20f，且沒有上一視角透明雙影。
+
+    - id: R6-3-Phase2-v20h-c3-c4-moving-wide-preview
+      date: 2026-05-06
+      type: user_visual_no_go_and_targeted_fix
+      user_report:
+        - v20g 還是超髒。
+        - 截圖顯示整片 4SPP 樣本圖樣遮住視線。
+      root_cause:
+        - v20g 的 13 點局部清理太弱。
+        - C3 / C4 4SPP 遮擋不是少量亮點，而是整片高頻樣本圖樣。
+        - history mix 已造成殘影，仍不可作為預設路線。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - shaders/ScreenOutput_Fragment.glsl
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - movementProtectionLowSppPreviewStrength 降到 0.15。
+          - movementProtectionSpatialPreviewStrength 預設關閉。
+          - 新增 movementProtectionWidePreviewStrength，預設 0.95。
+          - ScreenOutput 新增 37 點 wide moving preview。
+          - wide preview 只吃目前這一幀，不吃舊視角。
+          - 過亮中心點先用 movementWideBrightLimit 壓回局部範圍。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v20h
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v20h
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+        expected_runtime_report:
+          - reportMovementProtectionConfig().version = r6-3-phase2-movement-protection-v20h
+          - reportMovementProtectionConfig().movingBlend = 0
+          - reportMovementProtectionConfig().lowSppPreviewStrength = 0.15
+          - reportMovementProtectionConfig().spatialPreviewStrength = 0
+          - reportMovementProtectionConfig().widePreviewStrength = 0.95
+          - moving 時 reportMovementProtectionConfig().uniformWidePreviewStrength = 0.95
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v20h 後，測 C3 / C4 4SPP 移動。
+        - 驗收重點是允許移動中較糊，但噪點遮擋必須低於 v20g，且沒有上一視角透明雙影。
+
+    - id: R6-3-Phase2-v21a-c3-c4-moving-current-samples-16
+      date: 2026-05-06
+      type: user_visual_no_go_and_targeted_fix
+      user_report:
+        - v20h 還是一樣很髒。
+        - 使用者不再截圖，直接判定 ScreenOutput 類修補 no-go。
+      root_cause:
+        - v20 / v20g / v20h 都在處理同一張 4SPP 畫面。
+        - 後製清理無法補足樣本不足。
+        - C3 / C4 移動中的當前畫面仍只有 4SPP。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - firstFrameRecoveryTargetSamples 保持 4。
+          - 新增 firstFrameRecoveryMovingTargetSamples = 16。
+          - C3 / C4 且 cameraIsMoving 時，visible frame 內部 pass target 拉到 16。
+          - history mix 繼續維持 movingBlend = 0。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v21a
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v21a
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+        expected_runtime_report:
+          - reportFirstFrameRecoveryConfig().targetSamples = 4
+          - reportFirstFrameRecoveryConfig().movingTargetSamples = 16
+          - C3 / C4 moving 時左下 Samples 應顯示 16
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v21a 後，測 C3 / C4 移動。
+        - 驗收重點是噪點遮擋低於 v20h；FPS 下降屬預期代價。
+
+    - id: R6-3-Phase2-v22a-c3-c4-deterministic-movement-preview
+      date: 2026-05-06
+      type: user_visual_no_go_and_architecture_pivot
+      user_report:
+        - v21a 變得更爛。
+        - 16SPP 前像被丟掉。
+        - 畫面超模糊又卡手。
+        - 截圖顯示 FPS = 3。
+      root_cause:
+        - v21a 將 C3 / C4 移動 visible frame 拉到 16SPP，直接造成卡手。
+        - v20g / v20h 顯示端抹平會把髒點變成模糊，沒有產生新樣本資訊。
+        - 4SPP path tracing 的白黑噪點本質來自隨機取樣不足。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - js/Home_Studio.js
+          - js/PathTracingCommon.js
+          - shaders/Home_Studio_Fragment.glsl
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - firstFrameRecoveryMovingTargetSamples 改為 1。
+          - movementProtectionLowSppPreviewStrength / movementProtectionSpatialPreviewStrength / movementProtectionWidePreviewStrength 預設 0。
+          - 新增 movementPreviewEnabled，C3 / C4 移動時預設啟用。
+          - PathTracingCommon 新增 uMovementPreviewMode。
+          - uMovementPreviewMode 開啟時關閉 pixel jitter、aperture jitter、previousTexture history。
+          - Home_Studio_Fragment.glsl 新增 CalculateMovementPreview，只跑一次 SceneIntersect 與 deterministic preview light。
+          - movement preview 期間跳過 borrow pass。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v22a
+          Home_Studio: shaders/Home_Studio_Fragment.glsl?v=r6-3-movement-preview-v22a
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22a
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - node --check js/PathTracingCommon.js
+        expected_runtime_report:
+          - reportMovementProtectionConfig().version = r6-3-phase2-movement-protection-v22a
+          - reportMovementProtectionConfig().movementPreviewEnabled = true
+          - C3 / C4 moving 時 reportMovementProtectionConfig().uniformMovementPreviewMode = 1
+          - reportFirstFrameRecoveryConfig().movingTargetSamples = 1
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v22a 後，測 C3 / C4 移動。
+        - 驗收重點是手感優先，不再出現 v21a 的 16SPP 卡頓與大面積糊化。
+
+    - id: R6-3-Phase2-v22c-disable-cheap-movement-preview-default
+      date: 2026-05-06
+      type: user_visual_no_go_and_default_rollback
+      user_report:
+        - v22a 一直閃出灰色廉價建模。
+        - 使用者判定這樣不行。
+      root_cause:
+        - v22a 的 CalculateMovementPreview 只做一次 SceneIntersect 與簡化光照。
+        - 這條路徑缺少正式 path tracing 的材質、紋理與間接光觀感。
+        - 把它作為預設移動畫面會產生簡化模型閃爍感。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - js/Home_Studio.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - movementPreviewEnabled 預設改 false。
+          - uMovementPreviewMode 預設維持 0。
+          - CalculateMovementPreview 保留作 Console 診斷用途。
+          - C3 / C4 一般移動預設回正式 path tracing 畫面。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v22c
+          Home_Studio: js/Home_Studio.js?v=r6-3-movement-preview-v22c
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22c
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - node --check js/PathTracingCommon.js
+          - git diff --check
+        expected_runtime_report:
+          - reportMovementProtectionConfig().version = r6-3-phase2-movement-protection-v22c
+          - reportMovementProtectionConfig().movementPreviewEnabled = false
+          - C3 / C4 moving 時 reportMovementProtectionConfig().uniformMovementPreviewMode = 0
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v22c 後，測 C3 / C4 移動。
+        - 驗收重點是灰色簡化模型不再閃出。
+
+    - id: R6-3-Phase2-v22c-c1-c2-first-frame-recovery-target-1
+      date: 2026-05-06
+      type: user_console_evidence_and_targeted_fix
+      user_report:
+        - 使用者執行 setFirstFrameRecoveryConfig({ targetSamples: 1 }) 後，C1 / C2 正常順了。
+      root_cause:
+        - firstFrameRecoveryTargetSamples = 4 原本是全域成本。
+        - movementProtectionConfigAllowed() 只管 C3 / C4 movement protection。
+        - C1 / C2 沒有 movement protection 需求，仍被 first-frame recovery 拉到 4SPP。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - 新增 firstFrameRecoveryConfigTargetSamples(activeCameraMoving)。
+          - C1 / C2 回傳 1。
+          - C3 / C4 回傳 firstFrameRecoveryTargetSamples，也就是 4。
+          - reportFirstFrameRecoveryConfig() 新增 configTargetSamples。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v22c
+          Home_Studio: js/Home_Studio.js?v=r6-3-movement-preview-v22c
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22c
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - node --check js/PathTracingCommon.js
+          - git diff --check
+        expected_runtime_report:
+          - C1 / C2 reportFirstFrameRecoveryConfig().configTargetSamples = 1
+          - C3 / C4 reportFirstFrameRecoveryConfig().configTargetSamples = 4
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v22c 後，測 C1 / C2 移動 FPS。
+        - 驗收重點是 C1 / C2 接近手動 targetSamples: 1 的順暢感。
+
+    - id: R6-3-Phase2-v22d-c3-c4-moving-target-2-skip-borrow
+      date: 2026-05-06
+      type: targeted_performance_fix
+      user_report:
+        - C1 / C2 透過 setFirstFrameRecoveryConfig({ targetSamples: 1 }) 驗證後恢復順暢。
+        - 使用者詢問 C3 / C4 是否一定要降 FPS 才能丟掉 1SPP。
+        - 使用者決策：試選項 4，移除選項 1。
+      root_cause:
+        - C3 / C4 移動時原本 configTargetSamples = 4。
+        - 每個可見畫格會多跑 path tracing pass。
+        - borrow pass 也會一起跑，移動手感被額外成本壓住。
+      implementation:
+        files:
+          - Home_Studio.html
+          - js/InitCommon.js
+          - js/Home_Studio.js
+          - docs/tests/r6-3-v20-movement-protection.test.js
+          - docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - docs/SOP/R6-3-v20：movement protection.md
+          - docs/SOP/R6：渲染優化.md
+          - docs/SOP/Debug_Log.md
+        behavior:
+          - firstFrameRecoveryMovingTargetSamples 改成 2。
+          - C1 / C2 configTargetSamples 維持 1。
+          - C3 / C4 移動時 configTargetSamples = 2。
+          - C3 / C4 停止後 refill configTargetSamples = 4。
+          - C3 / C4 移動期間跳過 borrow pass。
+          - reportMovementProtectionConfig() 新增 lowCostMovingActive。
+        cache_bust:
+          InitCommon: js/InitCommon.js?v=r6-3-movement-protection-v22d
+          Home_Studio: js/Home_Studio.js?v=r6-3-movement-preview-v22d
+          ScreenOutput: shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22d
+      validation:
+        contract:
+          - node docs/tests/r6-3-v20-movement-protection.test.js
+          - node docs/tests/r6-3-cloud-mis-weight-probe.test.js
+          - node docs/tests/r6-3-max-samples.test.js
+          - node --check js/InitCommon.js
+          - node --check js/Home_Studio.js
+          - node --check js/PathTracingCommon.js
+          - git diff --check
+        expected_runtime_report:
+          - C1 / C2 reportFirstFrameRecoveryConfig().configTargetSamples = 1
+          - C3 / C4 moving reportFirstFrameRecoveryConfig().configTargetSamples = 2
+          - C3 / C4 moving reportMovementProtectionConfig().lowCostMovingActive = true
+          - C3 / C4 stopped reportFirstFrameRecoveryConfig().configTargetSamples = 4
+      next_verification:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v22d 後，測 C3 / C4 移動 FPS 與髒感。
+        - 驗收重點是移動手感比 v22c 順，同時不再出現灰色簡化模型。
+
+    - id: R6-3-Phase2-closeout-webgl-low-spp-movement-no-go
+      date: 2026-05-06
+      type: user_visual_no_go_and_stage_closeout
+      user_report:
+        - 使用者刷新 http://localhost:9005/Home_Studio.html?v=v22d 後，確認 2SPP 仍黑點很多。
+        - 使用者回報 2SPP 等於卡一個視覺障礙。
+        - 使用者判斷目前 WebGL path tracing 架構內可能已經搞不定。
+        - 使用者決策：R6 到此為止，先整理至今紀錄；後續方向交棒給下一窗 AI。
+        - 使用者後續追問是否需要這麼快進 WebGPU，要求評估 R7 選項。
+      conclusion:
+        - R6-3 的 WebGL path tracing 低 SPP 修補線停止加碼。
+        - 1 / 2 / 4 SPP 直接顯示都不足以提供乾淨移動視線。
+        - 舊畫面混合、顯示端模糊、簡化 preview、硬算更多樣本、2SPP 輕量路徑都已有 no-go 或低 ROI 證據。
+        - 下一階段先做 R7 丁 blue noise 小實驗，再評估 R7 丙光源機率優化。
+        - WebGPU / hybrid preview 保留為小型概念驗證，不做整套搬遷。
+      preserved_work:
+        - 快照開關，預設關閉。
+        - first-frame recovery，避免 1SPP 黑幕。
+        - C1 / C2 first-frame target 回到 1，恢復移動手感。
+        - movement protection console reporter / setter。
+        - Cloud / direct NEE / visible-surface probes 與合約測試。
+        - R6-3 movement protection SOP。
+      updated_docs:
+        - docs/SOP/R0：全景地圖.md
+        - docs/SOP/R6：渲染優化.md
+        - docs/SOP/R7：採樣演算法升級.md
+        - docs/SOP/R6-3-v20：movement protection.md
+        - docs/SOP/Debug_Log.md
+        - .omc/HANDOFF-R6-3-closeout-to-R7-small-experiments.md
+      next_handoff:
+        path: .omc/HANDOFF-R6-3-closeout-to-R7-small-experiments.md
+        scope:
+          - 下一窗 AI 先讀交棒 MD。
+          - 下一階段先做 R7 丁 blue noise 小實驗。
+          - 第二順位是 R7 丙光源機率優化。
+          - WebGPU / hybrid preview 僅作第三順位小型概念驗證。
+
+      final_note:
+        - 早期低 SPP shader 修補線停止。
+        - v15 / v16 / v17 / v18a 的 probe 與 candidate 保留為歷史資料。
+        - 下一步不再安排 v18a 肉眼 A/B。
+        - 下一窗 AI 先接 R7 丁 blue noise 小實驗。
+        - WebGPU / hybrid preview 小型概念驗證保留，整套搬遷暫緩。
+```

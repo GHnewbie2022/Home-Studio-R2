@@ -3,6 +3,7 @@ precision highp int;
 precision highp sampler2D;
 
 uniform sampler2D tPathTracedImageTexture;
+uniform sampler2D tMovementProtectionStableTexture;
 uniform float uSampleCounter;
 uniform float uOneOverSampleCounter;
 uniform float uPixelEdgeSharpness;
@@ -11,6 +12,11 @@ uniform float uEdgeSharpenSpeed;
 uniform bool uCameraIsMoving;
 uniform bool uSceneIsDynamic;
 uniform bool uUseToneMapping;
+uniform float uMovementProtectionMode;
+uniform float uMovementProtectionBlend;
+uniform float uMovementProtectionLowSppPreviewStrength;
+uniform float uMovementProtectionSpatialPreviewStrength;
+uniform float uMovementProtectionWidePreviewStrength;
 
 // R2-UI Bloom：multi-pass 做好的 1/4 解析度 bloom 貼圖，這裡只負責 composite
 uniform sampler2D tBloomTexture;
@@ -45,6 +51,11 @@ uniform float uHueB;          // 色相環旋轉角度（degrees），-180 ~ +18
 vec3 ACESFilmicNarkowicz(vec3 x)
 {
 	return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+vec3 HomeStudioReinhardToneMap(vec3 color)
+{
+	return color / (color + vec3(1.0));
 }
 
 #define TRUE 1
@@ -384,6 +395,49 @@ void main()
 	// average accumulation buffer
 	filteredPixelColor *= uOneOverSampleCounter;
 
+	if (uMovementProtectionWidePreviewStrength > 0.0)
+	{
+		float wideStrength = clamp(uMovementProtectionWidePreviewStrength, 0.0, 1.0);
+		vec3 movementWidePreviewSum =
+			m37[ 0].rgb + m37[ 1].rgb + m37[ 2].rgb + m37[ 3].rgb + m37[ 4].rgb +
+			m37[ 5].rgb + m37[ 6].rgb + m37[ 7].rgb + m37[ 8].rgb + m37[ 9].rgb +
+			m37[10].rgb + m37[11].rgb + m37[12].rgb + m37[13].rgb + m37[14].rgb +
+			m37[15].rgb + m37[16].rgb + m37[17].rgb + m37[18].rgb + m37[19].rgb +
+			m37[20].rgb + m37[21].rgb + m37[22].rgb + m37[23].rgb + m37[24].rgb +
+			m37[25].rgb + m37[26].rgb + m37[27].rgb + m37[28].rgb + m37[29].rgb +
+			m37[30].rgb + m37[31].rgb + m37[32].rgb + m37[33].rgb + m37[34].rgb +
+			m37[35].rgb + m37[36].rgb;
+		vec3 movementWidePreviewHdr = movementWidePreviewSum * (uOneOverSampleCounter / 37.0);
+		float movementCenterLumaWide = dot(filteredPixelColor, vec3(0.299, 0.587, 0.114));
+		float movementWideLuma = dot(movementWidePreviewHdr, vec3(0.299, 0.587, 0.114));
+		float movementWideBrightLimit = movementWideLuma * 1.08 + 0.018;
+		vec3 movementWideClampedHdr = filteredPixelColor;
+
+		if (movementCenterLumaWide > movementWideBrightLimit && movementCenterLumaWide > 0.0001)
+			movementWideClampedHdr *= movementWideBrightLimit / movementCenterLumaWide;
+		movementWideClampedHdr = mix(movementWideClampedHdr, movementWidePreviewHdr, 0.82);
+		filteredPixelColor = mix(filteredPixelColor, movementWideClampedHdr, wideStrength);
+	}
+
+	if (uMovementProtectionSpatialPreviewStrength > 0.0)
+	{
+		float spatialStrength = clamp(uMovementProtectionSpatialPreviewStrength, 0.0, 1.0);
+		vec3 movementSpatialPreviewHdr = edgePixelColor * uOneOverSampleCounter;
+		float movementCenterLuma = dot(filteredPixelColor, vec3(0.299, 0.587, 0.114));
+		float movementSpatialLuma = dot(movementSpatialPreviewHdr, vec3(0.299, 0.587, 0.114));
+		float movementBrightLimit = movementSpatialLuma * 1.18 + 0.025;
+		float movementDarkLift = movementSpatialLuma * 0.70;
+		vec3 movementClampedHdr = filteredPixelColor;
+
+		if (movementCenterLuma > movementBrightLimit && movementCenterLuma > 0.0001)
+			movementClampedHdr *= movementBrightLimit / movementCenterLuma;
+		if (movementCenterLuma < movementDarkLift)
+			movementClampedHdr = mix(movementClampedHdr, movementSpatialPreviewHdr, 0.55);
+
+		vec3 movementSpatialMixHdr = mix(movementClampedHdr, movementSpatialPreviewHdr, 0.55);
+		filteredPixelColor = mix(filteredPixelColor, movementSpatialMixHdr, spatialStrength);
+	}
+
 	// R2-UI Bloom：multi-pass composite（1 次 bilinear fetch，上採樣 1/4 res bloom 貼圖）
 	// debug on 時直接顯示 bloom target（verify pipeline，全黑 = brightpass 砍光或 STEP 2.5 未跑）
 	if (uBloomDebug > 0.5)
@@ -430,7 +484,7 @@ void main()
 	// 啟用時 → mix(Reinhard, ACES, strength) 線性混合兩條 tonemap，平滑控電影感比例
 	if (uUseToneMapping)
 	{
-		vec3 reinhard = ReinhardToneMapping(filteredPixelColor);
+		vec3 reinhard = HomeStudioReinhardToneMap(filteredPixelColor);
 		if (uACESEnabled > 0.5)
 		{
 			vec3 aces = ACESFilmicNarkowicz(filteredPixelColor);
@@ -511,6 +565,20 @@ void main()
 			0.114 + 0.886 * c - 0.203 * s
 		);
 		displayColor = max(hueM * displayColor, vec3(0.0));
+	}
+
+	if (uMovementProtectionMode > 0.5 && uMovementProtectionBlend > 0.0)
+	{
+		vec3 movementStableColor = texelFetch(tMovementProtectionStableTexture, ivec2(glFragCoord_xy), 0).rgb;
+		float movementBlend = clamp(uMovementProtectionBlend, 0.0, 0.95);
+		displayColor = mix(displayColor, movementStableColor, movementBlend);
+	}
+	if (uMovementProtectionLowSppPreviewStrength > 0.0)
+	{
+		float previewStrength = clamp(uMovementProtectionLowSppPreviewStrength, 0.0, 1.0);
+		vec3 movementPreviewColor = pow(max(displayColor, vec3(0.0)), vec3(0.62));
+		movementPreviewColor = min(movementPreviewColor, vec3(0.86));
+		displayColor = mix(displayColor, movementPreviewColor, previewStrength);
 	}
 
 	pc_fragColor = vec4(displayColor, 1.0);

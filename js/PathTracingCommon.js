@@ -16,6 +16,7 @@ uniform float uPreviousSampleCount;
 uniform bool uCameraIsMoving;
 uniform bool uUseOrthographicCamera;
 uniform bool uSceneIsDynamic;
+uniform float uMovementPreviewMode;
 
 in vec2 vUv;
 
@@ -3249,7 +3250,11 @@ void main( void )
 
 	vec2 pixelOffset;
 	
-	if (uSampleCounter < 50.0)
+	if (uMovementPreviewMode > 0.5)
+	{
+		pixelOffset = vec2(0.0);
+	}
+	else if (uSampleCounter < 50.0)
 	{
 		pixelOffset = vec2( tentFilter(rand()), tentFilter(rand()) );
 		pixelOffset *= uCameraIsMoving ? 0.5 : 1.0;
@@ -3264,8 +3269,9 @@ void main( void )
 					       
 	// depth of field
 	vec3 focalPoint = uFocusDistance * rayDir;
+	float previewApertureScale = (uMovementPreviewMode > 0.5) ? 0.0 : 1.0;
 	float randomAngle = rng() * TWO_PI; // pick random point on aperture
-	float randomRadius = rng() * uApertureSize;
+	float randomRadius = rng() * uApertureSize * previewApertureScale;
 	vec3  randomAperturePos = ((camRight * cos(randomAngle)) + (camUp * sin(randomAngle))) * sqrt(randomRadius);
 	// point on aperture to focal point
 	vec3 finalRayDir = normalize(focalPoint - randomAperturePos);
@@ -3318,10 +3324,16 @@ void main( void )
 	// white-line debug visualization for all 3 differences
 	//currentPixel.rgb += (rng() * 1.5) * vec3( clamp(max(normalDifference, max(objectDifference, colorDifference)), 0.0, 1.0) );
 
-	vec4 previousPixel = texelFetch(tPreviousTexture, ivec2(gl_FragCoord.xy), 0);
+	vec4 previousPixel = (uMovementPreviewMode > 0.5)
+		? vec4(0.0)
+		: texelFetch(tPreviousTexture, ivec2(gl_FragCoord.xy), 0);
 
 	
-	if (uFrameCounter == 1.0) // camera just moved after being still
+	if (uMovementPreviewMode > 0.5)
+	{
+		previousPixel = vec4(0.0);
+	}
+	else if (uFrameCounter == 1.0) // camera just moved after being still
 	{
 		previousPixel.rgb *= (1.0 / uPreviousSampleCount) * 0.5; // essentially previousPixel *= 0.5, like below
 		previousPixel.a = 0.0;

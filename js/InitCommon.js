@@ -18,6 +18,7 @@ let pathTracingMaterial, pathTracingMesh;
 let screenCopyMaterial, screenCopyMesh;
 let screenOutputMaterial, screenOutputMesh;
 let pathTracingRenderTarget, screenCopyRenderTarget;
+let movementProtectionRenderTarget;
 // R6 LGG-r16 J3：B 模 1/8 解析度 14 彈借光 buffer（暗角真光來源）
 // borrowPathTracingRenderTarget 14 彈 path tracer accumulator sum；
 // borrowScreenCopyRenderTarget  ping-pong 副本，給下一 frame 當 tPreviousTexture
@@ -67,6 +68,32 @@ const FRAME_INTERVAL_MS = 1000 / 60;
 let TWO_PI = Math.PI * 2;
 let sampleCounter = 0.0; // will get increased by 1 in animation loop before rendering
 let frameCounter = 1.0; // 1 instead of 0 because it is used as a rng() seed in pathtracing shader
+let firstFrameRecoveryEnabled = true;
+let firstFrameRecoveryTargetSamples = 4;
+let firstFrameRecoveryMovingTargetSamples = 2;
+let firstFrameRecoveryClearWhileMoving = true;
+let firstFrameRecoveryLastPassCount = 1;
+let firstFrameRecoveryLastReason = 'normal';
+let firstFrameRecoveryLastFinalSamples = 0;
+let movementProtectionEnabled = true;
+let movementPreviewEnabled = false;
+let movementProtectionMovingBlend = 0.0;
+let movementProtectionLowSppPreviewStrength = 0.0;
+let movementProtectionSpatialPreviewStrength = 0.0;
+let movementProtectionWidePreviewStrength = 0.0;
+let movementProtectionMinStableSamples = 16;
+let movementProtectionStableReady = false;
+let movementProtectionPreserveStableAcrossCameraReset = true;
+let movementProtectionLastCaptureSamples = 0;
+let movementProtectionLastBlend = 0.0;
+let movementProtectionLastPreviewStrength = 0.0;
+let movementProtectionLastSpatialPreviewStrength = 0.0;
+let movementProtectionLastWidePreviewStrength = 0.0;
+let movementPreviewLastMode = 0.0;
+let movementProtectionPeakPreviewStrength = 0.0;
+let movementProtectionPeakPreviewSamples = 0;
+let movementProtectionPeakPreviewConfig = 0;
+let movementProtectionLastInvalidationReason = 'initial';
 let cameraIsMoving = false;
 let cameraRecentlyMoving = false;
 let isPaused = true;
@@ -141,12 +168,262 @@ let gamepad_DirectionLeftPressed = false;
 let gamepad_DirectionRightPressed = false;
 window.addEventListener('gamepadconnected', (event) => {
 	gamepadIndex = event.gamepad.index;
-	console.log("Gamepad connected at index", gamepadIndex); 
+	console.log("Gamepad connected at index", gamepadIndex);
 });
 window.addEventListener('gamepaddisconnected', (event) => {
 	console.log("Gamepad disconnected from index", event.gamepad.index);
 	gamepadIndex = null;
 });
+
+function normalizeFirstFrameRecoveryTargetSamples(value)
+{
+	var n = Math.trunc(Number(value));
+	if (!Number.isFinite(n)) n = 4;
+	if (n < 1) n = 1;
+	if (n > 16) n = 16;
+	return n;
+}
+
+window.setFirstFrameRecoveryConfig = function(config)
+{
+	var nextConfig = config || {};
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'enabled'))
+		firstFrameRecoveryEnabled = !!nextConfig.enabled;
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'targetSamples'))
+		firstFrameRecoveryTargetSamples = normalizeFirstFrameRecoveryTargetSamples(nextConfig.targetSamples);
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'movingTargetSamples'))
+		firstFrameRecoveryMovingTargetSamples = normalizeFirstFrameRecoveryTargetSamples(nextConfig.movingTargetSamples);
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'clearWhileMoving'))
+		firstFrameRecoveryClearWhileMoving = !!nextConfig.clearWhileMoving;
+	return window.reportFirstFrameRecoveryConfig();
+};
+
+window.reportFirstFrameRecoveryConfig = function()
+{
+	return {
+		version: 'r6-3-phase2-first-frame-burst-v19',
+		enabled: firstFrameRecoveryEnabled,
+		targetSamples: firstFrameRecoveryTargetSamples,
+		movingTargetSamples: firstFrameRecoveryMovingTargetSamples,
+		configTargetSamples: firstFrameRecoveryConfigTargetSamples(cameraIsMoving),
+		clearWhileMoving: firstFrameRecoveryClearWhileMoving,
+		lastPassCount: firstFrameRecoveryLastPassCount,
+		lastReason: firstFrameRecoveryLastReason,
+		lastFinalSamples: firstFrameRecoveryLastFinalSamples,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
+	};
+};
+
+function normalizeMovementProtectionBlend(value)
+{
+	var n = Number(value);
+	if (!Number.isFinite(n)) n = 0.0;
+	if (n < 0.0) n = 0.0;
+	if (n > 0.95) n = 0.95;
+	return n;
+}
+
+function normalizeMovementProtectionPreviewStrength(value)
+{
+	var n = Number(value);
+	if (!Number.isFinite(n)) n = 0.0;
+	if (n < 0.0) n = 0.0;
+	if (n > 1.0) n = 1.0;
+	return n;
+}
+
+function normalizeMovementProtectionMinStableSamples(value)
+{
+	var n = Math.trunc(Number(value));
+	if (!Number.isFinite(n)) n = 16;
+	if (n < 1) n = 1;
+	if (n > 512) n = 512;
+	return n;
+}
+
+window.setMovementProtectionConfig = function(config)
+{
+	var nextConfig = config || {};
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'enabled'))
+		movementProtectionEnabled = !!nextConfig.enabled;
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'movementPreviewEnabled'))
+		movementPreviewEnabled = !!nextConfig.movementPreviewEnabled;
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'movingBlend'))
+		movementProtectionMovingBlend = normalizeMovementProtectionBlend(nextConfig.movingBlend);
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'lowSppPreviewStrength'))
+		movementProtectionLowSppPreviewStrength = normalizeMovementProtectionPreviewStrength(nextConfig.lowSppPreviewStrength);
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'spatialPreviewStrength'))
+		movementProtectionSpatialPreviewStrength = normalizeMovementProtectionPreviewStrength(nextConfig.spatialPreviewStrength);
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'widePreviewStrength'))
+		movementProtectionWidePreviewStrength = normalizeMovementProtectionPreviewStrength(nextConfig.widePreviewStrength);
+	if (Object.prototype.hasOwnProperty.call(nextConfig, 'minStableSamples'))
+		movementProtectionMinStableSamples = normalizeMovementProtectionMinStableSamples(nextConfig.minStableSamples);
+	if (!movementProtectionEnabled)
+	{
+		movementProtectionLastBlend = 0.0;
+		movementProtectionLastPreviewStrength = 0.0;
+		movementProtectionLastSpatialPreviewStrength = 0.0;
+		movementProtectionLastWidePreviewStrength = 0.0;
+	}
+	updateMovementPreviewUniforms(cameraIsMoving);
+	updateMovementProtectionUniforms(cameraIsMoving);
+	return window.reportMovementProtectionConfig();
+};
+
+window.reportMovementProtectionConfig = function()
+{
+	return {
+		version: 'r6-3-phase2-movement-protection-v22d',
+		enabled: movementProtectionEnabled,
+		movementPreviewEnabled: movementPreviewEnabled,
+		configAllowed: movementProtectionConfigAllowed(),
+		lowCostMovingActive: firstFrameRecoveryLowCostMovementActive(cameraIsMoving),
+		movingBlend: movementProtectionMovingBlend,
+		lowSppPreviewStrength: movementProtectionLowSppPreviewStrength,
+		spatialPreviewStrength: movementProtectionSpatialPreviewStrength,
+		widePreviewStrength: movementProtectionWidePreviewStrength,
+		minStableSamples: movementProtectionMinStableSamples,
+		stableReady: movementProtectionStableReady,
+		preserveStableAcrossCameraReset: movementProtectionPreserveStableAcrossCameraReset,
+		lastCaptureSamples: movementProtectionLastCaptureSamples,
+		lastBlend: movementProtectionLastBlend,
+		lastPreviewStrength: movementProtectionLastPreviewStrength,
+		lastSpatialPreviewStrength: movementProtectionLastSpatialPreviewStrength,
+		lastWidePreviewStrength: movementProtectionLastWidePreviewStrength,
+		peakPreviewStrength: movementProtectionPeakPreviewStrength,
+		peakPreviewSamples: movementProtectionPeakPreviewSamples,
+		peakPreviewConfig: movementProtectionPeakPreviewConfig,
+		uniformPreviewStrength: screenOutputUniforms && screenOutputUniforms.uMovementProtectionLowSppPreviewStrength
+			? screenOutputUniforms.uMovementProtectionLowSppPreviewStrength.value
+			: null,
+		uniformSpatialPreviewStrength: screenOutputUniforms && screenOutputUniforms.uMovementProtectionSpatialPreviewStrength
+			? screenOutputUniforms.uMovementProtectionSpatialPreviewStrength.value
+			: null,
+		uniformWidePreviewStrength: screenOutputUniforms && screenOutputUniforms.uMovementProtectionWidePreviewStrength
+			? screenOutputUniforms.uMovementProtectionWidePreviewStrength.value
+			: null,
+		lastMovementPreviewMode: movementPreviewLastMode,
+		uniformMovementPreviewMode: pathTracingUniforms && pathTracingUniforms.uMovementPreviewMode
+			? pathTracingUniforms.uMovementPreviewMode.value
+			: null,
+		lastInvalidationReason: movementProtectionLastInvalidationReason,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
+		cameraIsMoving: !!cameraIsMoving
+	};
+};
+
+function movementProtectionConfigAllowed()
+{
+	var config = (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0;
+	return config === 3 || config === 4;
+}
+
+function firstFrameRecoveryMovementConfigAllowed()
+{
+	return movementProtectionConfigAllowed();
+}
+
+function firstFrameRecoveryConfigTargetSamples(activeCameraMoving)
+{
+	if (!movementProtectionConfigAllowed())
+		return 1;
+	if (activeCameraMoving)
+		return firstFrameRecoveryMovingTargetSamples;
+	return firstFrameRecoveryTargetSamples;
+}
+
+function firstFrameRecoveryLowCostMovementActive(activeCameraMoving)
+{
+	return movementProtectionConfigAllowed() && !!activeCameraMoving;
+}
+
+function movementPreviewActive(activeCameraMoving)
+{
+	return movementPreviewEnabled && movementProtectionEnabled && movementProtectionConfigAllowed() && !!activeCameraMoving;
+}
+
+function updateMovementPreviewUniforms(activeCameraMoving)
+{
+	var mode = movementPreviewActive(activeCameraMoving) ? 1.0 : 0.0;
+	movementPreviewLastMode = mode;
+	if (pathTracingUniforms && pathTracingUniforms.uMovementPreviewMode)
+		pathTracingUniforms.uMovementPreviewMode.value = mode;
+}
+
+function invalidateMovementProtectionStableFrame(reason)
+{
+	movementProtectionStableReady = false;
+	movementProtectionLastCaptureSamples = 0;
+	movementProtectionLastBlend = 0.0;
+	movementProtectionLastPreviewStrength = 0.0;
+	movementProtectionLastSpatialPreviewStrength = 0.0;
+	movementProtectionLastWidePreviewStrength = 0.0;
+	movementProtectionLastInvalidationReason = reason || 'unknown';
+	updateMovementPreviewUniforms(false);
+	updateMovementProtectionUniforms(false);
+}
+
+function updateMovementProtectionUniforms(activeCameraMoving)
+{
+	if (!screenOutputUniforms) return;
+	var configAllowed = movementProtectionConfigAllowed();
+	var enabled = movementProtectionEnabled && movementProtectionStableReady && configAllowed;
+	var blend = enabled && activeCameraMoving ? movementProtectionMovingBlend : 0.0;
+	var previewStrength = movementProtectionEnabled && configAllowed && activeCameraMoving ? movementProtectionLowSppPreviewStrength : 0.0;
+	var spatialPreviewStrength = movementProtectionEnabled && configAllowed && activeCameraMoving ? movementProtectionSpatialPreviewStrength : 0.0;
+	var widePreviewStrength = movementProtectionEnabled && configAllowed && activeCameraMoving ? movementProtectionWidePreviewStrength : 0.0;
+	movementProtectionLastBlend = blend;
+	movementProtectionLastPreviewStrength = previewStrength;
+	movementProtectionLastSpatialPreviewStrength = spatialPreviewStrength;
+	movementProtectionLastWidePreviewStrength = widePreviewStrength;
+	if (previewStrength > movementProtectionPeakPreviewStrength)
+	{
+		movementProtectionPeakPreviewStrength = previewStrength;
+		movementProtectionPeakPreviewSamples = Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0);
+		movementProtectionPeakPreviewConfig = (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0;
+	}
+	if (screenOutputUniforms.uMovementProtectionMode)
+		screenOutputUniforms.uMovementProtectionMode.value = enabled ? 1.0 : 0.0;
+	if (screenOutputUniforms.uMovementProtectionBlend)
+		screenOutputUniforms.uMovementProtectionBlend.value = blend;
+	if (screenOutputUniforms.uMovementProtectionLowSppPreviewStrength)
+		screenOutputUniforms.uMovementProtectionLowSppPreviewStrength.value = previewStrength;
+	if (screenOutputUniforms.uMovementProtectionSpatialPreviewStrength)
+		screenOutputUniforms.uMovementProtectionSpatialPreviewStrength.value = spatialPreviewStrength;
+	if (screenOutputUniforms.uMovementProtectionWidePreviewStrength)
+		screenOutputUniforms.uMovementProtectionWidePreviewStrength.value = widePreviewStrength;
+	if (screenOutputUniforms.tMovementProtectionStableTexture && movementProtectionRenderTarget)
+		screenOutputUniforms.tMovementProtectionStableTexture.value = movementProtectionRenderTarget.texture;
+}
+
+function captureMovementProtectionStableFrame()
+{
+	if (!movementProtectionEnabled || !movementProtectionRenderTarget || !screenOutputUniforms)
+		return false;
+	if (cameraIsMoving || sampleCounter < movementProtectionMinStableSamples)
+		return false;
+	if (movementProtectionLastCaptureSamples === Math.round(sampleCounter))
+		return false;
+
+	var savedMode = screenOutputUniforms.uMovementProtectionMode ? screenOutputUniforms.uMovementProtectionMode.value : 0.0;
+	var savedBlend = screenOutputUniforms.uMovementProtectionBlend ? screenOutputUniforms.uMovementProtectionBlend.value : 0.0;
+	var savedStableTexture = screenOutputUniforms.tMovementProtectionStableTexture ? screenOutputUniforms.tMovementProtectionStableTexture.value : null;
+	if (screenOutputUniforms.uMovementProtectionMode) screenOutputUniforms.uMovementProtectionMode.value = 0.0;
+	if (screenOutputUniforms.uMovementProtectionBlend) screenOutputUniforms.uMovementProtectionBlend.value = 0.0;
+	if (screenOutputUniforms.tMovementProtectionStableTexture) screenOutputUniforms.tMovementProtectionStableTexture.value = pathTracingRenderTarget.texture;
+
+	renderer.setRenderTarget(movementProtectionRenderTarget);
+	renderer.render(screenOutputScene, orthoCamera);
+
+	if (screenOutputUniforms.uMovementProtectionMode) screenOutputUniforms.uMovementProtectionMode.value = savedMode;
+	if (screenOutputUniforms.uMovementProtectionBlend) screenOutputUniforms.uMovementProtectionBlend.value = savedBlend;
+	if (screenOutputUniforms.tMovementProtectionStableTexture) screenOutputUniforms.tMovementProtectionStableTexture.value = savedStableTexture;
+
+	movementProtectionStableReady = true;
+	movementProtectionLastCaptureSamples = Math.round(sampleCounter);
+	updateMovementProtectionUniforms(cameraIsMoving);
+	return true;
+}
 
 
 // The following list of keys is not exhaustive, but it should be more than enough to build interactive demos and games
@@ -220,8 +497,8 @@ function FirstPersonCameraControls(camera)
 	pitchObject.add(camera);
 
 	let yawObject = new THREE.Object3D();
-	yawObject.add(pitchObject); 
-	
+	yawObject.add(pitchObject);
+
 	function onMouseMove(event)
 	{
 		if (isPaused)
@@ -237,12 +514,12 @@ function FirstPersonCameraControls(camera)
 			inputRotationHorizontal = cameraControlsYawObject.rotation.y;
 			inputRotationVertical = cameraControlsPitchObject.rotation.x;
 		}
-		
+
 		if (inputMovementHorizontal) // prevent NaNs due to invalid mousemove data from browser
 			inputRotationHorizontal += inputMovementHorizontal;
 		if (inputMovementVertical) // prevent NaNs due to invalid mousemove data from browser
 			inputRotationVertical += inputMovementVertical;
-		
+
 		if (useGenericInput)
 		{
 			// clamp the camera's vertical rotation (around the x-axis) to the scene's 'ceiling' and 'floor'
@@ -330,6 +607,11 @@ function onWindowResize(event)
 
 	pathTracingRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
 	screenCopyRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
+	if (movementProtectionRenderTarget)
+	{
+		movementProtectionRenderTarget.setSize(context.drawingBufferWidth, context.drawingBufferHeight);
+		invalidateMovementProtectionStableFrame('resize');
+	}
 
 	// R6 LGG-r16 J3：borrow buffer 同步 1/8 解析度 resize
 	if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget)
@@ -353,7 +635,7 @@ function onWindowResize(event)
 	}
 
 	worldCamera.aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
-	// the following is normally used with traditional rasterized rendering, but it is not needed for our fragment shader raytraced rendering 
+	// the following is normally used with traditional rasterized rendering, but it is not needed for our fragment shader raytraced rendering
 	///worldCamera.updateProjectionMatrix();
 
 	// the following scales all scene objects by the worldCamera's field of view,
@@ -416,7 +698,7 @@ function init()
 	window.addEventListener('resize', onWindowResize, false);
 	window.addEventListener('orientationchange', onWindowResize, false);
 
-	if ('ontouchstart' in window) 
+	if ('ontouchstart' in window)
 	{
 		mouseControl = false;
 		// if on mobile device, unpause the app because there is no ESC key and no mouse capture to do
@@ -456,16 +738,16 @@ function init()
 
 		window.addEventListener('wheel', onMouseWheel, false);
 
-		// window.addEventListener("click", function(event) 
+		// window.addEventListener("click", function(event)
 		// {
-		// 	event.preventDefault();	
+		// 	event.preventDefault();
 		// }, false);
-		window.addEventListener("dblclick", function (event) 
+		window.addEventListener("dblclick", function (event)
 		{
 			event.preventDefault();
 		}, false);
 
-		document.body.addEventListener("click", function (event) 
+		document.body.addEventListener("click", function (event)
 		{
 			if (!ableToEngagePointerLock)
 				return;
@@ -505,15 +787,15 @@ function init()
 
 
 	/* // Fullscreen API (optional)
-	document.addEventListener("click", function() 
+	document.addEventListener("click", function()
 	{
-		if ( !document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement ) 
+		if ( !document.fullscreenElement && !document.mozFullScreenElement && !document.webkitFullscreenElement )
 		{
-			if (document.documentElement.requestFullscreen) 
-				document.documentElement.requestFullscreen();	
-			else if (document.documentElement.mozRequestFullScreen) 
+			if (document.documentElement.requestFullscreen)
+				document.documentElement.requestFullscreen();
+			else if (document.documentElement.mozRequestFullScreen)
 				document.documentElement.mozRequestFullScreen();
-			else if (document.documentElement.webkitRequestFullscreen) 
+			else if (document.documentElement.webkitRequestFullscreen)
 				document.documentElement.webkitRequestFullscreen();
 		}
 	}); */
@@ -580,14 +862,14 @@ function initTHREEjs()
 	screenOutputScene = new THREE.Scene();
 
 	// orthoCamera is the camera to help render the oversized full-screen triangle, which is stretched across the
-	// screen (and a little outside the viewport).  orthoCamera is an orthographic camera that sits facing the view plane, 
+	// screen (and a little outside the viewport).  orthoCamera is an orthographic camera that sits facing the view plane,
 	// which serves as the window into our 3d world. This camera will not move or rotate for the duration of the app.
 	orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 	screenCopyScene.add(orthoCamera);
 	screenOutputScene.add(orthoCamera);
 
-	// worldCamera is the dynamic camera 3d object that will be positioned, oriented and constantly updated inside 
-	// the 3d scene.  Its view will ultimately get passed back to the stationary orthoCamera that renders 
+	// worldCamera is the dynamic camera 3d object that will be positioned, oriented and constantly updated inside
+	// the 3d scene.  Its view will ultimately get passed back to the stationary orthoCamera that renders
 	// the scene to a full-screen triangle, which is stretched across the viewport.
 	worldCamera = new THREE.PerspectiveCamera(60, document.body.clientWidth / document.body.clientHeight, 1, 1000);
 	storedFOV = worldCamera.fov;
@@ -622,6 +904,16 @@ function initTHREEjs()
 		stencilBuffer: false
 	});
 	screenCopyRenderTarget.texture.generateMipmaps = false;
+
+	movementProtectionRenderTarget = new THREE.WebGLRenderTarget(context.drawingBufferWidth, context.drawingBufferHeight, {
+		minFilter: THREE.NearestFilter,
+		magFilter: THREE.NearestFilter,
+		format: THREE.RGBAFormat,
+		type: THREE.FloatType,
+		depthBuffer: false,
+		stencilBuffer: false
+	});
+	movementProtectionRenderTarget.texture.generateMipmaps = false;
 
 	// R6 LGG-r16 J3：1/8 解析度 14 彈借光 buffer（暗角真光來源）
 	// borrowPathTracingRenderTarget 用 LinearFilter，主 pass texture() bilinear 採樣較平滑
@@ -672,13 +964,13 @@ function initTHREEjs()
 		}
 	}
 
-	
+
 
 	// setup scene/demo-specific objects, variables, GUI elements, and data
 	initSceneData();
 
 
-	if ( !mouseControl ) 
+	if ( !mouseControl )
 	{
 		mobileJoystickControls = new MobileJoystickControls({
 			//showJoystick: true,
@@ -699,7 +991,7 @@ function initTHREEjs()
 	trianglePositions.push( 3,-1, 0 ); // go beyond right side of viewport, in order to have full-screen coverage
 	trianglePositions.push(-1, 3, 0 ); // go beyond top of viewport, in order to have full-screen coverage
 	triangleGeometry.setAttribute( 'position', new THREE.Float32BufferAttribute( trianglePositions, 3 ));
-	
+
 
 	pathTracingUniforms.tPreviousTexture = { type: "t", value: screenCopyRenderTarget.texture };
 	pathTracingUniforms.tBlueNoiseTexture = { type: "t", value: blueNoiseTexture };
@@ -725,6 +1017,7 @@ function initTHREEjs()
 	pathTracingUniforms.uCameraIsMoving = { type: "b1", value: false };
 	pathTracingUniforms.uUseOrthographicCamera = { type: "b1", value: false };
 	pathTracingUniforms.uSceneIsDynamic = { type: "b1", value: false };
+	pathTracingUniforms.uMovementPreviewMode = { type: "f", value: 0.0 };
 
 	// R2-UI: 牆面反射率（牆/天花板/柱樑），預設 1.0（R2-18 fix18：使用者肉眼校準）
 	pathTracingUniforms.uWallAlbedo = { type: "f", value: 1.0 };
@@ -759,8 +1052,8 @@ function initTHREEjs()
 			pathTracingMesh = new THREE.Mesh(triangleGeometry, pathTracingMaterial);
 			pathTracingScene.add(pathTracingMesh);
 
-			// the following keeps the oversized full-screen triangle right in front 
-			//   of the camera at all times. This is necessary because without it, the full-screen 
+			// the following keeps the oversized full-screen triangle right in front
+			//   of the camera at all times. This is necessary because without it, the full-screen
 			//   triangle will fall out of view and get clipped when the camera rotates past 180 degrees.
 			worldCamera.add(pathTracingMesh);
 
@@ -769,7 +1062,7 @@ function initTHREEjs()
 
 
 	// this oversized full-screen triangle mesh copies the image output of the pathtracing shader and feeds it back in to that shader as a 'previousTexture'
-	
+
 	screenCopyUniforms = {
 		tPathTracedImageTexture: { type: "t", value: pathTracingRenderTarget.texture }
 	};
@@ -797,6 +1090,7 @@ function initTHREEjs()
 
 	screenOutputUniforms = {
 		tPathTracedImageTexture: { type: "t", value: pathTracingRenderTarget.texture },
+		tMovementProtectionStableTexture: { type: "t", value: movementProtectionRenderTarget.texture },
 		// R2-UI Bloom multi-scale：最終合成貼圖（1/2 解析度 mip[0]，pyramid upsample 後的結果）
 		tBloomTexture: { type: "t", value: bloomMip[0].texture },
 		uSampleCounter: { type: "f", value: 0.0 },
@@ -807,6 +1101,11 @@ function initTHREEjs()
 		uCameraIsMoving: { type: "b1", value: false },
 		uSceneIsDynamic: { type: "b1", value: sceneIsDynamic },
 		uUseToneMapping: { type: "b1", value: useToneMapping },
+		uMovementProtectionMode: { type: "f", value: 0.0 },
+		uMovementProtectionBlend: { type: "f", value: 0.0 },
+		uMovementProtectionLowSppPreviewStrength: { type: "f", value: 0.0 },
+		uMovementProtectionSpatialPreviewStrength: { type: "f", value: 0.0 },
+		uMovementProtectionWidePreviewStrength: { type: "f", value: 0.0 },
 		// R2-UI: Bloom composite 強度，0 = 關閉
 		uBloomIntensity: { type: "f", value: 0.03 },
 		// R2-UI: Bloom debug，1.0 = 直接顯示 bloom target（verify pipeline）
@@ -833,7 +1132,7 @@ function initTHREEjs()
 		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
 	};
 
-	fileLoader.load('shaders/ScreenOutput_Fragment.glsl', function (shaderText)
+	fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22d', function (shaderText)
 	{
 
 		screenOutputFragmentShader = shaderText;
@@ -969,6 +1268,7 @@ function animate()
 	if (sceneParamsChanged)
 	{
 		cameraIsMoving = true;
+		invalidateMovementProtectionStableFrame('sceneParamsChanged');
 		sceneParamsChanged = false;
 	}
 
@@ -1003,7 +1303,7 @@ function animate()
 			cameraIsMoving = true;
 			// the ' || 0 ' prevents NaNs from creeping into inputRotationHorizontal calc below
 			inputMovementHorizontal = ((oldDeltaX - newDeltaX) * 0.01) || 0;
-			// mobileJoystick X movement (left and right) affects camera rotation around the Y axis	
+			// mobileJoystick X movement (left and right) affects camera rotation around the Y axis
 			inputRotationHorizontal += inputMovementHorizontal;
 		}
 
@@ -1013,14 +1313,14 @@ function animate()
 			cameraIsMoving = true;
 			// the ' || 0 ' prevents NaNs from creeping into inputRotationVertical calc below
 			inputMovementVertical = ((oldDeltaY - newDeltaY) * 0.01) || 0;
-			// mobileJoystick Y movement (up and down) affects camera rotation around the X axis	
+			// mobileJoystick Y movement (up and down) affects camera rotation around the X axis
 			inputRotationVertical += inputMovementVertical;
 		}
 
 		// clamp the camera's vertical rotation (around the x-axis) to the scene's 'ceiling' and 'floor',
 		// so you can't accidentally flip the camera upside down
 		if (useGenericInput)
-		{	
+		{
 			if (inputRotationVertical < -PI_2)
 			{
 				inputRotationVertical = -PI_2;
@@ -1037,7 +1337,7 @@ function animate()
 		oldDeltaX = newDeltaX;
 		oldDeltaY = newDeltaY;
 
-		
+
 		newPinchWidthX = pinchWidthX;
 		newPinchWidthY = pinchWidthY;
 		pinchDeltaX = newPinchWidthX - oldPinchWidthX;
@@ -1092,7 +1392,7 @@ function animate()
 			cameraIsMoving = true;
 			// the ' || 0 ' prevents NaNs from creeping into inputRotationHorizontal calc below
 			inputMovementHorizontal = ((oldDeltaX - newDeltaX) * 0.01) || 0;
-			// gamepad stick X movement (left and right) affects camera rotation around the Y axis	
+			// gamepad stick X movement (left and right) affects camera rotation around the Y axis
 			inputRotationHorizontal += inputMovementHorizontal;
 		}
 
@@ -1104,14 +1404,14 @@ function animate()
 			cameraIsMoving = true;
 			// the ' || 0 ' prevents NaNs from creeping into inputRotationVertical calc below
 			inputMovementVertical = ((oldDeltaY - newDeltaY) * 0.01) || 0;
-			// gamepad stick Y movement (up and down) affects camera rotation around the X axis	
+			// gamepad stick Y movement (up and down) affects camera rotation around the X axis
 			inputRotationVertical += inputMovementVertical;
 		}
 
 		// clamp the camera's vertical rotation (around the x-axis) to the scene's 'ceiling' and 'floor',
 		// so you can't accidentally flip the camera upside down
 		if (useGenericInput)
-		{	
+		{
 			if (inputRotationVertical < -PI_2)
 			{
 				inputRotationVertical = -PI_2;
@@ -1127,7 +1427,7 @@ function animate()
 		// save state for next frame
 		oldDeltaX = newDeltaX;
 		oldDeltaY = newDeltaY;
-		
+
 	} // end if ( gp )
 
 
@@ -1271,7 +1571,7 @@ function animate()
 		apertureSize += (0.1 * apertureChangeSpeed);
 		if (apertureSize > 10000.0)
 			apertureSize = 10000.0;
-		
+
 		cameraIsMoving = true;
 		increaseAperture = false;
 	}
@@ -1280,7 +1580,7 @@ function animate()
 		apertureSize -= (0.1 * apertureChangeSpeed);
 		if (apertureSize < 0.0)
 			apertureSize = 0.0;
-		
+
 		cameraIsMoving = true;
 		decreaseAperture = false;
 	}
@@ -1310,6 +1610,7 @@ function animate()
 	}
 
 	// now update uniforms that are common to all scenes
+	var wasCameraRecentlyMoving = cameraRecentlyMoving;
 	if (!cameraIsMoving)
 	{
 		if (sceneIsDynamic)
@@ -1339,6 +1640,7 @@ function animate()
 
 	pathTracingUniforms.uTime.value = elapsedTime;
 	pathTracingUniforms.uCameraIsMoving.value = cameraIsMoving;
+	updateMovementPreviewUniforms(cameraIsMoving);
 	pathTracingUniforms.uSampleCounter.value = sampleCounter;
 	pathTracingUniforms.uFrameCounter.value = frameCounter;
 	pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
@@ -1357,6 +1659,7 @@ function animate()
 
 
 	// R2-UI：切換 Cam 或其他觸發源要求「立刻清除殘影」，清空兩個 ping-pong buffer 再往下走
+	var accumulationWasClearedForThisFrame = false;
 	if (needClearAccumulation)
 	{
 		renderer.setRenderTarget(pathTracingRenderTarget);
@@ -1371,6 +1674,8 @@ function animate()
 			renderer.setRenderTarget(borrowScreenCopyRenderTarget);
 			renderer.clear();
 		}
+		movementProtectionStableReady = false;
+		movementProtectionLastCaptureSamples = 0;
 		sampleCounter = 1.0;
 		frameCounter = 1.0;
 		pathTracingUniforms.uSampleCounter.value = sampleCounter;
@@ -1379,71 +1684,148 @@ function animate()
 		screenOutputUniforms.uSampleCounter.value = sampleCounter;
 		screenOutputUniforms.uOneOverSampleCounter.value = 1.0;
 		needClearAccumulation = false;
+		accumulationWasClearedForThisFrame = true;
 	}
 
 	// RENDERING in 3 steps
 	// 到達 MAX_SAMPLES 後跳過 STEP 1/2，凍結累加 buffer，只保留 STEP 3 顯示
 	var renderingStopped = (typeof MAX_SAMPLES !== 'undefined' && sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
+	var firstFrameRecoveryWasCleared = accumulationWasClearedForThisFrame;
+	var firstFrameRecoveryPassTarget = sampleCounter;
+	var firstFrameRecoveryReason = 'normal';
+	var firstFrameRecoveryActiveRenderCameraMoving = cameraIsMoving;
 
 	if (!renderingStopped)
 	{
-		// STEP 1A: R6 LGG-r16 J3 借光 pass（1/8 res、14 彈），只在 uBorrowStrength > 0 時跑
-		// 暫時切 uniforms（uMaxBounces=14、uIsBorrowPass=1、tPreviousTexture 換 borrow ping-pong、uResolution 切 1/8）
-		// 主 pass 跑完之後恢復原 uniforms 狀態
-		var borrowActive = pathTracingUniforms.uBorrowStrength
-			&& pathTracingUniforms.uBorrowStrength.value > 0.0
-			&& borrowPathTracingRenderTarget
-			&& borrowScreenCopyRenderTarget;
-		if (borrowActive)
+		if (firstFrameRecoveryEnabled)
 		{
-			var savedBounces = pathTracingUniforms.uMaxBounces.value;
-			var savedTPrev = pathTracingUniforms.tPreviousTexture.value;
-			var savedTBorrow = pathTracingUniforms.tBorrowTexture.value;
-			var savedResX = pathTracingUniforms.uResolution.value.x;
-			var savedResY = pathTracingUniforms.uResolution.value.y;
-			var lowW = Math.max(1, Math.floor(savedResX / 8));
-			var lowH = Math.max(1, Math.floor(savedResY / 8));
-
-			// R6 LGG-r20：借光反彈回到 14 彈（深暗角需要 5+ 彈光線才到得了）
-			// 配合 pathtracing_main chunk 的 source-side clamp 1.0，14 彈 firefly 不會永久汙染累積
-			pathTracingUniforms.uMaxBounces.value = 14.0;
-			pathTracingUniforms.uIsBorrowPass.value = 1.0;
-			pathTracingUniforms.tPreviousTexture.value = borrowScreenCopyRenderTarget.texture;
-			// 防 WebGL feedback loop：借光 pass 寫入 borrowPathTracingRenderTarget，
-			// 暫時把 tBorrowTexture 指到 ping-pong 兄弟 borrowScreenCopyRenderTarget，避免「同張紋理同時是 input + output」未定義行為
-			pathTracingUniforms.tBorrowTexture.value = borrowScreenCopyRenderTarget.texture;
-			pathTracingUniforms.uResolution.value.set(lowW, lowH);
-
-			renderer.setRenderTarget(borrowPathTracingRenderTarget);
-			renderer.render(pathTracingScene, worldCamera);
-
-			// borrow ping-pong：把剛寫的 borrowPathTracingRenderTarget 複製到 borrowScreenCopyRenderTarget
-			// 用既有 screenCopyScene/Material（fragment 是 ScreenCopy_Fragment.glsl），暫時換 source 紋理引用
-			var savedScSrc = screenCopyUniforms.tPathTracedImageTexture.value;
-			screenCopyUniforms.tPathTracedImageTexture.value = borrowPathTracingRenderTarget.texture;
-			renderer.setRenderTarget(borrowScreenCopyRenderTarget);
-			renderer.render(screenCopyScene, orthoCamera);
-			screenCopyUniforms.tPathTracedImageTexture.value = savedScSrc;
-
-			// 恢復主 pass uniforms
-			pathTracingUniforms.uMaxBounces.value = savedBounces;
-			pathTracingUniforms.uIsBorrowPass.value = 0.0;
-			pathTracingUniforms.tPreviousTexture.value = savedTPrev;
-			pathTracingUniforms.tBorrowTexture.value = savedTBorrow;
-			pathTracingUniforms.uResolution.value.set(savedResX, savedResY);
+			var firstFrameRecoveryActiveTargetSamples = firstFrameRecoveryConfigTargetSamples(cameraIsMoving);
+			if (accumulationWasClearedForThisFrame)
+			{
+				firstFrameRecoveryReason = 'cleared';
+			}
+			else if (cameraIsMoving && firstFrameRecoveryClearWhileMoving && sampleCounter <= 1.0)
+			{
+				firstFrameRecoveryReason = 'moving';
+				firstFrameRecoveryWasCleared = true;
+			}
+			else if (wasCameraRecentlyMoving && sampleCounter < firstFrameRecoveryActiveTargetSamples)
+			{
+				firstFrameRecoveryReason = 'recentlyMoving';
+			}
+			if (firstFrameRecoveryReason !== 'normal' || sampleCounter < firstFrameRecoveryActiveTargetSamples)
+			{
+				firstFrameRecoveryPassTarget = Math.max(firstFrameRecoveryPassTarget, firstFrameRecoveryActiveTargetSamples);
+				firstFrameRecoveryActiveRenderCameraMoving = false;
+			}
 		}
 
-		// STEP 1
-		// Perform PathTracing and Render(save) into pathTracingRenderTarget, a full-screen texture (on the oversized triangle).
-		// Read previous screenCopyRenderTarget(via texelFetch inside fragment shader) to use as a new starting point to blend with
-		renderer.setRenderTarget(pathTracingRenderTarget);
-		renderer.render(pathTracingScene, worldCamera);
+		if (firstFrameRecoveryWasCleared)
+		{
+			renderer.setRenderTarget(pathTracingRenderTarget);
+			renderer.clear();
+			renderer.setRenderTarget(screenCopyRenderTarget);
+			renderer.clear();
+			if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget)
+			{
+				renderer.setRenderTarget(borrowPathTracingRenderTarget);
+				renderer.clear();
+				renderer.setRenderTarget(borrowScreenCopyRenderTarget);
+				renderer.clear();
+			}
+			if (!movementProtectionPreserveStableAcrossCameraReset)
+			{
+				movementProtectionStableReady = false;
+				movementProtectionLastCaptureSamples = 0;
+			}
+			frameCounter = 2.0;
+			pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+		}
 
-		// STEP 2
-		// Render(copy) the pathTracingScene output(pathTracingRenderTarget above) into screenCopyRenderTarget.
-		// This will be used as a new starting point for Step 1 above (essentially creating ping-pong buffers)
-		renderer.setRenderTarget(screenCopyRenderTarget);
-		renderer.render(screenCopyScene, orthoCamera);
+		var firstFrameRecoveryPassStart = sampleCounter;
+		firstFrameRecoveryLastPassCount = Math.max(1, Math.round(firstFrameRecoveryPassTarget - firstFrameRecoveryPassStart + 1.0));
+		firstFrameRecoveryLastReason = firstFrameRecoveryReason;
+
+		for (var firstFrameRecoveryPassSample = sampleCounter; firstFrameRecoveryPassSample <= firstFrameRecoveryPassTarget; firstFrameRecoveryPassSample += 1.0)
+		{
+			sampleCounter = firstFrameRecoveryPassSample;
+			pathTracingUniforms.uCameraIsMoving.value = firstFrameRecoveryActiveRenderCameraMoving;
+			updateMovementPreviewUniforms(cameraIsMoving);
+			pathTracingUniforms.uSampleCounter.value = sampleCounter;
+			pathTracingUniforms.uFrameCounter.value = frameCounter;
+			pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
+			screenOutputUniforms.uCameraIsMoving.value = firstFrameRecoveryActiveRenderCameraMoving;
+			screenOutputUniforms.uSampleCounter.value = sampleCounter;
+			screenOutputUniforms.uOneOverSampleCounter.value = 1.0 / sampleCounter;
+
+			// STEP 1A: R6 LGG-r16 J3 借光 pass（1/8 res、14 彈），只在 uBorrowStrength > 0 時跑
+			// 暫時切 uniforms（uMaxBounces=14、uIsBorrowPass=1、tPreviousTexture 換 borrow ping-pong、uResolution 切 1/8）
+			// 主 pass 跑完之後恢復原 uniforms 狀態
+			var borrowActive = pathTracingUniforms.uBorrowStrength
+				&& pathTracingUniforms.uBorrowStrength.value > 0.0
+				&& borrowPathTracingRenderTarget
+				&& borrowScreenCopyRenderTarget
+				&& !firstFrameRecoveryLowCostMovementActive(cameraIsMoving);
+			if (borrowActive)
+			{
+				var savedBounces = pathTracingUniforms.uMaxBounces.value;
+				var savedTPrev = pathTracingUniforms.tPreviousTexture.value;
+				var savedTBorrow = pathTracingUniforms.tBorrowTexture.value;
+				var savedResX = pathTracingUniforms.uResolution.value.x;
+				var savedResY = pathTracingUniforms.uResolution.value.y;
+				var lowW = Math.max(1, Math.floor(savedResX / 8));
+				var lowH = Math.max(1, Math.floor(savedResY / 8));
+
+				// R6 LGG-r20：借光反彈回到 14 彈（深暗角需要 5+ 彈光線才到得了）
+				// 配合 pathtracing_main chunk 的 source-side clamp 1.0，14 彈 firefly 不會永久汙染累積
+				pathTracingUniforms.uMaxBounces.value = 14.0;
+				pathTracingUniforms.uIsBorrowPass.value = 1.0;
+				pathTracingUniforms.tPreviousTexture.value = borrowScreenCopyRenderTarget.texture;
+				// 防 WebGL feedback loop：借光 pass 寫入 borrowPathTracingRenderTarget，
+				// 暫時把 tBorrowTexture 指到 ping-pong 兄弟 borrowScreenCopyRenderTarget，避免「同張紋理同時是 input + output」未定義行為
+				pathTracingUniforms.tBorrowTexture.value = borrowScreenCopyRenderTarget.texture;
+				pathTracingUniforms.uResolution.value.set(lowW, lowH);
+
+				renderer.setRenderTarget(borrowPathTracingRenderTarget);
+				renderer.render(pathTracingScene, worldCamera);
+
+				// borrow ping-pong：把剛寫的 borrowPathTracingRenderTarget 複製到 borrowScreenCopyRenderTarget
+				// 用既有 screenCopyScene/Material（fragment 是 ScreenCopy_Fragment.glsl），暫時換 source 紋理引用
+				var savedScSrc = screenCopyUniforms.tPathTracedImageTexture.value;
+				screenCopyUniforms.tPathTracedImageTexture.value = borrowPathTracingRenderTarget.texture;
+				renderer.setRenderTarget(borrowScreenCopyRenderTarget);
+				renderer.render(screenCopyScene, orthoCamera);
+				screenCopyUniforms.tPathTracedImageTexture.value = savedScSrc;
+
+				// 恢復主 pass uniforms
+				pathTracingUniforms.uMaxBounces.value = savedBounces;
+				pathTracingUniforms.uIsBorrowPass.value = 0.0;
+				pathTracingUniforms.tPreviousTexture.value = savedTPrev;
+				pathTracingUniforms.tBorrowTexture.value = savedTBorrow;
+				pathTracingUniforms.uResolution.value.set(savedResX, savedResY);
+			}
+
+			// STEP 1
+			// Perform PathTracing and Render(save) into pathTracingRenderTarget, a full-screen texture (on the oversized triangle).
+			// Read previous screenCopyRenderTarget(via texelFetch inside fragment shader) to use as a new starting point to blend with
+			renderer.setRenderTarget(pathTracingRenderTarget);
+			renderer.render(pathTracingScene, worldCamera);
+
+			// STEP 2
+			// Render(copy) the pathTracingScene output(pathTracingRenderTarget above) into screenCopyRenderTarget.
+			// This will be used as a new starting point for Step 1 above (essentially creating ping-pong buffers)
+			renderer.setRenderTarget(screenCopyRenderTarget);
+			renderer.render(screenCopyScene, orthoCamera);
+
+			frameCounter += 1.0;
+		}
+		firstFrameRecoveryLastFinalSamples = Math.round(sampleCounter);
+		pathTracingUniforms.uSampleCounter.value = sampleCounter;
+		pathTracingUniforms.uFrameCounter.value = frameCounter;
+		pathTracingUniforms.uCameraIsMoving.value = cameraIsMoving;
+		screenOutputUniforms.uCameraIsMoving.value = firstFrameRecoveryActiveRenderCameraMoving;
+		screenOutputUniforms.uSampleCounter.value = sampleCounter;
+		screenOutputUniforms.uOneOverSampleCounter.value = 1.0 / sampleCounter;
 	}
 
 	// STEP 2.5 (R2-UI Bloom multi-scale pyramid)
@@ -1503,8 +1885,11 @@ function animate()
 	// R6 Route X：postProcessChanged 例外 → 休眠中也能跑一次 STEP 3 讓後製滑桿即時生效（不重啟累積）
 	if (!renderingStopped || postProcessChanged)
 	{
+		updateMovementProtectionUniforms(cameraIsMoving);
 		renderer.setRenderTarget(null);
 		renderer.render(screenOutputScene, orthoCamera);
+		if (!cameraIsMoving)
+			captureMovementProtectionStableFrame();
 		postProcessChanged = false;
 	}
 

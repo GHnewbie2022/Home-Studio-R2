@@ -82,6 +82,21 @@ uniform float uLegacyGain;
 uniform int uActiveLightCount;
 uniform int uActiveLightIndex[11];
 uniform float uR3ProbeSentinel;
+uniform int uCloudVisibilityProbeMode;
+uniform int uCloudVisibilityProbeRod;
+uniform int uCloudVisibilityProbeClass;
+uniform int uCloudVisibilityProbeThetaBin;
+uniform int uCloudVisibilityProbeThetaBinCount;
+uniform int uCloudThetaImportanceShaderABMode;
+uniform int uCloudMisWeightProbeMode;
+uniform int uCloudContributionProbeMode;
+uniform float uCloudDarkSurfaceCleanupMode;
+uniform float uCloudDarkSurfaceCleanupLuma;
+uniform float uCloudSameSurfaceDarkFillMode;
+uniform float uCloudSameSurfaceDarkFillStrength;
+uniform float uCloudSameSurfaceDarkFillMaxSamples;
+uniform float uCloudSameSurfaceDarkFillFloorLuma;
+uniform float uCloudSameSurfaceDarkFillGikLuma;
 uniform vec3 uCloudEmission[4];
 uniform vec3 uTrackEmission[4];
 uniform vec3 uTrackWideEmission[2];
@@ -228,6 +243,144 @@ float cosWeightedPdf(vec3 dir, vec3 normal)
 	// Lambertian 於 direction 之 solid-angle PDF = cos(θ) / π（θ 為與 normal 夾角）
 	return max(0.0, dot(dir, normal)) * ONE_OVER_PI;
 }
+vec3 cloudMisWeightProbeDirectNee(float wNee, float pNee, float pBsdf)
+{
+	if (uCloudMisWeightProbeMode == 1)
+		return vec3(wNee, 1.0, 0.0);
+	if (uCloudMisWeightProbeMode == 2)
+		return vec3(pNee, pBsdf, 1.0);
+	return vec3(0.0);
+}
+vec3 cloudMisWeightProbeBsdfHit(float wBsdf, float pBsdf, float pNeeReverse)
+{
+	if (uCloudMisWeightProbeMode == 3)
+		return vec3(wBsdf, 1.0, 0.0);
+	if (uCloudMisWeightProbeMode == 4)
+		return vec3(pNeeReverse, pBsdf, 1.0);
+	return vec3(0.0);
+}
+float cloudMisProbeLuma(vec3 c)
+{
+	return dot(c, vec3(0.2126, 0.7152, 0.0722));
+}
+vec3 cloudMisWeightProbeContribution(vec3 weightedContribution, vec3 unweightedContribution)
+{
+	return vec3(cloudMisProbeLuma(weightedContribution), 1.0, cloudMisProbeLuma(unweightedContribution));
+}
+vec3 cloudMisWeightProbeBsdfHitContributionSentinel()
+{
+	return vec3(0.125, 1.0, 0.5);
+}
+vec3 cloudMisWeightProbeUniformSentinel()
+{
+	return vec3(0.25, 1.0, 0.75);
+}
+vec3 cloudMisWeightProbeContributionUniformSentinel()
+{
+	return (uCloudContributionProbeMode == 3) ? vec3(0.375, 1.0, 0.875) : vec3(0.625, 1.0, 0.125);
+}
+bool cloudDirectNeeSourceIsFloor(int sourceHitType, float sourceObjectID, vec3 sourceNormal, vec3 sourcePosition)
+{
+	return sourceObjectID < 1.5 && sourceNormal.y > 0.5 && sourcePosition.y < 0.1;
+}
+bool cloudDirectNeeSourceIsGik(int sourceHitType)
+{
+	return sourceHitType == ACOUSTIC_PANEL;
+}
+bool cloudDirectNeeSourceIsCeiling(int sourceHitType, float sourceObjectID, vec3 sourceNormal, vec3 sourcePosition)
+{
+	return sourceObjectID < 1.5 && sourceNormal.y < -0.5 && sourcePosition.y > 2.8;
+}
+bool cloudDirectNeeSourceIsWall(int sourceHitType, float sourceObjectID, vec3 sourceNormal)
+{
+	return sourceObjectID < 1.5 && abs(sourceNormal.y) <= 0.5;
+}
+bool cloudVisibleSurfaceIsFloor(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return cloudDirectNeeSourceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+}
+bool cloudVisibleSurfaceIsGik(int visibleHitType)
+{
+	return cloudDirectNeeSourceIsGik(visibleHitType);
+}
+bool cloudVisibleSurfaceIsCeiling(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return cloudDirectNeeSourceIsCeiling(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+}
+bool cloudVisibleSurfaceIsWall(int visibleHitType, float visibleObjectID, vec3 visibleNormal)
+{
+	return cloudDirectNeeSourceIsWall(visibleHitType, visibleObjectID, visibleNormal);
+}
+bool cloudVisibleSurfaceIsObject(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return !cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		!cloudVisibleSurfaceIsGik(visibleHitType) &&
+		!cloudVisibleSurfaceIsCeiling(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		!cloudVisibleSurfaceIsWall(visibleHitType, visibleObjectID, visibleNormal);
+}
+bool cloudVisibleSurfaceProbeModeMatches(int mode, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	if (mode == 12 || mode == 17) return cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+	if (mode == 13 || mode == 18) return cloudVisibleSurfaceIsGik(visibleHitType);
+	if (mode == 14 || mode == 19) return cloudVisibleSurfaceIsCeiling(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+	if (mode == 15 || mode == 20) return cloudVisibleSurfaceIsWall(visibleHitType, visibleObjectID, visibleNormal);
+	if (mode == 16 || mode == 21) return cloudVisibleSurfaceIsObject(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+	return false;
+}
+bool cloudDarkVisibleSurfaceSourceProbeModeMatches(int mode, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, int sourceHitType, float sourceObjectID, vec3 sourceNormal, vec3 sourcePosition)
+{
+	bool visibleFloor = cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+	bool visibleGik = cloudVisibleSurfaceIsGik(visibleHitType);
+	bool sourceFloor = cloudDirectNeeSourceIsFloor(sourceHitType, sourceObjectID, sourceNormal, sourcePosition);
+	bool sourceGik = cloudDirectNeeSourceIsGik(sourceHitType);
+	bool sourceCeiling = cloudDirectNeeSourceIsCeiling(sourceHitType, sourceObjectID, sourceNormal, sourcePosition);
+	bool sourceWall = cloudDirectNeeSourceIsWall(sourceHitType, sourceObjectID, sourceNormal);
+	bool sourceObject = !sourceFloor && !sourceGik && !sourceCeiling && !sourceWall;
+	if (mode == 22) return visibleFloor && sourceFloor;
+	if (mode == 23) return visibleFloor && sourceGik;
+	if (mode == 24) return visibleFloor && sourceCeiling;
+	if (mode == 25) return visibleFloor && sourceWall;
+	if (mode == 26) return visibleFloor && sourceObject;
+	if (mode == 27) return visibleGik && sourceFloor;
+	if (mode == 28) return visibleGik && sourceGik;
+	if (mode == 29) return visibleGik && sourceCeiling;
+	if (mode == 30) return visibleGik && sourceWall;
+	if (mode == 31) return visibleGik && sourceObject;
+	return false;
+}
+vec3 cloudDarkVisibleSurfaceCleanupContribution(vec3 contribution, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, int sourceHitType, float sourceObjectID, vec3 sourceNormal, vec3 sourcePosition)
+{
+	if (uCloudDarkSurfaceCleanupMode < 0.5) return contribution;
+	bool visibleDarkSurface = cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) || cloudVisibleSurfaceIsGik(visibleHitType);
+	bool strongBouncedSource = cloudDirectNeeSourceIsCeiling(sourceHitType, sourceObjectID, sourceNormal, sourcePosition) || cloudDirectNeeSourceIsWall(sourceHitType, sourceObjectID, sourceNormal);
+	if (!visibleDarkSurface || !strongBouncedSource) return contribution;
+	float cap = max(0.0, uCloudDarkSurfaceCleanupLuma);
+	if (cap <= 0.0) return contribution;
+	float luma = cloudMisProbeLuma(contribution);
+	if (luma <= cap || luma <= 1e-9) return contribution;
+	return contribution * (cap / luma);
+}
+vec3 cloudSameSurfaceDarkFillContribution(vec3 contribution, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, int diffuseCountArg)
+{
+	if (uCloudSameSurfaceDarkFillMode < 0.5) return contribution;
+	if (diffuseCountArg < 1) return contribution;
+	bool visibleFloor = cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+	bool visibleGik = cloudVisibleSurfaceIsGik(visibleHitType);
+	if (!visibleFloor && !visibleGik) return contribution;
+	float targetLuma = (visibleFloor ? uCloudSameSurfaceDarkFillFloorLuma : uCloudSameSurfaceDarkFillGikLuma) * 1.25;
+	if (targetLuma <= 0.0) return contribution;
+	float luma = cloudMisProbeLuma(contribution);
+	if (luma <= 1e-9 || luma >= targetLuma) return contribution;
+	float maxSamples = max(1.0, uCloudSameSurfaceDarkFillMaxSamples);
+	float fadeSamples = max(1.0, maxSamples);
+	float sampleFade = 1.0 - smoothstep(maxSamples, maxSamples + fadeSamples, uSampleCounter);
+	float fillStrength = clamp(uCloudSameSurfaceDarkFillStrength, 0.0, 1.0) * sampleFade;
+	if (fillStrength <= 0.0) return contribution;
+	float filledLuma = mix(luma, targetLuma, fillStrength);
+	return contribution * (filledLuma / luma);
+}
+bool cloudMisWeightProbeForcedBsdfHit(vec3 x, vec3 nl, vec3 sourceMask, out vec3 encoded)
+;
 float pdfNeeForLight(vec3 x, vec3 lightPoint, vec3 lightNormal, float lightArea, float selectPdfArg)
 {
 	// 給定 shade-point x 與 emitter 表面樣本 (lightPoint, lightNormal, lightArea)，
@@ -247,6 +400,8 @@ float pdfNeeForLight(vec3 x, vec3 lightPoint, vec3 lightNormal, float lightArea,
 const float CLOUD_ARC_RADIUS = 0.016;
 const float CLOUD_ARC_AREA_SCALE = 1.5707963267948966;
 const float CLOUD_ARC_THETA_MAX = 1.5707963267948966;
+const float CLOUD_THETA_IMPORTANCE_SHADER_AB_PROTECTED_FLOOR = 0.5;
+const float CLOUD_THETA_IMPORTANCE_UNIFORM_BIN_PDF = 0.125;
 
 vec3 cloudOutAxis(int rodIdx)
 {
@@ -284,6 +439,156 @@ vec3 cloudArcCenter(int rodIdx, vec3 rodCenter, vec3 rodHalf)
 vec3 cloudArcNormal(int rodIdx, float theta)
 {
 	return normalize(cloudOutAxis(rodIdx) * cos(theta) + vec3(0.0, sin(theta), 0.0));
+}
+
+vec3 cloudArcEmissionNormal(int rodIdx, float theta)
+{
+	return -cloudArcNormal(rodIdx, theta);
+}
+
+vec3 cloudArcRenderNormal(int rodIdx, float theta)
+{
+	return (uCloudVisibilityProbeMode > 0) ? cloudArcEmissionNormal(rodIdx, theta) : cloudArcNormal(rodIdx, theta);
+}
+
+int cloudVisibilityProbeThetaBin(float theta)
+{
+	int binCount = max(uCloudVisibilityProbeThetaBinCount, 1);
+	float theta01 = clamp(theta / CLOUD_ARC_THETA_MAX, 0.0, 0.999999);
+	return int(floor(theta01 * float(binCount)));
+}
+
+float cloudThetaImportancePdfForBin(int thetaBin)
+{
+	int bin = clamp(thetaBin, 0, 7);
+	if (bin == 0) return 0.182214;
+	if (bin == 1) return 0.164555;
+	if (bin == 2) return 0.139731;
+	if (bin == 3) return 0.124376;
+	if (bin == 4) return 0.108893;
+	if (bin == 5) return 0.094690;
+	if (bin == 6) return 0.091107;
+	return 0.094434;
+}
+
+float cloudThetaImportancePdfCompensationForBin(int thetaBin)
+{
+	return CLOUD_THETA_IMPORTANCE_UNIFORM_BIN_PDF / max(cloudThetaImportancePdfForBin(thetaBin), 1e-6);
+}
+
+float cloudThetaImportanceSampleTheta(float u, out int thetaBin, out float pdfCompensationMultiplier)
+{
+	float x = clamp(u, 0.0, 0.999999);
+	float prev = 0.0;
+	float next = 0.182214;
+	thetaBin = 0;
+	if (x >= next) { prev = next; next = 0.346769; thetaBin = 1; }
+	if (x >= next) { prev = next; next = 0.486500; thetaBin = 2; }
+	if (x >= next) { prev = next; next = 0.610876; thetaBin = 3; }
+	if (x >= next) { prev = next; next = 0.719769; thetaBin = 4; }
+	if (x >= next) { prev = next; next = 0.814459; thetaBin = 5; }
+	if (x >= next) { prev = next; next = 0.905566; thetaBin = 6; }
+	if (x >= next) { prev = next; next = 1.0; thetaBin = 7; }
+	float binPdf = max(next - prev, 1e-6);
+	float localU = clamp((x - prev) / binPdf, 0.0, 0.999999);
+	pdfCompensationMultiplier = cloudThetaImportancePdfCompensationForBin(thetaBin);
+	return (float(thetaBin) + localU) * (CLOUD_ARC_THETA_MAX * CLOUD_THETA_IMPORTANCE_UNIFORM_BIN_PDF);
+}
+
+int cloudThetaImportanceBinFromNormal(int rodIdx, vec3 normal)
+{
+	vec3 outAxis = cloudOutAxis(rodIdx);
+	float outPart = max(0.0, dot(normalize(normal), outAxis));
+	float upPart = max(0.0, normalize(normal).y);
+	float theta = clamp(atan(upPart, outPart), 0.0, CLOUD_ARC_THETA_MAX * 0.999999);
+	return int(floor(clamp(theta / CLOUD_ARC_THETA_MAX, 0.0, 0.999999) * 8.0));
+}
+
+float cloudThetaImportanceEffectiveArcArea(float cloudArcArea, float pdfCompensationMultiplier)
+{
+	if (uCloudThetaImportanceShaderABMode <= 0)
+		return cloudArcArea;
+	return cloudArcArea * pdfCompensationMultiplier;
+}
+
+float cloudThetaImportanceEffectiveArcAreaForNormal(int rodIdx, float cloudArcArea, vec3 normal)
+{
+	if (uCloudThetaImportanceShaderABMode <= 0)
+		return cloudArcArea;
+	int thetaBin = cloudThetaImportanceBinFromNormal(rodIdx, normal);
+	return cloudArcArea * cloudThetaImportancePdfCompensationForBin(thetaBin);
+}
+
+bool cloudMisWeightProbeForcedBsdfHit(vec3 x, vec3 nl, vec3 sourceMask, out vec3 encoded)
+{
+	encoded = vec3(0.0);
+	if (uCloudMisWeightProbeMode < 10 || uCloudMisWeightProbeMode > 13)
+		return false;
+	if (uCloudLightEnabled < 0.5 || uActiveLightCount <= 0)
+		return true;
+
+	float bestScore = 0.0;
+	int bestRod = -1;
+	vec3 bestTarget = vec3(0.0);
+	vec3 bestNormal = vec3(0.0);
+	vec3 bestDir = vec3(0.0);
+
+	for (int rodIdx = 0; rodIdx < 4; rodIdx++)
+	{
+		vec3 rodCenter = uCloudRodCenter[rodIdx];
+		vec3 rodHalf = uCloudRodHalfExtent[rodIdx];
+		vec3 arcCenter = cloudArcCenter(rodIdx, rodCenter, rodHalf);
+		vec3 longAxis = cloudLongAxis(rodIdx);
+		float radius = cloudArcRadius(rodIdx, rodHalf);
+		float theta = CLOUD_ARC_THETA_MAX * 0.5;
+		vec3 localNormal = cloudArcNormal(rodIdx, theta);
+		vec3 target = arcCenter + longAxis * 0.0 + localNormal * radius;
+		vec3 toCloud = target - x;
+		float dist2 = max(dot(toCloud, toCloud), 1e-4);
+		vec3 dir = toCloud * inversesqrt(dist2);
+		float sourceCos = max(0.0, dot(nl, dir));
+		float cloudCos = max(0.0, dot(-dir, localNormal));
+		float score = sourceCos * cloudCos / dist2;
+		if (score > bestScore)
+		{
+			bestScore = score;
+			bestRod = rodIdx;
+			bestTarget = target;
+			bestNormal = localNormal;
+			bestDir = dir;
+		}
+	}
+
+	if (bestRod < 0 || bestScore <= 1e-10)
+		return true;
+
+	float cloudArcArea = uCloudFaceArea[bestRod] * CLOUD_ARC_AREA_SCALE;
+	float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(bestRod, cloudArcArea, bestNormal);
+	float pBsdf = cosWeightedPdf(bestDir, nl);
+	float pNeeReverse = pdfNeeForLight(x, bestTarget, bestNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+	float wBsdf = misPowerWeight(pBsdf, pNeeReverse);
+	vec3 emission = min(uCloudEmission[bestRod], vec3(uEmissiveClamp));
+	vec3 weightedContribution = min(sourceMask * emission * wBsdf, vec3(uEmissiveClamp));
+	vec3 unweightedContribution = min(sourceMask * emission, vec3(uEmissiveClamp));
+
+	if (uCloudMisWeightProbeMode == 10)
+		encoded = cloudMisWeightProbeBsdfHitContributionSentinel();
+	if (uCloudMisWeightProbeMode == 11)
+		encoded = cloudMisWeightProbeContribution(weightedContribution, unweightedContribution);
+	if (uCloudMisWeightProbeMode == 12)
+		encoded = vec3(pNeeReverse, pBsdf, 1.0);
+	if (uCloudMisWeightProbeMode == 13)
+		encoded = vec3(wBsdf, 1.0, 0.0);
+	return true;
+}
+
+bool cloudVisibilityProbeThetaBinMatches(int thetaBin)
+{
+	if (uCloudVisibilityProbeThetaBin < 0)
+		return true;
+	int binCount = max(uCloudVisibilityProbeThetaBinCount, 1);
+	int selectedBin = clamp(uCloudVisibilityProbeThetaBin, 0, binCount - 1);
+	return thetaBin == selectedBin;
 }
 
 float CloudArcIntersect(int rodIdx, vec3 ro, vec3 rd, out vec3 normal)
@@ -329,12 +634,146 @@ float CloudArcIntersect(int rodIdx, vec3 ro, vec3 rd, out vec3 normal)
 	return bestT;
 }
 
+bool cloudVisibilityProbeMatches(int pickedIdx)
+{
+	if (uCloudVisibilityProbeMode <= 0)
+		return false;
+	if (pickedIdx < 7 || pickedIdx > 10)
+		return false;
+	int rodIdx = pickedIdx - 7;
+	return (uCloudVisibilityProbeRod < 0 || uCloudVisibilityProbeRod == rodIdx);
+}
+
+bool cloudVisibilityProbeHasContribution(vec3 eventMask)
+{
+	return max(max(eventMask.r, eventMask.g), eventMask.b) > 1e-7;
+}
+
+vec3 cloudVisibilityProbeVisibleColor(int pickedIdx, vec3 eventMask)
+{
+	int rodIdx = clamp(pickedIdx - 7, 0, 3);
+	float rodCue = (float(rodIdx) + 1.0) * 0.18;
+	float contributionCue = clamp(log(1.0 + max(max(eventMask.r, eventMask.g), eventMask.b)) * 0.25, 0.0, 0.25);
+	return vec3(0.0, 1.0, rodCue + contributionCue);
+}
+
+vec3 cloudVisibilityProbeBlockedColor(int pickedIdx)
+{
+	int rodIdx = clamp(pickedIdx - 7, 0, 3);
+	float rodCue = (float(rodIdx) + 1.0) * 0.18;
+	return vec3(1.0, 0.0, rodCue);
+}
+
+const int CLOUD_PROBE_CLASS_ZERO_CONTRIBUTION = 0;
+const int CLOUD_PROBE_CLASS_VISIBLE = 1;
+const int CLOUD_PROBE_CLASS_WRONG_CLOUD_ROD = 2;
+const int CLOUD_PROBE_CLASS_CLOUD_ALUMINIUM = 3;
+const int CLOUD_PROBE_CLASS_CLOUD_GIK_PANEL = 4;
+const int CLOUD_PROBE_CLASS_SAME_ACOUSTIC_PANEL = 5;
+const int CLOUD_PROBE_CLASS_NORTH_ACOUSTIC_PANEL = 6;
+const int CLOUD_PROBE_CLASS_EAST_ACOUSTIC_PANEL = 7;
+const int CLOUD_PROBE_CLASS_WEST_ACOUSTIC_PANEL = 8;
+const int CLOUD_PROBE_CLASS_ROOM_SHELL = 9;
+const int CLOUD_PROBE_CLASS_OTHER_SCENE_OBJECT = 10;
+const int CLOUD_PROBE_CLASS_MISS = 11;
+const int CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK = 12;
+const int CLOUD_PROBE_CLASS_ZERO_SOURCE_FACING = 13;
+const int CLOUD_PROBE_CLASS_ZERO_CLOUD_FACING = 14;
+const int CLOUD_PROBE_CLASS_ZERO_FACING_BOTH = 15;
+const int CLOUD_PROBE_CLASS_ZERO_OTHER = 16;
+
+bool cloudVisibilityProbeIsZeroContributionClass(int blockerClass)
+{
+	return blockerClass == CLOUD_PROBE_CLASS_ZERO_CONTRIBUTION ||
+		blockerClass == CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK ||
+		blockerClass == CLOUD_PROBE_CLASS_ZERO_SOURCE_FACING ||
+		blockerClass == CLOUD_PROBE_CLASS_ZERO_CLOUD_FACING ||
+		blockerClass == CLOUD_PROBE_CLASS_ZERO_FACING_BOTH ||
+		blockerClass == CLOUD_PROBE_CLASS_ZERO_OTHER;
+}
+
+int cloudVisibilityProbeBlockerClass(int pickedIdx, float sourceObjectID, int sourceHitType)
+{
+	if (hitType == CLOUD_LIGHT)
+	{
+		int cloudRodIdx = int(hitObjectID - uCloudObjIdBase + 0.5);
+		cloudRodIdx = clamp(cloudRodIdx, 0, 3);
+		return (pickedIdx == cloudRodIdx + 7) ? CLOUD_PROBE_CLASS_VISIBLE : CLOUD_PROBE_CLASS_WRONG_CLOUD_ROD;
+	}
+
+	if (hitObjectID >= uCloudObjIdBase + 4.0 && hitObjectID <= uCloudObjIdBase + 11.0)
+		return CLOUD_PROBE_CLASS_CLOUD_ALUMINIUM;
+
+	if (hitObjectID >= 50.0 && hitObjectID <= 55.0)
+		return CLOUD_PROBE_CLASS_CLOUD_GIK_PANEL;
+
+	if (hitType == ACOUSTIC_PANEL)
+	{
+		if (sourceHitType == ACOUSTIC_PANEL && abs(hitObjectID - sourceObjectID) < 0.5)
+			return CLOUD_PROBE_CLASS_SAME_ACOUSTIC_PANEL;
+		if (hitObjectID >= 84.0 && hitObjectID <= 86.0)
+			return CLOUD_PROBE_CLASS_NORTH_ACOUSTIC_PANEL;
+		if (hitObjectID >= 87.0 && hitObjectID <= 89.0)
+			return CLOUD_PROBE_CLASS_EAST_ACOUSTIC_PANEL;
+		if (hitObjectID >= 90.0 && hitObjectID <= 92.0)
+			return CLOUD_PROBE_CLASS_WEST_ACOUSTIC_PANEL;
+	}
+
+	if (hitObjectID == 1.0)
+		return CLOUD_PROBE_CLASS_ROOM_SHELL;
+
+	return CLOUD_PROBE_CLASS_OTHER_SCENE_OBJECT;
+}
+
+vec3 cloudVisibilityProbeClassColor(int blockerClass)
+{
+	if (blockerClass == CLOUD_PROBE_CLASS_ZERO_CONTRIBUTION) return vec3(1.0, 1.0, 1.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_VISIBLE) return vec3(0.0, 1.0, 0.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_WRONG_CLOUD_ROD) return vec3(0.0, 0.0, 1.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_CLOUD_ALUMINIUM) return vec3(1.0, 1.0, 0.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_CLOUD_GIK_PANEL) return vec3(0.0, 1.0, 1.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_SAME_ACOUSTIC_PANEL) return vec3(0.0, 0.35, 0.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_NORTH_ACOUSTIC_PANEL) return vec3(0.45, 1.0, 0.45);
+	if (blockerClass == CLOUD_PROBE_CLASS_EAST_ACOUSTIC_PANEL) return vec3(0.25, 0.8, 0.25);
+	if (blockerClass == CLOUD_PROBE_CLASS_WEST_ACOUSTIC_PANEL) return vec3(0.65, 1.0, 0.65);
+	if (blockerClass == CLOUD_PROBE_CLASS_ROOM_SHELL) return vec3(1.0, 0.0, 1.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_OTHER_SCENE_OBJECT) return vec3(1.0, 0.5, 0.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK) return vec3(0.15, 0.9, 0.15);
+	if (blockerClass == CLOUD_PROBE_CLASS_ZERO_SOURCE_FACING) return vec3(0.4, 1.0, 0.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_ZERO_CLOUD_FACING) return vec3(0.0, 0.85, 0.45);
+	if (blockerClass == CLOUD_PROBE_CLASS_ZERO_FACING_BOTH) return vec3(0.65, 1.0, 0.0);
+	if (blockerClass == CLOUD_PROBE_CLASS_ZERO_OTHER) return vec3(0.0, 0.55, 0.2);
+	return vec3(1.0, 0.0, 0.0);
+}
+
+vec3 cloudVisibilityProbeSelectedClassColor(int blockerClass, int thetaBin)
+{
+	if (!cloudVisibilityProbeThetaBinMatches(thetaBin))
+		return vec3(0.0);
+	if (uCloudVisibilityProbeClass < 0)
+		return cloudVisibilityProbeClassColor(blockerClass);
+	bool selected = (uCloudVisibilityProbeClass == CLOUD_PROBE_CLASS_ZERO_CONTRIBUTION)
+		? cloudVisibilityProbeIsZeroContributionClass(blockerClass)
+		: (blockerClass == uCloudVisibilityProbeClass);
+	return selected ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+}
+
+vec3 cloudVisibilityProbeFacingDiagnosticColor(vec3 facingDiagnostic, int thetaBin)
+{
+	if (!cloudVisibilityProbeThetaBinMatches(thetaBin))
+		return vec3(0.0);
+	return facingDiagnostic;
+}
+
 
 // R3-6.5 S2：動態版 NEE pick。slot→real idx 透過 LUT 轉譯，
 // 並以 uActiveLightCount 取代硬編碼 11。uActiveLightCount==0 時 black-out 回傳 nl（避免 ÷0）。
 // selectPdf = 1 / uActiveLightCount；5 個分支（idx==0 / <=4 / <=6 / 7-10）。
-vec3 sampleStochasticLightDynamic(vec3 x, vec3 nl, Quad ql0, out vec3 throughput, out float pdfNeeOmega, out int pickedIdx)
+vec3 sampleStochasticLightDynamic(vec3 x, vec3 nl, Quad ql0, out vec3 throughput, out float pdfNeeOmega, out int pickedIdx, out int zeroContributionClass, out int probeThetaBin, out vec3 facingDiagnostic)
 {
+	zeroContributionClass = CLOUD_PROBE_CLASS_ZERO_OTHER;
+	probeThetaBin = -1;
+	facingDiagnostic = vec3(0.0);
 	// R3-6.5 S2.5：DCE runtime-impossible guard。
 	// uR3ProbeSentinel runtime 恆 1.0；手動設 -200 觸發 sentinel 分支驗證 DCE 未 strip。
 	if (uR3ProbeSentinel < -100.0) {
@@ -440,18 +879,45 @@ vec3 sampleStochasticLightDynamic(vec3 x, vec3 nl, Quad ql0, out vec3 throughput
 	float longHalf = cloudLongHalf(rodIdx, rodHalf);
 	float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
 
-	float longAxisJitter = rng() * 2.0 - 1.0;
-	float theta = rng() * CLOUD_ARC_THETA_MAX;
+	float longOffset = (rng() * 2.0 - 1.0) * longHalf;
+	float thetaRandom = rng();
+	float thetaPdfCompensationMultiplier = 1.0;
+	int sampledThetaBin = -1;
+	float theta = (uCloudThetaImportanceShaderABMode > 0)
+		? cloudThetaImportanceSampleTheta(thetaRandom, sampledThetaBin, thetaPdfCompensationMultiplier)
+		: thetaRandom * CLOUD_ARC_THETA_MAX;
+	probeThetaBin = cloudVisibilityProbeThetaBin(theta);
 	vec3 localNormal = cloudArcNormal(rodIdx, theta);
-	vec3 cloudTarget = arcCenter + longAxis * (longAxisJitter * longHalf) + localNormal * radius;
+	// R6-3 Phase2: keep render-energy and probe-classification Cloud normals visible side by side.
+	vec3 normalEmissionNormal = cloudArcNormal(rodIdx, theta);
+	vec3 probeEmissionNormal = cloudArcEmissionNormal(rodIdx, theta);
+	vec3 emissionNormal = cloudArcRenderNormal(rodIdx, theta);
+	vec3 cloudTarget = arcCenter + longAxis * longOffset + localNormal * radius;
 	vec3 cloudTo = cloudTarget - x;
 	float cloudDist2 = max(dot(cloudTo, cloudTo), 1e-4);
 	vec3 cloudDir = cloudTo * inversesqrt(cloudDist2);
-	float cloudCosLight = max(0.0, dot(-cloudDir, localNormal));
-	float cloudGeom = max(0.0, dot(nl, cloudDir)) * cloudCosLight / cloudDist2;
+	float cloudSourceCos = max(0.0, dot(nl, cloudDir));
+	float normalCloudCos = max(0.0, dot(-cloudDir, normalEmissionNormal));
+	float probeCloudCos = max(0.0, dot(-cloudDir, probeEmissionNormal));
+	float cloudCosLight = max(0.0, dot(-cloudDir, emissionNormal));
+	facingDiagnostic = vec3(
+		(cloudSourceCos <= 1e-7) ? 1.0 : 0.0,
+		(normalCloudCos <= 1e-7) ? 1.0 : 0.0,
+		(probeCloudCos <= 1e-7) ? 1.0 : 0.0
+	);
+	if (cloudSourceCos <= 1e-7 && cloudCosLight <= 1e-7)
+		zeroContributionClass = CLOUD_PROBE_CLASS_ZERO_FACING_BOTH;
+	else if (cloudSourceCos <= 1e-7)
+		zeroContributionClass = CLOUD_PROBE_CLASS_ZERO_SOURCE_FACING;
+	else if (cloudCosLight <= 1e-7)
+		zeroContributionClass = CLOUD_PROBE_CLASS_ZERO_CLOUD_FACING;
+	float cloudGeom = cloudSourceCos * cloudCosLight / cloudDist2;
 	vec3 cloudEmit = uCloudEmission[rodIdx];
-	throughput = cloudEmit * cloudGeom * cloudArcArea / selectPdf;
-	pdfNeeOmega = pdfNeeForLight(x, cloudTarget, localNormal, cloudArcArea, selectPdf);
+	if (max(max(cloudEmit.r, cloudEmit.g), cloudEmit.b) <= 1e-7)
+		zeroContributionClass = CLOUD_PROBE_CLASS_ZERO_OTHER;
+	float cloudPdfArea = cloudThetaImportanceEffectiveArcArea(cloudArcArea, thetaPdfCompensationMultiplier);
+	throughput = cloudEmit * cloudGeom * cloudPdfArea / selectPdf;
+	pdfNeeOmega = pdfNeeForLight(x, cloudTarget, emissionNormal, cloudPdfArea, selectPdf);
 	return cloudDir;
 }
 
@@ -1013,13 +1479,54 @@ float SceneIntersect( )
 }
 
 
+vec3 CalculateMovementPreview( out vec3 objectNormal, out vec3 objectColor, out float objectID, out float pixelSharpness )
+{
+	hitType = -100;
+	primaryRay = 1;
+	float t = SceneIntersect();
+	if (t == INFINITY)
+	{
+		pixelSharpness = 1.0;
+		return vec3(0.0);
+	}
+
+	vec3 n = normalize(hitNormal);
+	vec3 nl = dot(n, rayDirection) < 0.0 ? n : -n;
+	objectNormal += n;
+	objectColor += hitColor;
+	objectID = hitObjectID;
+
+	if (hitType == BACKDROP || hitType == SPEAKER || hitType == WOOD_DOOR || hitType == IRON_DOOR || hitType == SUBWOOFER || hitType == ACOUSTIC_PANEL || hitType == OUTLET)
+		pixelSharpness = 1.0;
+
+	if (hitType == LIGHT || hitType == TRACK_LIGHT || hitType == TRACK_WIDE_LIGHT || hitType == CLOUD_LIGHT)
+	{
+		pixelSharpness = 1.0;
+		return min(hitEmission, vec3(uEmissiveClamp));
+	}
+
+	vec3 keyDir = normalize(vec3(-0.35, 0.75, -0.25));
+	float hemi = clamp(nl.y * 0.5 + 0.5, 0.0, 1.0);
+	float key = clamp(dot(nl, keyDir), 0.0, 1.0);
+	float grazingLift = 1.0 - abs(dot(nl, rayDirection));
+	vec3 previewColor = hitColor * (0.34 + 0.38 * hemi + 0.22 * key + 0.08 * grazingLift);
+	return clamp(previewColor, vec3(0.0), vec3(1.4));
+}
+
+
 vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float objectID, out float pixelSharpness )
 {
     // R2-11 用 ceilingLampQuad 做向下單向光的 importance sampling（PDF 目標，非場景幾何）
     Quad light = ceilingLampQuad;
 
 	vec3 accumCol = vec3(0);
-    vec3 mask = vec3(1);
+	vec3 mask = vec3(1);
+	if (uCloudMisWeightProbeMode == 8)
+		return cloudMisWeightProbeUniformSentinel();
+	if (uCloudMisWeightProbeMode == 9)
+		return cloudMisWeightProbeContributionUniformSentinel();
+	if (uMovementPreviewMode > 0.5 && uCloudVisibilityProbeMode == 0 && uCloudMisWeightProbeMode == 0 && uCloudContributionProbeMode == 0)
+		return CalculateMovementPreview(objectNormal, objectColor, objectID, pixelSharpness);
     vec3 n, nl, x;
 	vec3 diffuseBounceMask = vec3(1);
 	vec3 diffuseBounceRayOrigin = vec3(0);
@@ -1050,6 +1557,17 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	float misWPrimaryNeeLast = 0.0;
 	float misPBsdfNeeLast = 0.0;
 	int lastNeePickedIdx = -1;
+	float lastNeeSourceObjectID = -INFINITY;
+	int lastNeeSourceHitType = -100;
+	vec3 lastNeeSourceNormal = vec3(0.0);
+	vec3 lastNeeSourcePosition = vec3(0.0);
+	int lastNeeZeroContributionClass = CLOUD_PROBE_CLASS_ZERO_OTHER;
+	int lastNeeProbeThetaBin = -1;
+	vec3 lastNeeFacingDiagnostic = vec3(0.0);
+	int firstVisibleHitType = -100;
+	float firstVisibleObjectID = -INFINITY;
+	vec3 firstVisibleNormal = vec3(0.0);
+	vec3 firstVisiblePosition = vec3(0.0);
 	vec3 misBsdfBounceNl = vec3(0.0);
 	vec3 misBsdfBounceOrigin = vec3(0.0);
 	float misPBsdfStashed = 0.0;
@@ -1065,6 +1583,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 		if (t == INFINITY)
 		{
+			if (uCloudVisibilityProbeMode > 0 && sampleLight == TRUE && cloudVisibilityProbeMatches(lastNeePickedIdx))
+			{
+				accumCol += (uCloudVisibilityProbeMode >= 4)
+					? cloudVisibilityProbeFacingDiagnosticColor(lastNeeFacingDiagnostic, lastNeeProbeThetaBin)
+					: ((uCloudVisibilityProbeMode >= 2)
+					? ((uCloudVisibilityProbeMode >= 3)
+						? cloudVisibilityProbeSelectedClassColor(cloudVisibilityProbeHasContribution(mask) ? CLOUD_PROBE_CLASS_MISS : lastNeeZeroContributionClass, lastNeeProbeThetaBin)
+						: cloudVisibilityProbeClassColor(cloudVisibilityProbeHasContribution(mask) ? CLOUD_PROBE_CLASS_MISS : lastNeeZeroContributionClass))
+					: cloudVisibilityProbeBlockedColor(lastNeePickedIdx));
+				break;
+			}
+
 			if (bounces == 0 || (bounces == 1 && previousIntersecType == SPEC))
 				pixelSharpness = 1.0;
 
@@ -1093,9 +1623,22 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		if (bounces == 0)
 		{
 			objectID = hitObjectID;
+			firstVisibleHitType = hitType;
+			firstVisibleObjectID = hitObjectID;
+			firstVisibleNormal = nl;
+			firstVisiblePosition = x;
 			// 有貼圖的表面：標記為 edge pixel，跳過降噪模糊核心
 			if (hitType == BACKDROP || hitType == SPEAKER || hitType == WOOD_DOOR || hitType == IRON_DOOR || hitType == SUBWOOFER || hitType == ACOUSTIC_PANEL || hitType == OUTLET)
 				pixelSharpness = 1.0;
+			if (uCloudMisWeightProbeMode > 0)
+			{
+				if (uCloudContributionProbeMode >= 17 && uCloudContributionProbeMode <= 21)
+				{
+					if (cloudVisibleSurfaceProbeModeMatches(uCloudContributionProbeMode, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+						accumCol += cloudMisWeightProbeContribution(vec3(1.0), vec3(1.0));
+					break;
+				}
+			}
 		}
 
 		if (diffuseCount == 0)
@@ -1104,11 +1647,27 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			objectColor += hitColor;
 		}
 
+		if (uCloudVisibilityProbeMode > 0 && sampleLight == TRUE && cloudVisibilityProbeMatches(lastNeePickedIdx))
+		{
+			int blockerClass = cloudVisibilityProbeHasContribution(mask) ? cloudVisibilityProbeBlockerClass(lastNeePickedIdx, lastNeeSourceObjectID, lastNeeSourceHitType) : lastNeeZeroContributionClass;
+			accumCol += (uCloudVisibilityProbeMode >= 4)
+				? cloudVisibilityProbeFacingDiagnosticColor(lastNeeFacingDiagnostic, lastNeeProbeThetaBin)
+				: ((uCloudVisibilityProbeMode >= 2)
+				? ((uCloudVisibilityProbeMode >= 3)
+					? cloudVisibilityProbeSelectedClassColor(blockerClass, lastNeeProbeThetaBin)
+					: cloudVisibilityProbeClassColor(blockerClass))
+				: ((blockerClass == CLOUD_PROBE_CLASS_VISIBLE)
+					? cloudVisibilityProbeVisibleColor(lastNeePickedIdx, mask)
+					: cloudVisibilityProbeBlockedColor(lastNeePickedIdx)));
+			break;
+		}
+
 
 		if (hitType == LIGHT)
 		{
 			if (diffuseCount == 0)
 				pixelSharpness = 1.0;
+			if (uCloudMisWeightProbeMode > 0) { break; }
 
 			if (bounceIsSpecular == TRUE)
 			{
@@ -1165,6 +1724,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		{
 			if (diffuseCount == 0)
 				pixelSharpness = 1.0;
+			if (uCloudMisWeightProbeMode > 0) { break; }
 
 			if (sampleLight == TRUE)
 			{
@@ -1205,6 +1765,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		{
 			if (diffuseCount == 0)
 				pixelSharpness = 1.0;
+			if (uCloudMisWeightProbeMode > 0) { break; }
 
 			if (sampleLight == TRUE)
 			{
@@ -1249,8 +1810,49 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			if (lastNeePickedIdx == cloudRodIdx + 7)
 			{
 				float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
-				accumCol += mask * wNee;
+				vec3 cloudNeeContribution = cloudDarkVisibleSurfaceCleanupContribution(mask * wNee, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition, lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition);
+				cloudNeeContribution = cloudSameSurfaceDarkFillContribution(cloudNeeContribution, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition, diffuseCount);
+				if (uCloudMisWeightProbeMode > 0)
+				{
+					if (uCloudContributionProbeMode == 1)
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 4 && diffuseCount == 0)
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 5 && diffuseCount >= 1)
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 6 && diffuseCount >= 1 && cloudDirectNeeSourceIsFloor(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 7 && diffuseCount >= 1 && cloudDirectNeeSourceIsGik(lastNeeSourceHitType))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 8 && diffuseCount >= 1 && !cloudDirectNeeSourceIsFloor(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition) && !cloudDirectNeeSourceIsGik(lastNeeSourceHitType))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 9 && diffuseCount >= 1 && cloudDirectNeeSourceIsCeiling(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 10 && diffuseCount >= 1 && cloudDirectNeeSourceIsWall(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 11 && diffuseCount >= 1 && !cloudDirectNeeSourceIsFloor(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition) && !cloudDirectNeeSourceIsGik(lastNeeSourceHitType) && !cloudDirectNeeSourceIsCeiling(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition) && !cloudDirectNeeSourceIsWall(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 12 && diffuseCount >= 1 && cloudVisibleSurfaceIsFloor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 13 && diffuseCount >= 1 && cloudVisibleSurfaceIsGik(firstVisibleHitType))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 14 && diffuseCount >= 1 && cloudVisibleSurfaceIsCeiling(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 15 && diffuseCount >= 1 && cloudVisibleSurfaceIsWall(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode == 16 && diffuseCount >= 1 && cloudVisibleSurfaceIsObject(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode >= 22 && uCloudContributionProbeMode <= 31 && diffuseCount >= 1 && cloudDarkVisibleSurfaceSourceProbeModeMatches(uCloudContributionProbeMode, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition, lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition))
+						accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+					else if (uCloudContributionProbeMode > 0)
+						accumCol += vec3(0.0);
+					else
+						accumCol += cloudMisWeightProbeDirectNee(wNee, misWPrimaryNeeLast, misPBsdfNeeLast);
+				}
+				else
+					accumCol += cloudNeeContribution;
 			}
+			if (uCloudMisWeightProbeMode > 0) { break; }
 			if (willNeedDiffuseBounceRay == TRUE)
 			{
 				mask = diffuseBounceMask * (indirectMultApplied ? 1.0 : uIndirectMultiplier); indirectMultApplied = true;
@@ -1287,6 +1889,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
 		if (hitType == BACKDROP)
 		{
+			if (uCloudMisWeightProbeMode > 0) { break; }
 			// 只渲染面向室內的 -Z 面
 			if (hitNormal.z < -0.5)
 			{
@@ -1338,13 +1941,20 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
+			lastNeeSourceNormal = nl;
+			lastNeeSourcePosition = x;
 			continue;
 		}
 
@@ -1376,13 +1986,20 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
+			lastNeeSourceNormal = nl;
+			lastNeeSourcePosition = x;
 			continue;
 		}
 
@@ -1424,13 +2041,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
 			continue;
 		}
 
@@ -1476,13 +2098,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
 			continue;
 		}
 
@@ -1584,13 +2211,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
 			continue;
 		}
 
@@ -1623,13 +2255,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
 			continue;
 		}
 
@@ -1684,13 +2321,18 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
 			continue;
 		}
 
@@ -1700,6 +2342,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			// 間接 diffuse bounce 打到 → 按 DIFF 處理（維持天花板漸層、不產生陰影）
 			if (bounceIsSpecular == TRUE)
 			{
+				if (uCloudMisWeightProbeMode > 0) { break; }
 				accumCol = mask * hitEmission;
 				break;
 			}
@@ -1729,15 +2372,20 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				willNeedDiffuseBounceRay = TRUE;
 			}
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
 			continue;
-    }
+		}
 
     if (hitType == CLOUD_LIGHT)
     {
@@ -1749,6 +2397,101 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				vec3 emission = min(uCloudEmission[rodIdx], vec3(uEmissiveClamp));
 				if (diffuseCount == 0)
 					pixelSharpness = 1.0;
+				if (uCloudMisWeightProbeMode == 7)
+				{
+					if (diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
+						accumCol += cloudMisWeightProbeBsdfHitContributionSentinel();
+					break;
+				}
+				if (uCloudMisWeightProbeMode == 6)
+				{
+					if (diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
+					{
+						float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
+						vec3 reverseEmissionNormal = hitNormal;
+						float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);
+						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+						float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
+						vec3 weightedContribution = min(mask * emission * wBsdf, vec3(uEmissiveClamp));
+						vec3 unweightedContribution = min(mask * emission, vec3(uEmissiveClamp));
+						accumCol += cloudMisWeightProbeContribution(weightedContribution, unweightedContribution);
+					}
+					break;
+				}
+				if (uCloudMisWeightProbeMode > 0)
+				{
+					if (sampleLight == TRUE && lastNeePickedIdx == rodIdx + 7)
+					{
+						float wNee = misPowerWeight(misWPrimaryNeeLast, misPBsdfNeeLast);
+						vec3 cloudNeeContribution = cloudDarkVisibleSurfaceCleanupContribution(mask * wNee, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition, lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition);
+						cloudNeeContribution = cloudSameSurfaceDarkFillContribution(cloudNeeContribution, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition, diffuseCount);
+						if (uCloudContributionProbeMode == 1)
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 4 && diffuseCount == 0)
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 5 && diffuseCount >= 1)
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 6 && diffuseCount >= 1 && cloudDirectNeeSourceIsFloor(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 7 && diffuseCount >= 1 && cloudDirectNeeSourceIsGik(lastNeeSourceHitType))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 8 && diffuseCount >= 1 && !cloudDirectNeeSourceIsFloor(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition) && !cloudDirectNeeSourceIsGik(lastNeeSourceHitType))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 9 && diffuseCount >= 1 && cloudDirectNeeSourceIsCeiling(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 10 && diffuseCount >= 1 && cloudDirectNeeSourceIsWall(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 11 && diffuseCount >= 1 && !cloudDirectNeeSourceIsFloor(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition) && !cloudDirectNeeSourceIsGik(lastNeeSourceHitType) && !cloudDirectNeeSourceIsCeiling(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition) && !cloudDirectNeeSourceIsWall(lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 12 && diffuseCount >= 1 && cloudVisibleSurfaceIsFloor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 13 && diffuseCount >= 1 && cloudVisibleSurfaceIsGik(firstVisibleHitType))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 14 && diffuseCount >= 1 && cloudVisibleSurfaceIsCeiling(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 15 && diffuseCount >= 1 && cloudVisibleSurfaceIsWall(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode == 16 && diffuseCount >= 1 && cloudVisibleSurfaceIsObject(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode >= 22 && uCloudContributionProbeMode <= 31 && diffuseCount >= 1 && cloudDarkVisibleSurfaceSourceProbeModeMatches(uCloudContributionProbeMode, firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition, lastNeeSourceHitType, lastNeeSourceObjectID, lastNeeSourceNormal, lastNeeSourcePosition))
+							accumCol += cloudMisWeightProbeContribution(cloudNeeContribution, mask);
+						else if (uCloudContributionProbeMode > 0)
+							accumCol += vec3(0.0);
+						else
+							accumCol += cloudMisWeightProbeDirectNee(wNee, misWPrimaryNeeLast, misPBsdfNeeLast);
+					}
+					else if (diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
+					{
+						float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
+						vec3 reverseEmissionNormal = hitNormal;
+						float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);
+						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+						float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
+						if (uCloudMisWeightProbeMode == 7)
+							accumCol += cloudMisWeightProbeBsdfHitContributionSentinel();
+						else if (uCloudMisWeightProbeMode == 6)
+						{
+							vec3 weightedContribution = min(mask * emission * wBsdf, vec3(uEmissiveClamp));
+							vec3 unweightedContribution = min(mask * emission, vec3(uEmissiveClamp));
+							accumCol += cloudMisWeightProbeContribution(weightedContribution, unweightedContribution);
+						}
+						else if (uCloudContributionProbeMode == 3)
+							accumCol += cloudMisWeightProbeBsdfHitContributionSentinel();
+						else if (uCloudContributionProbeMode == 2)
+						{
+							vec3 weightedContribution = min(mask * emission * wBsdf, vec3(uEmissiveClamp));
+							vec3 unweightedContribution = min(mask * emission, vec3(uEmissiveClamp));
+							accumCol += cloudMisWeightProbeContribution(weightedContribution, unweightedContribution);
+						}
+						else if (uCloudContributionProbeMode > 0)
+							accumCol += vec3(0.0);
+						else if (uCloudMisWeightProbeMode == 3)
+							accumCol += vec3(wBsdf, 1.0, 0.0);
+						else if (uCloudMisWeightProbeMode == 4)
+							accumCol += vec3(pNeeReverse, misPBsdfStashed, 1.0);
+					}
+					break;
+				}
 				if (sampleLight == TRUE)
 				{
 					if (lastNeePickedIdx == rodIdx + 7)
@@ -1764,7 +2507,15 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				else if (diffuseCount >= 1 && misPBsdfStashed > 0.0 && !(uCloudLightEnabled < 0.5))
 				{
 					float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
-					float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, hitNormal, cloudArcArea, 1.0 / float(uActiveLightCount));
+					vec3 rodCenter = uCloudRodCenter[rodIdx];
+					vec3 rodHalf = uCloudRodHalfExtent[rodIdx];
+					vec3 longAxis = cloudLongAxis(rodIdx);
+					vec3 arcCenter = cloudArcCenter(rodIdx, rodCenter, rodHalf);
+					float longHalf = cloudLongHalf(rodIdx, rodHalf);
+					float reverseLongOffset = clamp(dot(x - arcCenter, longAxis), -longHalf, longHalf);
+					vec3 reverseEmissionNormal = (uCloudVisibilityProbeMode > 0) ? -hitNormal : hitNormal;
+					float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);
+					float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
 					float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
 					accumCol += min(mask * emission * wBsdf, vec3(uEmissiveClamp));
 				}
@@ -1786,6 +2537,12 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 
     if (hitType == DIFF)
     {
+			vec3 forcedBsdfHitProbe = vec3(0.0);
+			if (cloudMisWeightProbeForcedBsdfHit(x, nl, mask * hitColor, forcedBsdfHitProbe))
+			{
+				accumCol += forcedBsdfHitProbe;
+				break;
+			}
 			// R2-18 fix17：地板磁磚 dielectric Fresnel 分支（hitObjectID=1 結構組 + 頂面 + bmax.y≈0）
 			// Schlick F0=0.04，rand()<F 走鏡面（roughness² blur），否則走下方漫射
 			bool isFloor = (hitObjectID < 1.5 && hitNormal.y > 0.5 && hitBoxMax.y < 0.1);
@@ -1828,13 +2585,20 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			}
 
 			// R3-6：NEE dispatch 升 6-args，抓 p_nee solid-angle PDF + pickedIdx 供 MIS heuristic + observability。
-			float neePdfOmega; int neePickedIdx;
-			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx);
+			float neePdfOmega; int neePickedIdx; int neeZeroContributionClass; int neeProbeThetaBin; vec3 neeFacingDiagnostic;
+			rayDirection = sampleStochasticLightDynamic(x, nl, light, weight, neePdfOmega, neePickedIdx, neeZeroContributionClass, neeProbeThetaBin, neeFacingDiagnostic);
+			lastNeeZeroContributionClass = cloudVisibilityProbeHasContribution(mask) ? neeZeroContributionClass : CLOUD_PROBE_CLASS_ZERO_SOURCE_MASK;
+			lastNeeProbeThetaBin = neeProbeThetaBin;
+			lastNeeFacingDiagnostic = neeFacingDiagnostic;
 			mask *= weight * uLegacyGain;
 			sampleLight = TRUE;
 			misWPrimaryNeeLast = neePdfOmega;
 			misPBsdfNeeLast = cosWeightedPdf(rayDirection, nl);
 			lastNeePickedIdx = neePickedIdx;
+			lastNeeSourceObjectID = hitObjectID;
+			lastNeeSourceHitType = hitType;
+			lastNeeSourceNormal = nl;
+			lastNeeSourcePosition = x;
 			continue;
 
     }
@@ -1850,6 +2614,9 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	}
 
 	}
+
+	if (uCloudMisWeightProbeMode > 0)
+		return max(vec3(0), accumCol);
 
 	// R6 LGG-r15 B1 / r16 J3：Terminal 注入兩個來源
 	//   uIsBorrowPass < 0.5  → 主 pass：可同時用 borrow 採樣 + constant ambient 保底

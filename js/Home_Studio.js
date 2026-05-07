@@ -213,6 +213,7 @@ const CLOUD_ROD_LENGTH    = [2.368, 2.368, 1.768, 1.768];
 const CLOUD_ROD_LUMENS    = CLOUD_ROD_LENGTH.map(length => 1600 * length);
 const CLOUD_ROD_FACE_AREA = CLOUD_ROD_LENGTH.map(length => CLOUD_ARC_RADIUS * length);
 const CLOUD_ARC_AREA_SCALE = Math.PI * 0.5;
+const CLOUD_ARC_THETA_MAX = Math.PI * 0.5;
 
 // R6-3 Phase 1C: Cloud 1/4 arc stochastic NEE
 // sceneBoxes 71(E)/72(W)/73(S)/74(N)；中心與半邊由 addBox min/max 推導
@@ -430,6 +431,9 @@ function updateBoxDataTexture() {
 }
 
 function applyPanelConfig(config) {
+    if (typeof invalidateMovementProtectionStableFrame === 'function') {
+        invalidateMovementProtectionStableFrame('applyPanelConfig');
+    }
     sceneBoxes.length = BASE_BOX_COUNT;
     // R4-4-fix05：CONFIG 3 拆成「3=只 Cloud 漫射燈」+「4=只 軌道+廣角燈」；兩者吸音環境相同（全吸音）
     // 1: 吸頂燈 + 牆面吸音板（3 片）
@@ -854,9 +858,11 @@ let bloomIntensity = 0.025;
 //   層數多 → halo 廣、柔；少 → halo 集中、窄
 let bloomMipCount = 7;
 
-const MAX_SAMPLES = 3000;
+const MAX_SAMPLES = 1000;
 let uiLocked = false;
-const SNAPSHOT_MILESTONES = [1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32, 48, 64, 80, 100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000];
+let SNAPSHOT_CAPTURE_ENABLED = false;
+const SNAPSHOT_MILESTONES = [];
+const SNAPSHOT_MILESTONE_PRESET = [1, 2, 3, 4, 5, 6, 7, 8, 16, 24, 32, 48, 64, 80, 100, 150, 200, 300, 500, 750, 1000];
 const snapshots = [];
 let lastSnapshotCheck = -1;
 const capturedMilestones = new Set();
@@ -877,6 +883,7 @@ function makeFilename(spp) {
 }
 
 function captureSnapshot() {
+    if (!SNAPSHOT_CAPTURE_ENABLED) return null;
     renderer.setRenderTarget(null);
     renderer.render(screenOutputScene, orthoCamera);
     const offscreen = document.createElement('canvas');
@@ -885,6 +892,3895 @@ function captureSnapshot() {
     offscreen.getContext('2d').drawImage(renderer.domElement, 0, 0, 2560, 1440);
     return offscreen.toDataURL('image/png');
 }
+
+const CLOUD_VISIBILITY_PROBE_ROD_LABELS = ['E', 'W', 'S', 'N'];
+const CLOUD_VISIBILITY_PROBE_VERSION = 'r6-3-phase2-sampling-budget-diagnostic';
+const CLOUD_THETA_IMPORTANCE_CANDIDATE_VERSION = 'r6-3-phase2-theta-importance-candidate-v1';
+const CLOUD_THETA_IMPORTANCE_AB_VERSION = 'r6-3-phase2-theta-importance-probe-ab-v1';
+const CLOUD_THETA_IMPORTANCE_STRENGTH_SWEEP_VERSION = 'r6-3-phase2-theta-importance-strength-sweep-v1';
+const CLOUD_THETA_IMPORTANCE_SHADER_AB_VERSION = 'r6-3-phase2-theta-importance-shader-ab-v1';
+const CLOUD_SAMPLING_BUDGET_DIAGNOSTIC_VERSION = 'r6-3-phase2-sampling-budget-diagnostic-v1';
+const CLOUD_MIS_WEIGHT_PROBE_VERSION = 'r6-3-phase2-first-frame-burst-v19';
+const CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_STRENGTH = 1.0;
+const CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_MAX_SAMPLES = 64;
+const CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_FLOOR_LUMA = 0.06116075;
+const CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_GIK_LUMA = 0.01231235;
+const CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS = ['off', 'directNeeWeight', 'directNeePdf', 'bsdfHitWeight', 'bsdfHitPdf', 'directNeeContribution', 'bsdfHitContribution', 'bsdfHitContributionSentinel', 'probeUniformSentinel', 'contributionUniformSentinel', 'forcedBsdfHitSentinel', 'forcedBsdfHitContribution', 'forcedBsdfHitPdf', 'forcedBsdfHitWeight'];
+let cloudMisWeightProbeDisplayMode = 0;
+const CLOUD_DIRECT_NEE_SCREEN_BANDS = [
+    { label: 'top', start: 0.0, end: 0.25 },
+    { label: 'upperMid', start: 0.25, end: 0.5 },
+    { label: 'lowerMid', start: 0.5, end: 0.75 },
+    { label: 'bottom', start: 0.75, end: 1.0 }
+];
+const CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS = 512;
+const CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_LOG_MIN = -20;
+const CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_LOG_MAX = 12;
+const CLOUD_VISIBLE_SURFACE_HOTSPOT_CLASSES = [
+    { label: 'floor', contributionMode: 12, visiblePixelMode: 17 },
+    { label: 'gikPanel', contributionMode: 13, visiblePixelMode: 18 },
+    { label: 'ceiling', contributionMode: 14, visiblePixelMode: 19 },
+    { label: 'wall', contributionMode: 15, visiblePixelMode: 20 },
+    { label: 'object', contributionMode: 16, visiblePixelMode: 21 }
+];
+const CLOUD_DARK_VISIBLE_SURFACE_HOTSPOT_SOURCE_CLASSES = [
+    { visibleSurface: 'floor', sourceSurface: 'floor', contributionMode: 22, visiblePixelMode: 17 },
+    { visibleSurface: 'floor', sourceSurface: 'gikPanel', contributionMode: 23, visiblePixelMode: 17 },
+    { visibleSurface: 'floor', sourceSurface: 'ceiling', contributionMode: 24, visiblePixelMode: 17 },
+    { visibleSurface: 'floor', sourceSurface: 'wall', contributionMode: 25, visiblePixelMode: 17 },
+    { visibleSurface: 'floor', sourceSurface: 'object', contributionMode: 26, visiblePixelMode: 17 },
+    { visibleSurface: 'gikPanel', sourceSurface: 'floor', contributionMode: 27, visiblePixelMode: 18 },
+    { visibleSurface: 'gikPanel', sourceSurface: 'gikPanel', contributionMode: 28, visiblePixelMode: 18 },
+    { visibleSurface: 'gikPanel', sourceSurface: 'ceiling', contributionMode: 29, visiblePixelMode: 18 },
+    { visibleSurface: 'gikPanel', sourceSurface: 'wall', contributionMode: 30, visiblePixelMode: 18 },
+    { visibleSurface: 'gikPanel', sourceSurface: 'object', contributionMode: 31, visiblePixelMode: 18 }
+];
+const CLOUD_THETA_IMPORTANCE_SHADER_AB_PROTECTED_FLOOR = 0.5;
+const CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT = 8;
+const CLOUD_VISIBILITY_PROBE_CLASS_LABELS = [
+    'zeroContribution',
+    'correctCloudRod',
+    'wrongCloudRod',
+    'cloudAluminium',
+    'cloudGikPanel',
+    'sameAcousticPanel',
+    'northAcousticPanel',
+    'eastAcousticPanel',
+    'westAcousticPanel',
+    'roomShell',
+    'otherSceneObject',
+    'miss',
+    'zeroSourceMask',
+    'zeroSourceFacing',
+    'zeroCloudFacing',
+    'zeroFacingBoth',
+    'zeroOther'
+];
+const CLOUD_VISIBILITY_PROBE_CLASS_COLORS = [
+    [1, 1, 1],
+    [0, 1, 0],
+    [0, 0, 1],
+    [1, 1, 0],
+    [0, 1, 1],
+    [0, 0.35, 0],
+    [0.45, 1, 0.45],
+    [0.25, 0.8, 0.25],
+    [0.65, 1, 0.65],
+    [1, 0, 1],
+    [1, 0.5, 0],
+    [1, 0, 0],
+    [0.15, 0.9, 0.15],
+    [0.4, 1, 0],
+    [0, 0.85, 0.45],
+    [0.65, 1, 0],
+    [0, 0.55, 0.2]
+];
+const CLOUD_FACING_DIAGNOSTIC_LABELS = [
+    'sourceFacingZero',
+    'normalCloudFacingZero',
+    'probeCloudFacingZero'
+];
+const CLOUD_FACING_DIAGNOSTIC_DEFINITIONS = {
+    sourceFacingZero: 'shadePointNormal',
+    normalCloudFacingZero: 'cloudArcNormal',
+    probeCloudFacingZero: 'cloudArcEmissionNormal',
+    legacyZeroCloudFacingAlias: 'probeCloudFacingZero',
+    renderEnergyNormal: 'cloudArcNormal',
+    probeClassificationNormal: 'cloudArcEmissionNormal'
+};
+
+function normalizeCloudVisibilityProbeMode(mode) {
+    const n = Number(mode);
+    if (!Number.isFinite(n)) return mode ? 1 : 0;
+    return Math.max(0, Math.min(4, Math.trunc(n)));
+}
+
+function normalizeCloudMisWeightProbeMode(mode) {
+    const n = Number(mode);
+    if (!Number.isFinite(n)) return mode ? 1 : 0;
+    return Math.max(0, Math.min(CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS.length - 1, Math.trunc(n)));
+}
+
+function normalizeCloudVisibilityProbeRod(rod) {
+    if (typeof rod === 'string') {
+        const idx = CLOUD_VISIBILITY_PROBE_ROD_LABELS.indexOf(rod.trim().toUpperCase());
+        if (idx >= 0) return idx;
+    }
+    const n = Number(rod);
+    if (!Number.isFinite(n)) return -1;
+    return Math.max(-1, Math.min(3, Math.trunc(n)));
+}
+
+function normalizeCloudVisibilityProbeClass(blockerClass) {
+    if (typeof blockerClass === 'string') {
+        const idx = CLOUD_VISIBILITY_PROBE_CLASS_LABELS.indexOf(blockerClass.trim());
+        if (idx >= 0) return idx;
+    }
+    const n = Number(blockerClass);
+    if (!Number.isFinite(n)) return -1;
+    return Math.max(-1, Math.min(CLOUD_VISIBILITY_PROBE_CLASS_LABELS.length - 1, Math.trunc(n)));
+}
+
+function normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount) {
+    const n = Number(thetaBinCount);
+    if (!Number.isFinite(n)) return CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT;
+    return Math.max(1, Math.min(32, Math.trunc(n)));
+}
+
+function normalizeCloudThetaImportanceProtectedFloor(protectedFloor) {
+    const n = Number(protectedFloor);
+    if (!Number.isFinite(n)) return 0.65;
+    return Number(Math.max(0.05, Math.min(1, n)).toFixed(4));
+}
+
+function normalizeCloudVisibilityProbeThetaBin(thetaBin, thetaBinCount) {
+    const n = Number(thetaBin);
+    if (!Number.isFinite(n)) return -1;
+    const count = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    return Math.max(-1, Math.min(count - 1, Math.trunc(n)));
+}
+
+function cloudVisibilityProbeThetaBinInfo(thetaBin, thetaBinCount) {
+    const count = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const bin = normalizeCloudVisibilityProbeThetaBin(thetaBin, count);
+    if (bin < 0) {
+        return {
+            thetaBin: -1,
+            thetaBinCount: count,
+            thetaLabel: 'all',
+            thetaStartDeg: 0,
+            thetaEndDeg: 90
+        };
+    }
+    const stepDeg = 90 / count;
+    return {
+        thetaBin: bin,
+        thetaBinCount: count,
+        thetaLabel: bin + '/' + count,
+        thetaStartDeg: Number((bin * stepDeg).toFixed(3)),
+        thetaEndDeg: Number(((bin + 1) * stepDeg).toFixed(3))
+    };
+}
+
+function getCloudVisibilityProbeLabel() {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeMode ||
+        pathTracingUniforms.uCloudVisibilityProbeMode.value < 1) {
+        return '';
+    }
+    const rod = pathTracingUniforms.uCloudVisibilityProbeRod ? pathTracingUniforms.uCloudVisibilityProbeRod.value : -1;
+    const rodLabel = rod < 0 ? 'all' : (CLOUD_VISIBILITY_PROBE_ROD_LABELS[rod] || String(rod));
+    const mode = pathTracingUniforms.uCloudVisibilityProbeMode.value;
+    const selectedClass = pathTracingUniforms.uCloudVisibilityProbeClass ? pathTracingUniforms.uCloudVisibilityProbeClass.value : -1;
+    const selectedLabel = selectedClass >= 0 ? '/' + (CLOUD_VISIBILITY_PROBE_CLASS_LABELS[selectedClass] || selectedClass) : '';
+    const thetaInfo = cloudVisibilityProbeThetaBinInfo(
+        pathTracingUniforms.uCloudVisibilityProbeThetaBin ? pathTracingUniforms.uCloudVisibilityProbeThetaBin.value : -1,
+        pathTracingUniforms.uCloudVisibilityProbeThetaBinCount ? pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value : CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT
+    );
+    const thetaLabel = thetaInfo.thetaBin >= 0 ? '/theta' + thetaInfo.thetaLabel : '';
+    const modeLabel = mode >= 4 ? 'facingDiagnostic' : (mode >= 3 ? 'class' + selectedLabel : (mode >= 2 ? 'blockers' : 'visibility'));
+    return ' / CloudProbe: ' + modeLabel + '/' + rodLabel + thetaLabel;
+}
+
+function getCloudThetaImportanceShaderABLabel() {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudThetaImportanceShaderABMode ||
+        pathTracingUniforms.uCloudThetaImportanceShaderABMode.value < 1) {
+        return '';
+    }
+    return ' / CloudTheta: B0.50';
+}
+
+function getCloudMisWeightProbeLabel() {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode ||
+        (pathTracingUniforms.uCloudMisWeightProbeMode.value < 1 && cloudMisWeightProbeDisplayMode < 1)) {
+        return '';
+    }
+    const mode = normalizeCloudMisWeightProbeMode(cloudMisWeightProbeDisplayMode || pathTracingUniforms.uCloudMisWeightProbeMode.value);
+    return ' / CloudMIS: ' + (CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS[mode] || String(mode));
+}
+
+function classifyCloudVisibilityProbePixel(r, g, b) {
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    CLOUD_VISIBILITY_PROBE_CLASS_COLORS.forEach((color, idx) => {
+        const dr = r - color[0];
+        const dg = g - color[1];
+        const db = b - color[2];
+        const dist = dr * dr + dg * dg + db * db;
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = idx;
+        }
+    });
+    return bestIdx;
+}
+
+function renderCloudVisibilityProbeReadbackSampleIfNeeded(mode) {
+    if (mode < 3 || !needClearAccumulation || !renderer || !pathTracingRenderTarget || !screenCopyRenderTarget ||
+        !pathTracingScene || !worldCamera || !screenCopyScene || !orthoCamera || !pathTracingUniforms) {
+        return false;
+    }
+
+    renderer.setRenderTarget(pathTracingRenderTarget);
+    renderer.clear();
+    renderer.setRenderTarget(screenCopyRenderTarget);
+    renderer.clear();
+    if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget) {
+        renderer.setRenderTarget(borrowPathTracingRenderTarget);
+        renderer.clear();
+        renderer.setRenderTarget(borrowScreenCopyRenderTarget);
+        renderer.clear();
+    }
+
+    sampleCounter = 1.0;
+    frameCounter = 2.0;
+    cameraIsMoving = false;
+    cameraRecentlyMoving = false;
+    needClearAccumulation = false;
+
+    cameraControlsObject.updateMatrixWorld(true);
+    worldCamera.updateMatrixWorld(true);
+    pathTracingUniforms.uCameraIsMoving.value = false;
+    pathTracingUniforms.uSampleCounter.value = sampleCounter;
+    pathTracingUniforms.uFrameCounter.value = frameCounter;
+    pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+    pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
+    pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+    pathTracingUniforms.uApertureSize.value = apertureSize;
+
+    renderer.setRenderTarget(pathTracingRenderTarget);
+    renderer.render(pathTracingScene, worldCamera);
+    renderer.setRenderTarget(screenCopyRenderTarget);
+    renderer.render(screenCopyScene, orthoCamera);
+    renderer.setRenderTarget(null);
+
+    if (screenOutputUniforms) {
+        if (screenOutputUniforms.uCameraIsMoving) screenOutputUniforms.uCameraIsMoving.value = false;
+        if (screenOutputUniforms.uSampleCounter) screenOutputUniforms.uSampleCounter.value = sampleCounter;
+        if (screenOutputUniforms.uOneOverSampleCounter) screenOutputUniforms.uOneOverSampleCounter.value = 1.0;
+    }
+
+    return true;
+}
+
+function cloudVisibilityProbeSummary(options) {
+    if (!renderer || !renderer.domElement) return null;
+    const logTable = !(options && options.logTable === false);
+    const mode = pathTracingUniforms && pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : 0;
+    const forcedReadbackSample = renderCloudVisibilityProbeReadbackSampleIfNeeded(mode);
+    let width = renderer.domElement.width;
+    let height = renderer.domElement.height;
+    let data;
+    let rawFloatReadback = false;
+
+    if (mode >= 3 && pathTracingRenderTarget) {
+        width = pathTracingRenderTarget.width;
+        height = pathTracingRenderTarget.height;
+        data = new Float32Array(width * height * 4);
+        renderer.readRenderTargetPixels(pathTracingRenderTarget, 0, 0, width, height, data);
+        rawFloatReadback = true;
+    } else {
+        renderer.setRenderTarget(null);
+        renderer.render(screenOutputScene, orthoCamera);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        ctx.drawImage(renderer.domElement, 0, 0, width, height);
+        data = ctx.getImageData(0, 0, width, height).data;
+    }
+    let visibleMass = 0;
+    let blockedMass = 0;
+    let visiblePixels = 0;
+    let blockedPixels = 0;
+    let inactivePixels = 0;
+    let selectedClassMass = 0;
+    let otherClassMass = 0;
+    let selectedClassPixels = 0;
+    let otherClassPixels = 0;
+    const facingDiagnosticMasses = new Array(CLOUD_FACING_DIAGNOSTIC_LABELS.length).fill(0);
+    const facingDiagnosticPixels = new Array(CLOUD_FACING_DIAGNOSTIC_LABELS.length).fill(0);
+    const classPixels = new Array(CLOUD_VISIBILITY_PROBE_CLASS_LABELS.length).fill(0);
+    const classMasses = new Array(CLOUD_VISIBILITY_PROBE_CLASS_LABELS.length).fill(0);
+    const signalThreshold = rawFloatReadback ? 1e-6 : 10 / 255;
+    const selectedClass = pathTracingUniforms && pathTracingUniforms.uCloudVisibilityProbeClass ? pathTracingUniforms.uCloudVisibilityProbeClass.value : -1;
+    const thetaInfo = cloudVisibilityProbeThetaBinInfo(
+        pathTracingUniforms && pathTracingUniforms.uCloudVisibilityProbeThetaBin ? pathTracingUniforms.uCloudVisibilityProbeThetaBin.value : -1,
+        pathTracingUniforms && pathTracingUniforms.uCloudVisibilityProbeThetaBinCount ? pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value : CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT
+    );
+
+    for (let i = 0; i < data.length; i += 4) {
+        const r = rawFloatReadback ? data[i] : data[i] / 255;
+        const g = rawFloatReadback ? data[i + 1] : data[i + 1] / 255;
+        const b = rawFloatReadback ? data[i + 2] : data[i + 2] / 255;
+        const signal = mode >= 2 ? (r + g + b) : (r + g);
+        if (signal <= signalThreshold) {
+            inactivePixels++;
+            continue;
+        }
+        visibleMass += g;
+        blockedMass += r;
+        if (g >= r) visiblePixels++;
+        else blockedPixels++;
+
+        if (mode >= 3 && mode < 4) {
+            selectedClassMass += g;
+            otherClassMass += r;
+            if (g > signalThreshold) selectedClassPixels++;
+            if (r > signalThreshold) otherClassPixels++;
+        }
+        if (mode >= 4) {
+            const channels = [r, g, b];
+            for (let channel = 0; channel < channels.length; channel++) {
+                facingDiagnosticMasses[channel] += channels[channel];
+                if (channels[channel] > signalThreshold) facingDiagnosticPixels[channel]++;
+            }
+        }
+
+        if (mode >= 2 && mode < 3) {
+            const classIdx = classifyCloudVisibilityProbePixel(r, g, b);
+            classPixels[classIdx]++;
+            classMasses[classIdx] += Math.max(r, g, b);
+        }
+    }
+
+    const totalMass = visibleMass + blockedMass;
+    const summary = {
+        probeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        readbackMode: rawFloatReadback ? 'rawPathTracingTarget' : 'screenCanvas',
+        forcedReadbackSample,
+        mode,
+        rod: pathTracingUniforms && pathTracingUniforms.uCloudVisibilityProbeRod ? pathTracingUniforms.uCloudVisibilityProbeRod.value : -1,
+        samples: Math.round(sampleCounter),
+        width,
+        height,
+        visiblePixels,
+        blockedPixels,
+        inactivePixels,
+        visibleMass: Number(visibleMass.toFixed(2)),
+        blockedMass: Number(blockedMass.toFixed(2)),
+        visibleRatio: totalMass > 0 ? Number((visibleMass / totalMass).toFixed(4)) : 0,
+        thetaBin: thetaInfo.thetaBin,
+        thetaBinCount: thetaInfo.thetaBinCount,
+        thetaLabel: thetaInfo.thetaLabel,
+        thetaStartDeg: thetaInfo.thetaStartDeg,
+        thetaEndDeg: thetaInfo.thetaEndDeg
+    };
+    if (mode >= 3 && mode < 4) {
+        const selectedTotalMass = selectedClassMass + otherClassMass;
+        summary.selectedClass = selectedClass >= 0 ? CLOUD_VISIBILITY_PROBE_CLASS_LABELS[selectedClass] : 'all';
+        summary.selectedClassPixels = selectedClassPixels;
+        summary.otherClassPixels = otherClassPixels;
+        summary.selectedClassMass = Number(selectedClassMass.toFixed(2));
+        summary.otherClassMass = Number(otherClassMass.toFixed(2));
+        summary.selectedClassRatio = selectedTotalMass > 0 ? Number((selectedClassMass / selectedTotalMass).toFixed(4)) : 0;
+        summary.thetaBinRatio = summary.selectedClassRatio;
+    }
+    if (mode >= 4) {
+        const facingTotalMass = facingDiagnosticMasses.reduce((sum, value) => sum + value, 0);
+        summary.legacyZeroCloudFacingAlias = CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.legacyZeroCloudFacingAlias;
+        summary.renderEnergyNormal = CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.renderEnergyNormal;
+        summary.probeClassificationNormal = CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.probeClassificationNormal;
+        CLOUD_FACING_DIAGNOSTIC_LABELS.forEach((label, idx) => {
+            summary[label + 'Pixels'] = facingDiagnosticPixels[idx];
+            summary[label + 'Mass'] = Number(facingDiagnosticMasses[idx].toFixed(2));
+            summary[label + 'Ratio'] = facingTotalMass > 0 ? Number((facingDiagnosticMasses[idx] / facingTotalMass).toFixed(4)) : 0;
+        });
+        summary.facingDiagnosticMass = Number(facingTotalMass.toFixed(2));
+        summary.normalMinusProbeFacingZeroRatio = Number((summary.normalCloudFacingZeroRatio - summary.probeCloudFacingZeroRatio).toFixed(4));
+        summary.normalMinusProbeFacingZeroMass = Number((facingDiagnosticMasses[1] - facingDiagnosticMasses[2]).toFixed(2));
+    }
+    if (mode < 3) {
+        const totalClassMass = classMasses.reduce((sum, value) => sum + value, 0);
+        CLOUD_VISIBILITY_PROBE_CLASS_LABELS.forEach((label, idx) => {
+            summary[label + 'Pixels'] = classPixels[idx];
+            summary[label + 'Mass'] = Number(classMasses[idx].toFixed(2));
+            summary[label + 'Ratio'] = totalClassMass > 0 ? Number((classMasses[idx] / totalClassMass).toFixed(4)) : 0;
+        });
+    }
+    if (logTable) console.table(summary);
+    return summary;
+}
+
+function resetCloudVisibilityProbeAccumulation() {
+    needClearAccumulation = true;
+    cameraIsMoving = true;
+    if (!renderer || !pathTracingRenderTarget || !screenCopyRenderTarget) return;
+    renderer.setRenderTarget(pathTracingRenderTarget);
+    renderer.clear();
+    renderer.setRenderTarget(screenCopyRenderTarget);
+    renderer.clear();
+    if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget) {
+        renderer.setRenderTarget(borrowPathTracingRenderTarget);
+        renderer.clear();
+        renderer.setRenderTarget(borrowScreenCopyRenderTarget);
+        renderer.clear();
+    }
+    renderer.setRenderTarget(null);
+    sampleCounter = 1.0;
+    frameCounter = 1.0;
+    if (pathTracingUniforms) {
+        if (pathTracingUniforms.uSampleCounter) pathTracingUniforms.uSampleCounter.value = sampleCounter;
+        if (pathTracingUniforms.uFrameCounter) pathTracingUniforms.uFrameCounter.value = frameCounter;
+        if (pathTracingUniforms.uPreviousSampleCount) pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+    }
+    if (screenOutputUniforms) {
+        if (screenOutputUniforms.uSampleCounter) screenOutputUniforms.uSampleCounter.value = sampleCounter;
+        if (screenOutputUniforms.uOneOverSampleCounter) screenOutputUniforms.uOneOverSampleCounter.value = 1.0;
+    }
+}
+
+window.setCloudVisibilityProbe = function (mode, rod, blockerClass, thetaBin, thetaBinCount) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeMode || !pathTracingUniforms.uCloudVisibilityProbeRod ||
+        !pathTracingUniforms.uCloudVisibilityProbeClass || !pathTracingUniforms.uCloudVisibilityProbeThetaBin ||
+        !pathTracingUniforms.uCloudVisibilityProbeThetaBinCount) {
+        return null;
+    }
+    const enabled = normalizeCloudVisibilityProbeMode(mode);
+    const rodValue = normalizeCloudVisibilityProbeRod(rod);
+    const classValue = normalizeCloudVisibilityProbeClass(blockerClass);
+    const thetaCountValue = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const thetaBinValue = normalizeCloudVisibilityProbeThetaBin(thetaBin, thetaCountValue);
+    const thetaInfo = cloudVisibilityProbeThetaBinInfo(thetaBinValue, thetaCountValue);
+    pathTracingUniforms.uCloudVisibilityProbeMode.value = enabled;
+    pathTracingUniforms.uCloudVisibilityProbeRod.value = rodValue;
+    pathTracingUniforms.uCloudVisibilityProbeClass.value = classValue;
+    pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value = thetaCountValue;
+    pathTracingUniforms.uCloudVisibilityProbeThetaBin.value = thetaBinValue;
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return {
+        mode: enabled,
+        rod: rodValue,
+        rodLabel: rodValue < 0 ? 'all' : CLOUD_VISIBILITY_PROBE_ROD_LABELS[rodValue],
+        blockerClass: classValue,
+        blockerClassLabel: classValue < 0 ? 'all' : CLOUD_VISIBILITY_PROBE_CLASS_LABELS[classValue],
+        thetaBin: thetaInfo.thetaBin,
+        thetaBinCount: thetaInfo.thetaBinCount,
+        thetaLabel: thetaInfo.thetaLabel,
+        thetaStartDeg: thetaInfo.thetaStartDeg,
+        thetaEndDeg: thetaInfo.thetaEndDeg
+    };
+};
+
+window.setCloudVisibilityProbeClass = function (blockerClass) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeClass) {
+        return null;
+    }
+    const classValue = normalizeCloudVisibilityProbeClass(blockerClass);
+    pathTracingUniforms.uCloudVisibilityProbeClass.value = classValue;
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return {
+        blockerClass: classValue,
+        blockerClassLabel: classValue < 0 ? 'all' : CLOUD_VISIBILITY_PROBE_CLASS_LABELS[classValue]
+    };
+};
+
+window.setCloudVisibilityProbeThetaBin = function (thetaBin, thetaBinCount) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeThetaBin || !pathTracingUniforms.uCloudVisibilityProbeThetaBinCount) {
+        return null;
+    }
+    const thetaCountValue = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const thetaBinValue = normalizeCloudVisibilityProbeThetaBin(thetaBin, thetaCountValue);
+    const thetaInfo = cloudVisibilityProbeThetaBinInfo(thetaBinValue, thetaCountValue);
+    pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value = thetaCountValue;
+    pathTracingUniforms.uCloudVisibilityProbeThetaBin.value = thetaBinValue;
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return thetaInfo;
+};
+
+window.reportCloudThetaImportanceShaderAB = function () {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudThetaImportanceShaderABMode) {
+        return null;
+    }
+    return {
+        shaderABVersion: CLOUD_THETA_IMPORTANCE_SHADER_AB_VERSION,
+        sourceProbeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        shaderABMode: pathTracingUniforms.uCloudThetaImportanceShaderABMode.value,
+        modeLabel: pathTracingUniforms.uCloudThetaImportanceShaderABMode.value > 0 ? 'thetaImportanceCandidateProtectedFloor050' : 'uniformThetaBaseline',
+        baselineStrategy: 'uniformTheta',
+        candidateStrategy: 'thetaImportanceCandidate',
+        protectedFloor: CLOUD_THETA_IMPORTANCE_SHADER_AB_PROTECTED_FLOOR,
+        thetaBinCount: CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT,
+        candidatePdfByThetaBin: [0.182214, 0.164555, 0.139731, 0.124376, 0.108893, 0.094690, 0.091107, 0.094434],
+        pdfCompensationByThetaBin: [0.6860, 0.7596, 0.8946, 1.0050, 1.1479, 1.3201, 1.3720, 1.3237],
+        debugFlag: 'uCloudThetaImportanceShaderABMode',
+        defaultMode: 0
+    };
+};
+
+window.setCloudThetaImportanceShaderAB = function (enabled) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudThetaImportanceShaderABMode) {
+        return null;
+    }
+    const mode = (enabled === true || Number(enabled) > 0) ? 1 : 0;
+    pathTracingUniforms.uCloudThetaImportanceShaderABMode.value = mode;
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return window.reportCloudThetaImportanceShaderAB();
+};
+
+function classifyActiveLightIndex(lightIndex) {
+    if (lightIndex === 0) return 'ceiling';
+    if (lightIndex >= 1 && lightIndex <= 4) return 'track';
+    if (lightIndex >= 5 && lightIndex <= 6) return 'wide';
+    if (lightIndex >= 7 && lightIndex <= 10) return 'cloud';
+    return 'empty';
+}
+
+function ratio(numerator, denominator) {
+    return denominator > 0 ? Number((numerator / denominator).toFixed(6)) : 0;
+}
+
+function misWeightFromNeeOverBsdfRatio(neeOverBsdfRatio, favoredPdf) {
+    if (neeOverBsdfRatio == null) return null;
+    const ratioValue = Number(neeOverBsdfRatio);
+    if (!Number.isFinite(ratioValue) || ratioValue < 0) return null;
+    const ratioSquared = ratioValue * ratioValue;
+    const denom = ratioSquared + 1;
+    if (denom <= 0) return null;
+    const weight = favoredPdf === 'nee'
+        ? ratioSquared / denom
+        : 1 / denom;
+    return Number(weight.toFixed(6));
+}
+
+function nearlyEqualProbeNumber(a, b, relTol) {
+    const x = Number(a);
+    const y = Number(b);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const scale = Math.max(1, Math.abs(x), Math.abs(y));
+    return Math.abs(x - y) <= scale * (relTol == null ? 1e-6 : relTol);
+}
+
+function normalizeCloudBsdfHitFrequencyPlan(samplePlan) {
+    const fallback = [1, 4, 16, 64];
+    const raw = Array.isArray(samplePlan)
+        ? samplePlan
+        : (samplePlan == null ? fallback : [samplePlan]);
+    const values = raw
+        .map((value) => Math.trunc(Number(value)))
+        .filter((value) => Number.isFinite(value) && value > 0);
+    const unique = Array.from(new Set(values.length > 0 ? values : fallback));
+    unique.sort((a, b) => a - b);
+    return unique;
+}
+
+window.reportCloudSamplingBudgetDiagnostic = function () {
+    if (!pathTracingUniforms || !pathTracingUniforms.uActiveLightCount || !pathTracingUniforms.uActiveLightIndex) {
+        return null;
+    }
+    const activeCount = pathTracingUniforms.uActiveLightCount.value;
+    const activeIndices = Array.from(pathTracingUniforms.uActiveLightIndex.value).slice(0, activeCount);
+    const counts = { ceiling: 0, track: 0, wide: 0, cloud: 0, empty: 0 };
+    activeIndices.forEach((idx) => {
+        counts[classifyActiveLightIndex(idx)] += 1;
+    });
+    const otherPickRatio = ratio(counts.ceiling + counts.track + counts.wide, activeCount);
+    const cloudRatio = ratio(counts.cloud, activeCount);
+    return {
+        version: CLOUD_SAMPLING_BUDGET_DIAGNOSTIC_VERSION,
+        CLOUD_SAMPLING_BUDGET_DIAGNOSTIC_VERSION,
+        probeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        analysisScope: 'cloudSamplingBudgetDiagnostic',
+        renderPathMutation: false,
+        shaderMutation: false,
+        questions: ['cloudPickRatio', 'otherLightCompetition', 'misDilution', 'directVsIndirect'],
+        currentPanelConfig,
+        activeLightCount: activeCount,
+        activeLightIndex: activeIndices,
+        activeLightBreakdown: counts,
+        cloudLightCount: counts.cloud,
+        cloudPickRatio: ratio(counts.cloud, activeCount),
+        perCloudRodPickRatio: ratio(1, activeCount),
+        otherLightPickRatio: ratio(counts.ceiling + counts.track + counts.wide, activeCount),
+        selectPdf: activeCount > 0 ? 1 / activeCount : 0,
+        otherLightsCompeteWithCloud: (counts.ceiling + counts.track + counts.wide) > 0,
+        c3CloudSampleBudgetVerdict: (currentPanelConfig === 3 && counts.cloud === activeCount && counts.cloud === 4)
+            ? 'cloudOwnsActivePool'
+            : 'mixedActivePool',
+        cloudDirectNeeMis: 'wNee = powerHeuristic(pNee, pBsdf)',
+        cloudBsdfReverseMis: 'wBsdf = powerHeuristic(pBsdf, pNeeReverse)',
+        misAppliesToCloudDirectNee: true,
+        misAppliesToCloudBsdfHit: true,
+        directIsolationControl: 'uIndirectMultiplier = 0',
+        baselineIndirectControl: 'uIndirectMultiplier = 1',
+        currentIndirectMultiplier: pathTracingUniforms.uIndirectMultiplier ? pathTracingUniforms.uIndirectMultiplier.value : null,
+        currentMaxBounces: pathTracingUniforms.uMaxBounces ? pathTracingUniforms.uMaxBounces.value : null,
+        nextProbe: {
+            directOnly: {
+                uIndirectMultiplier: 0,
+                expectedMeaning: 'firstDiffuseNeeOnly'
+            },
+            baseline: {
+                uIndirectMultiplier: 1,
+                expectedMeaning: 'directNeePlusIndirectBounces'
+            }
+        },
+        preliminaryAnswers: {
+            cloudPickRatio: cloudRatio,
+            otherLightCompetition: otherPickRatio,
+            selectionBudgetLikelyRootCause: !(currentPanelConfig === 3 && counts.cloud === activeCount && counts.cloud === 4),
+            needsDirectVsIndirectScreenshotProbe: true
+        },
+        recommendedNextStep: 'directVsIndirectScreenshotProbe'
+    };
+};
+
+window.setCloudMisWeightProbe = function (mode) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const modeValue = normalizeCloudMisWeightProbeMode(mode);
+    const contributionMode = modeValue === 5 ? 1 : (modeValue === 6 ? 2 : ((modeValue === 7 || modeValue === 9 || modeValue === 10) ? 3 : 0));
+    cloudMisWeightProbeDisplayMode = modeValue;
+    pathTracingUniforms.uCloudMisWeightProbeMode.value = modeValue;
+    if (pathTracingUniforms.uCloudContributionProbeMode) {
+        pathTracingUniforms.uCloudContributionProbeMode.value = contributionMode;
+    }
+    if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+        pathTracingMaterial.uniformsNeedUpdate = true;
+    }
+    if (modeValue > 0 && pathTracingUniforms.uCloudVisibilityProbeMode) {
+        pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+    }
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return {
+        version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+        mode: modeValue,
+        modeLabel: CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS[modeValue],
+        normalRenderProbeMode: 0
+    };
+};
+
+window.reportCloudVisibilityProbeThetaScan = function (blockerClass, rod, thetaBinCount) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeMode || !pathTracingUniforms.uCloudVisibilityProbeRod ||
+        !pathTracingUniforms.uCloudVisibilityProbeClass || !pathTracingUniforms.uCloudVisibilityProbeThetaBin ||
+        !pathTracingUniforms.uCloudVisibilityProbeThetaBinCount) {
+        return null;
+    }
+
+    const original = {
+        mode: pathTracingUniforms.uCloudVisibilityProbeMode.value,
+        rod: pathTracingUniforms.uCloudVisibilityProbeRod.value,
+        blockerClass: pathTracingUniforms.uCloudVisibilityProbeClass.value,
+        thetaBin: pathTracingUniforms.uCloudVisibilityProbeThetaBin.value,
+        thetaBinCount: pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value
+    };
+    const rodValue = normalizeCloudVisibilityProbeRod(rod);
+    const classValue = normalizeCloudVisibilityProbeClass(blockerClass == null ? 'zeroCloudFacing' : blockerClass);
+    const countValue = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const bins = [];
+
+    for (let bin = 0; bin < countValue; bin++) {
+        window.setCloudVisibilityProbe(3, rodValue, classValue, bin, countValue);
+        const summary = cloudVisibilityProbeSummary({ logTable: false });
+        bins.push({
+            thetaBin: summary.thetaBin,
+            thetaLabel: summary.thetaLabel,
+            thetaStartDeg: summary.thetaStartDeg,
+            thetaEndDeg: summary.thetaEndDeg,
+            samples: summary.samples,
+            selectedClass: summary.selectedClass,
+            selectedClassRatio: summary.selectedClassRatio,
+            selectedClassMass: summary.selectedClassMass,
+            otherClassMass: summary.otherClassMass,
+            selectedClassPixels: summary.selectedClassPixels,
+            otherClassPixels: summary.otherClassPixels
+        });
+    }
+
+    window.setCloudVisibilityProbe(original.mode, original.rod, original.blockerClass, original.thetaBin, original.thetaBinCount);
+    const result = {
+        probeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        rod: rodValue,
+        rodLabel: rodValue < 0 ? 'all' : CLOUD_VISIBILITY_PROBE_ROD_LABELS[rodValue],
+        selectedClass: classValue >= 0 ? CLOUD_VISIBILITY_PROBE_CLASS_LABELS[classValue] : 'all',
+        thetaBinCount: countValue,
+        bins
+    };
+    console.table(bins);
+    return result;
+};
+
+function waitForCloudVisibilityProbeSamples(targetSamples, timeoutMs, pollMs) {
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const poll = Math.max(50, Math.trunc(Number(pollMs) || 250));
+    const startedAt = performance.now();
+
+    return new Promise((resolve) => {
+        function tick() {
+            const currentSamples = Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0);
+            if (sampleCounter >= targetSamples || currentSamples >= target) {
+                resolve({
+                    targetSamples: target,
+                    samples: currentSamples,
+                    timedOut: false,
+                    elapsedMs: Math.round(performance.now() - startedAt)
+                });
+                return;
+            }
+            if (performance.now() - startedAt >= timeout) {
+                resolve({
+                    targetSamples: target,
+                    samples: currentSamples,
+                    timedOut: true,
+                    elapsedMs: Math.round(performance.now() - startedAt)
+                });
+                return;
+            }
+            setTimeout(tick, poll);
+        }
+        tick();
+    });
+}
+
+window.waitForCloudVisibilityProbeSamples = waitForCloudVisibilityProbeSamples;
+
+function cloudMisWeightProbeReadbackSummary(mode, waitResult) {
+    if (!renderer || !pathTracingRenderTarget || !pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const modeValue = normalizeCloudMisWeightProbeMode(mode);
+    renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+
+    const width = pathTracingRenderTarget.width;
+    const height = pathTracingRenderTarget.height;
+    const data = new Float32Array(width * height * 4);
+    renderer.readRenderTargetPixels(pathTracingRenderTarget, 0, 0, width, height, data);
+
+    let rSum = 0;
+    let gSum = 0;
+    let bSum = 0;
+    let activePixels = 0;
+    const signalThreshold = 1e-7;
+    for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        rSum += r;
+        gSum += g;
+        bSum += b;
+        if (r + g + b > signalThreshold) activePixels++;
+    }
+
+    const isWeightMode = modeValue === 1 || modeValue === 3 || modeValue === 13;
+    const isContributionMode = modeValue === 5 || modeValue === 6 || modeValue === 7 || modeValue === 8 || modeValue === 9 || modeValue === 10 || modeValue === 11;
+    const eventMass = (isWeightMode || isContributionMode) ? gSum : bSum;
+    const averageWeight = isWeightMode && eventMass > 0 ? rSum / eventMass : null;
+    const averagePdfA = !isWeightMode && eventMass > 0 ? rSum / eventMass : null;
+    const averagePdfB = !isWeightMode && eventMass > 0 ? gSum / eventMass : null;
+    const averagePdfRatio = Number.isFinite(averagePdfA) && Number.isFinite(averagePdfB) && averagePdfB > 1e-12
+        ? averagePdfA / averagePdfB
+        : null;
+    const contributionMass = isContributionMode ? rSum : null;
+    const averageContributionLuma = isContributionMode && eventMass > 0 ? rSum / eventMass : null;
+    const averageUnweightedContributionLuma = isContributionMode && eventMass > 0 ? bSum / eventMass : null;
+
+    return {
+        mode: modeValue,
+        modeLabel: CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS[modeValue],
+        actualMisUniformMode: pathTracingUniforms.uCloudMisWeightProbeMode ? pathTracingUniforms.uCloudMisWeightProbeMode.value : null,
+        actualContributionUniformMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        samples: Math.round(sampleCounter),
+        targetSamples: waitResult ? waitResult.targetSamples : null,
+        waitTimedOut: waitResult ? waitResult.timedOut : null,
+        waitElapsedMs: waitResult ? waitResult.elapsedMs : null,
+        width,
+        height,
+        activePixels,
+        eventMass: Number(eventMass.toFixed(6)),
+        channelMass: {
+            r: Number(rSum.toFixed(6)),
+            g: Number(gSum.toFixed(6)),
+            b: Number(bSum.toFixed(6))
+        },
+        averageWeight: Number.isFinite(averageWeight) ? Number(averageWeight.toFixed(6)) : null,
+        averagePdfA: !isContributionMode && Number.isFinite(averagePdfA) ? Number(averagePdfA.toExponential(6)) : null,
+        averagePdfB: !isContributionMode && Number.isFinite(averagePdfB) ? Number(averagePdfB.toExponential(6)) : null,
+        averagePdfRatio: !isContributionMode && Number.isFinite(averagePdfRatio) ? Number(averagePdfRatio.toFixed(6)) : null,
+        contributionMass: Number.isFinite(contributionMass) ? Number(contributionMass.toFixed(6)) : null,
+        averageContributionLuma: Number.isFinite(averageContributionLuma) ? Number(averageContributionLuma.toExponential(6)) : null,
+        averageUnweightedContributionLuma: Number.isFinite(averageUnweightedContributionLuma) ? Number(averageUnweightedContributionLuma.toExponential(6)) : null
+    };
+}
+
+function cloudMisWeightProbeSummaryFromChannelMass(mode, channelMass, activePixels, width, height, samples, elapsedMs, actualMisUniformMode, actualContributionUniformMode) {
+    const modeValue = normalizeCloudMisWeightProbeMode(mode);
+    const rSum = channelMass.r;
+    const gSum = channelMass.g;
+    const bSum = channelMass.b;
+    const isWeightMode = modeValue === 1 || modeValue === 3 || modeValue === 13;
+    const isContributionMode = modeValue === 5 || modeValue === 6 || modeValue === 7 || modeValue === 8 || modeValue === 9 || modeValue === 10 || modeValue === 11;
+    const eventMass = (isWeightMode || isContributionMode) ? gSum : bSum;
+    const averageWeight = isWeightMode && eventMass > 0 ? rSum / eventMass : null;
+    const averagePdfA = !isWeightMode && eventMass > 0 ? rSum / eventMass : null;
+    const averagePdfB = !isWeightMode && eventMass > 0 ? gSum / eventMass : null;
+    const averagePdfRatio = Number.isFinite(averagePdfA) && Number.isFinite(averagePdfB) && averagePdfB > 1e-12
+        ? averagePdfA / averagePdfB
+        : null;
+    const contributionMass = isContributionMode ? rSum : null;
+    const averageContributionLuma = isContributionMode && eventMass > 0 ? rSum / eventMass : null;
+    const averageUnweightedContributionLuma = isContributionMode && eventMass > 0 ? bSum / eventMass : null;
+
+    return {
+        mode: modeValue,
+        modeLabel: CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS[modeValue],
+        actualMisUniformMode: actualMisUniformMode == null ? null : actualMisUniformMode,
+        actualContributionUniformMode: actualContributionUniformMode == null ? null : actualContributionUniformMode,
+        samples,
+        targetSamples: samples,
+        isolatedSamples: samples,
+        waitTimedOut: false,
+        waitElapsedMs: Math.round(elapsedMs),
+        width,
+        height,
+        activePixels,
+        eventMass: Number(eventMass.toFixed(6)),
+        channelMass: {
+            r: Number(rSum.toFixed(6)),
+            g: Number(gSum.toFixed(6)),
+            b: Number(bSum.toFixed(6))
+        },
+        averageWeight: Number.isFinite(averageWeight) ? Number(averageWeight.toFixed(6)) : null,
+        averagePdfA: !isContributionMode && Number.isFinite(averagePdfA) ? Number(averagePdfA.toExponential(6)) : null,
+        averagePdfB: !isContributionMode && Number.isFinite(averagePdfB) ? Number(averagePdfB.toExponential(6)) : null,
+        averagePdfRatio: !isContributionMode && Number.isFinite(averagePdfRatio) ? Number(averagePdfRatio.toFixed(6)) : null,
+        contributionMass: Number.isFinite(contributionMass) ? Number(contributionMass.toFixed(6)) : null,
+        averageContributionLuma: Number.isFinite(averageContributionLuma) ? Number(averageContributionLuma.toExponential(6)) : null,
+        averageUnweightedContributionLuma: Number.isFinite(averageUnweightedContributionLuma) ? Number(averageUnweightedContributionLuma.toExponential(6)) : null
+    };
+}
+
+async function measureCloudMisWeightProbeMode(mode, targetSamples, timeoutMs) {
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const startedAt = performance.now();
+    const channelMass = { r: 0, g: 0, b: 0 };
+    let activePixels = 0;
+    let width = 0;
+    let height = 0;
+
+    for (let i = 0; i < target; i++) {
+        window.setCloudMisWeightProbe(mode);
+        renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+        const summary = cloudMisWeightProbeReadbackSummary(mode, {
+            targetSamples: 1,
+            timedOut: false,
+            elapsedMs: 0
+        });
+        if (!summary) continue;
+        channelMass.r += summary.channelMass.r;
+        channelMass.g += summary.channelMass.g;
+        channelMass.b += summary.channelMass.b;
+        activePixels += summary.activePixels;
+        width = summary.width;
+        height = summary.height;
+    }
+
+    return cloudMisWeightProbeSummaryFromChannelMass(
+        mode,
+        channelMass,
+        activePixels,
+        width,
+        height,
+        target,
+        performance.now() - startedAt,
+        pathTracingUniforms.uCloudMisWeightProbeMode ? pathTracingUniforms.uCloudMisWeightProbeMode.value : null,
+        pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null
+    );
+}
+
+function createCloudDirectNeeScreenBandAccumulators(height) {
+    return CLOUD_DIRECT_NEE_SCREEN_BANDS.map((band, idx) => {
+        const startRowFromTop = idx === 0 ? 0 : Math.floor(band.start * height);
+        const endRowFromTop = idx === CLOUD_DIRECT_NEE_SCREEN_BANDS.length - 1
+            ? height
+            : Math.floor(band.end * height);
+        return {
+            label: band.label,
+            screenYStart: band.start,
+            screenYEnd: band.end,
+            startRowFromTop,
+            endRowFromTop,
+            activePixels: 0,
+            channelMass: { r: 0, g: 0, b: 0 }
+        };
+    });
+}
+
+function cloudDirectNeeScreenBandIndexForRow(bands, rowFromTop) {
+    for (let i = 0; i < bands.length; i++) {
+        if (rowFromTop >= bands[i].startRowFromTop && rowFromTop < bands[i].endRowFromTop) {
+            return i;
+        }
+    }
+    return bands.length - 1;
+}
+
+function readCloudMisWeightProbeScreenBandSample(mode) {
+    if (!renderer || !pathTracingRenderTarget || !pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+
+    const width = pathTracingRenderTarget.width;
+    const height = pathTracingRenderTarget.height;
+    const data = new Float32Array(width * height * 4);
+    const bands = createCloudDirectNeeScreenBandAccumulators(height);
+    const totalChannelMass = { r: 0, g: 0, b: 0 };
+    let totalActivePixels = 0;
+    const signalThreshold = 1e-7;
+
+    renderer.readRenderTargetPixels(pathTracingRenderTarget, 0, 0, width, height, data);
+
+    for (let y = 0; y < height; y++) {
+        const rowFromTop = height - 1 - y;
+        const band = bands[cloudDirectNeeScreenBandIndexForRow(bands, rowFromTop)];
+        for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            totalChannelMass.r += r;
+            totalChannelMass.g += g;
+            totalChannelMass.b += b;
+            band.channelMass.r += r;
+            band.channelMass.g += g;
+            band.channelMass.b += b;
+            if (r + g + b > signalThreshold) {
+                totalActivePixels++;
+                band.activePixels++;
+            }
+        }
+    }
+
+    return {
+        mode: normalizeCloudMisWeightProbeMode(mode),
+        width,
+        height,
+        activePixels: totalActivePixels,
+        channelMass: totalChannelMass,
+        bands
+    };
+}
+
+function mergeCloudDirectNeeScreenBandSample(accumulator, sample) {
+    if (!sample) return accumulator;
+    if (!accumulator) {
+        return {
+            mode: sample.mode,
+            width: sample.width,
+            height: sample.height,
+            activePixels: sample.activePixels,
+            channelMass: { ...sample.channelMass },
+            bands: sample.bands.map((band) => ({
+                label: band.label,
+                screenYStart: band.screenYStart,
+                screenYEnd: band.screenYEnd,
+                startRowFromTop: band.startRowFromTop,
+                endRowFromTop: band.endRowFromTop,
+                activePixels: band.activePixels,
+                channelMass: { ...band.channelMass }
+            }))
+        };
+    }
+    accumulator.activePixels += sample.activePixels;
+    accumulator.channelMass.r += sample.channelMass.r;
+    accumulator.channelMass.g += sample.channelMass.g;
+    accumulator.channelMass.b += sample.channelMass.b;
+    sample.bands.forEach((sampleBand, idx) => {
+        const band = accumulator.bands[idx];
+        band.activePixels += sampleBand.activePixels;
+        band.channelMass.r += sampleBand.channelMass.r;
+        band.channelMass.g += sampleBand.channelMass.g;
+        band.channelMass.b += sampleBand.channelMass.b;
+    });
+    return accumulator;
+}
+
+function cloudProbeRatioOrNull(numerator, denominator) {
+    return Number.isFinite(numerator) && Number.isFinite(denominator) && Math.abs(denominator) > 1e-12
+        ? numerator / denominator
+        : null;
+}
+
+function roundCloudProbeRatio(value) {
+    return Number.isFinite(value) ? Number(value.toFixed(6)) : null;
+}
+
+function cloudDirectNeeScreenBandResultFromAccumulator(mode, accumulator, samples, elapsedMs) {
+    if (!accumulator) return null;
+    const total = cloudMisWeightProbeSummaryFromChannelMass(
+        mode,
+        accumulator.channelMass,
+        accumulator.activePixels,
+        accumulator.width,
+        accumulator.height,
+        samples,
+        elapsedMs,
+        pathTracingUniforms.uCloudMisWeightProbeMode ? pathTracingUniforms.uCloudMisWeightProbeMode.value : null,
+        pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null
+    );
+    const totalContributionMass = total && Number.isFinite(total.contributionMass) ? total.contributionMass : 0;
+    const totalEventMass = total && Number.isFinite(total.eventMass) ? total.eventMass : 0;
+    const totalAverageContribution = total && Number.isFinite(total.averageContributionLuma) ? total.averageContributionLuma : 0;
+    const bands = accumulator.bands.map((band) => {
+        const summary = cloudMisWeightProbeSummaryFromChannelMass(
+            mode,
+            band.channelMass,
+            band.activePixels,
+            accumulator.width,
+            accumulator.height,
+            samples,
+            elapsedMs,
+            pathTracingUniforms.uCloudMisWeightProbeMode ? pathTracingUniforms.uCloudMisWeightProbeMode.value : null,
+            pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null
+        );
+        const contributionShare = cloudProbeRatioOrNull(summary.contributionMass, totalContributionMass);
+        const eventShare = cloudProbeRatioOrNull(summary.eventMass, totalEventMass);
+        const averageContributionLift = cloudProbeRatioOrNull(summary.averageContributionLuma, totalAverageContribution);
+        const weightedToUnweightedRatio = cloudProbeRatioOrNull(summary.averageContributionLuma, summary.averageUnweightedContributionLuma);
+        return {
+            label: band.label,
+            screenYStart: band.screenYStart,
+            screenYEnd: band.screenYEnd,
+            pixelRowsFromTop: {
+                start: band.startRowFromTop,
+                endExclusive: band.endRowFromTop
+            },
+            activePixels: summary.activePixels,
+            eventMass: summary.eventMass,
+            contributionMass: summary.contributionMass,
+            averageContributionLuma: summary.averageContributionLuma,
+            averageUnweightedContributionLuma: summary.averageUnweightedContributionLuma,
+            contributionShare: roundCloudProbeRatio(contributionShare),
+            eventShare: roundCloudProbeRatio(eventShare),
+            averageContributionLift: roundCloudProbeRatio(averageContributionLift),
+            weightedToUnweightedRatio: roundCloudProbeRatio(weightedToUnweightedRatio),
+            channelMass: summary.channelMass
+        };
+    });
+    return {
+        mode: total.mode,
+        modeLabel: total.modeLabel,
+        width: total.width,
+        height: total.height,
+        samples: total.samples,
+        activePixels: total.activePixels,
+        eventMass: total.eventMass,
+        contributionMass: total.contributionMass,
+        averageContributionLuma: total.averageContributionLuma,
+        averageUnweightedContributionLuma: total.averageUnweightedContributionLuma,
+        channelMass: total.channelMass,
+        bands
+    };
+}
+
+function cloudDirectNeeTopBandHistogramIndex(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+        return 0;
+    }
+    const minLog = CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_LOG_MIN;
+    const maxLog = CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_LOG_MAX;
+    const logValue = Math.log2(value);
+    const normalized = (Math.min(maxLog, Math.max(minLog, logValue)) - minLog) / (maxLog - minLog);
+    return Math.max(0, Math.min(
+        CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS - 1,
+        Math.floor(normalized * CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS)
+    ));
+}
+
+function cloudDirectNeeTopBandHistogramValue(index) {
+    const minLog = CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_LOG_MIN;
+    const maxLog = CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_LOG_MAX;
+    const t = (Math.max(0, Math.min(CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS - 1, index)) + 0.5) /
+        CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS;
+    return Math.pow(2, minLog + t * (maxLog - minLog));
+}
+
+function createCloudDirectNeeTopBandPercentileAccumulator(height) {
+    const topBand = CLOUD_DIRECT_NEE_SCREEN_BANDS[0];
+    return {
+        label: topBand.label,
+        screenYStart: topBand.start,
+        screenYEnd: topBand.end,
+        startRowFromTop: 0,
+        endRowFromTop: Math.floor(topBand.end * height),
+        activePixels: 0,
+        eventMass: 0,
+        contributionMass: 0,
+        unweightedContributionMass: 0,
+        minContributionLuma: Infinity,
+        maxContributionLuma: 0,
+        histogram: new Array(CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS).fill(0)
+    };
+}
+
+function readCloudDirectNeeTopBandPercentileSample(mode) {
+    if (!renderer || !pathTracingRenderTarget || !pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+
+    const width = pathTracingRenderTarget.width;
+    const height = pathTracingRenderTarget.height;
+    const data = new Float32Array(width * height * 4);
+    const topBand = createCloudDirectNeeTopBandPercentileAccumulator(height);
+    const signalThreshold = 1e-7;
+
+    renderer.readRenderTargetPixels(pathTracingRenderTarget, 0, 0, width, height, data);
+
+    for (let y = 0; y < height; y++) {
+        const rowFromTop = height - 1 - y;
+        if (rowFromTop < topBand.startRowFromTop || rowFromTop >= topBand.endRowFromTop) {
+            continue;
+        }
+        for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            if (g <= signalThreshold || r + g + b <= signalThreshold) {
+                continue;
+            }
+            const contributionLuma = r / g;
+            if (!Number.isFinite(contributionLuma)) {
+                continue;
+            }
+            topBand.activePixels++;
+            topBand.eventMass += g;
+            topBand.contributionMass += r;
+            topBand.unweightedContributionMass += b;
+            topBand.minContributionLuma = Math.min(topBand.minContributionLuma, contributionLuma);
+            topBand.maxContributionLuma = Math.max(topBand.maxContributionLuma, contributionLuma);
+            topBand.histogram[cloudDirectNeeTopBandHistogramIndex(contributionLuma)]++;
+        }
+    }
+
+    return {
+        mode: normalizeCloudMisWeightProbeMode(mode),
+        width,
+        height,
+        topBand
+    };
+}
+
+function mergeCloudDirectNeeTopBandPercentileSample(accumulator, sample) {
+    if (!sample) return accumulator;
+    if (!accumulator) {
+        return {
+            mode: sample.mode,
+            width: sample.width,
+            height: sample.height,
+            topBand: {
+                ...sample.topBand,
+                histogram: sample.topBand.histogram.slice()
+            }
+        };
+    }
+    const band = accumulator.topBand;
+    const sampleBand = sample.topBand;
+    band.activePixels += sampleBand.activePixels;
+    band.eventMass += sampleBand.eventMass;
+    band.contributionMass += sampleBand.contributionMass;
+    band.unweightedContributionMass += sampleBand.unweightedContributionMass;
+    band.minContributionLuma = Math.min(band.minContributionLuma, sampleBand.minContributionLuma);
+    band.maxContributionLuma = Math.max(band.maxContributionLuma, sampleBand.maxContributionLuma);
+    for (let i = 0; i < band.histogram.length; i++) {
+        band.histogram[i] += sampleBand.histogram[i];
+    }
+    return accumulator;
+}
+
+function cloudDirectNeeTopBandPercentileFromHistogram(histogram, activePixels, percentile) {
+    if (!Array.isArray(histogram) || activePixels <= 0) {
+        return null;
+    }
+    const targetRank = Math.max(1, Math.ceil(activePixels * percentile));
+    let cumulative = 0;
+    for (let i = 0; i < histogram.length; i++) {
+        cumulative += histogram[i];
+        if (cumulative >= targetRank) {
+            return Number(cloudDirectNeeTopBandHistogramValue(i).toExponential(6));
+        }
+    }
+    return Number(cloudDirectNeeTopBandHistogramValue(histogram.length - 1).toExponential(6));
+}
+
+function cloudDirectNeeTopBandPercentileResultFromAccumulator(mode, accumulator, samples, elapsedMs) {
+    if (!accumulator) return null;
+    const band = accumulator.topBand;
+    const p50 = cloudDirectNeeTopBandPercentileFromHistogram(band.histogram, band.activePixels, 0.50);
+    const p90 = cloudDirectNeeTopBandPercentileFromHistogram(band.histogram, band.activePixels, 0.90);
+    const p99 = cloudDirectNeeTopBandPercentileFromHistogram(band.histogram, band.activePixels, 0.99);
+    const maxContribution = Number.isFinite(band.maxContributionLuma) ? Number(band.maxContributionLuma.toExponential(6)) : null;
+    const p99ToP50 = roundCloudProbeRatio(cloudProbeRatioOrNull(p99, p50));
+    const maxToP50 = roundCloudProbeRatio(cloudProbeRatioOrNull(maxContribution, p50));
+    const p90ToP50 = roundCloudProbeRatio(cloudProbeRatioOrNull(p90, p50));
+    const averageContributionLuma = band.eventMass > 0 ? band.contributionMass / band.eventMass : null;
+    const averageUnweightedContributionLuma = band.eventMass > 0 ? band.unweightedContributionMass / band.eventMass : null;
+    return {
+        mode: normalizeCloudMisWeightProbeMode(mode),
+        modeLabel: CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS[normalizeCloudMisWeightProbeMode(mode)],
+        width: accumulator.width,
+        height: accumulator.height,
+        samples,
+        waitElapsedMs: Math.round(elapsedMs),
+        topBand: {
+            label: band.label,
+            screenYStart: band.screenYStart,
+            screenYEnd: band.screenYEnd,
+            pixelRowsFromTop: {
+                start: band.startRowFromTop,
+                endExclusive: band.endRowFromTop
+            },
+            activePixels: band.activePixels,
+            eventMass: Number(band.eventMass.toFixed(6)),
+            contributionMass: Number(band.contributionMass.toFixed(6)),
+            averageContributionLuma: Number.isFinite(averageContributionLuma) ? Number(averageContributionLuma.toExponential(6)) : null,
+            averageUnweightedContributionLuma: Number.isFinite(averageUnweightedContributionLuma) ? Number(averageUnweightedContributionLuma.toExponential(6)) : null
+        },
+        topBandContributionPercentiles: {
+            method: 'log2Histogram',
+            histogramBins: CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS,
+            p50,
+            p90,
+            p99,
+            max: maxContribution,
+            min: Number.isFinite(band.minContributionLuma) ? Number(band.minContributionLuma.toExponential(6)) : null
+        },
+        topBandP90ToP50Ratio: p90ToP50,
+        topBandP99ToP50Ratio: p99ToP50,
+        topBandHotspotDominanceRatio: maxToP50,
+        topBandHotspotDominatesMedian: Boolean(Number.isFinite(maxToP50) && maxToP50 >= 10),
+        topBandP99DominatesMedian: Boolean(Number.isFinite(p99ToP50) && p99ToP50 >= 4)
+    };
+}
+
+async function measureCloudDirectNeeTopBandPercentiles(mode, targetSamples, timeoutMs) {
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const startedAt = performance.now();
+    let accumulator = null;
+
+    for (let i = 0; i < target; i++) {
+        window.setCloudMisWeightProbe(mode);
+        const sample = readCloudDirectNeeTopBandPercentileSample(mode);
+        accumulator = mergeCloudDirectNeeTopBandPercentileSample(accumulator, sample);
+    }
+
+    return cloudDirectNeeTopBandPercentileResultFromAccumulator(
+        mode,
+        accumulator,
+        target,
+        performance.now() - startedAt
+    );
+}
+
+function setCloudDirectNeeContributionSplitProbe(contributionMode) {
+    window.setCloudMisWeightProbe(5);
+    if (pathTracingUniforms && pathTracingUniforms.uCloudContributionProbeMode) {
+        pathTracingUniforms.uCloudContributionProbeMode.value = contributionMode;
+    }
+    if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+        pathTracingMaterial.uniformsNeedUpdate = true;
+    }
+}
+
+async function measureCloudDirectNeeDiffuseCountContributionMode(contributionMode, targetSamples, timeoutMs) {
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const startedAt = performance.now();
+    const channelMass = { r: 0, g: 0, b: 0 };
+    let activePixels = 0;
+    let width = 0;
+    let height = 0;
+
+    for (let i = 0; i < target; i++) {
+        setCloudDirectNeeContributionSplitProbe(contributionMode);
+        renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+        const summary = cloudMisWeightProbeReadbackSummary(5, {
+            targetSamples: 1,
+            timedOut: false,
+            elapsedMs: 0
+        });
+        if (!summary) continue;
+        channelMass.r += summary.channelMass.r;
+        channelMass.g += summary.channelMass.g;
+        channelMass.b += summary.channelMass.b;
+        activePixels += summary.activePixels;
+        width = summary.width;
+        height = summary.height;
+    }
+
+    return cloudMisWeightProbeSummaryFromChannelMass(
+        5,
+        channelMass,
+        activePixels,
+        width,
+        height,
+        target,
+        performance.now() - startedAt,
+        pathTracingUniforms.uCloudMisWeightProbeMode ? pathTracingUniforms.uCloudMisWeightProbeMode.value : null,
+        pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null
+    );
+}
+
+function createCloudVisibleSurfaceHotspotAccumulator(label) {
+    return {
+        label,
+        activePixels: 0,
+        eventMass: 0,
+        contributionMass: 0,
+        unweightedContributionMass: 0,
+        minContributionLuma: Infinity,
+        maxContributionLuma: 0,
+        histogram: new Array(CLOUD_DIRECT_NEE_TOP_BAND_PERCENTILE_HISTOGRAM_BINS).fill(0)
+    };
+}
+
+function readCloudVisibleSurfaceHotspotSample(contributionMode, label) {
+    if (!renderer || !pathTracingRenderTarget || !pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    setCloudDirectNeeContributionSplitProbe(contributionMode);
+    renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+
+    const width = pathTracingRenderTarget.width;
+    const height = pathTracingRenderTarget.height;
+    const data = new Float32Array(width * height * 4);
+    const surface = createCloudVisibleSurfaceHotspotAccumulator(label);
+    const signalThreshold = 1e-7;
+
+    renderer.readRenderTargetPixels(pathTracingRenderTarget, 0, 0, width, height, data);
+
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const i = (y * width + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            if (g <= signalThreshold || r + g + b <= signalThreshold) {
+                continue;
+            }
+            const contributionLuma = r / g;
+            if (!Number.isFinite(contributionLuma)) {
+                continue;
+            }
+            surface.activePixels++;
+            surface.eventMass += g;
+            surface.contributionMass += r;
+            surface.unweightedContributionMass += b;
+            surface.minContributionLuma = Math.min(surface.minContributionLuma, contributionLuma);
+            surface.maxContributionLuma = Math.max(surface.maxContributionLuma, contributionLuma);
+            surface.histogram[cloudDirectNeeTopBandHistogramIndex(contributionLuma)]++;
+        }
+    }
+
+    return {
+        contributionMode,
+        label,
+        width,
+        height,
+        surface
+    };
+}
+
+function mergeCloudVisibleSurfaceHotspotSample(accumulator, sample) {
+    if (!sample) return accumulator;
+    if (!accumulator) {
+        return {
+            contributionMode: sample.contributionMode,
+            label: sample.label,
+            width: sample.width,
+            height: sample.height,
+            surface: {
+                ...sample.surface,
+                histogram: sample.surface.histogram.slice()
+            }
+        };
+    }
+    const surface = accumulator.surface;
+    const sampleSurface = sample.surface;
+    surface.activePixels += sampleSurface.activePixels;
+    surface.eventMass += sampleSurface.eventMass;
+    surface.contributionMass += sampleSurface.contributionMass;
+    surface.unweightedContributionMass += sampleSurface.unweightedContributionMass;
+    surface.minContributionLuma = Math.min(surface.minContributionLuma, sampleSurface.minContributionLuma);
+    surface.maxContributionLuma = Math.max(surface.maxContributionLuma, sampleSurface.maxContributionLuma);
+    for (let i = 0; i < surface.histogram.length; i++) {
+        surface.histogram[i] += sampleSurface.histogram[i];
+    }
+    return accumulator;
+}
+
+function cloudVisibleSurfaceHotspotHistogramCountAtOrAbove(histogram, threshold) {
+    if (!Array.isArray(histogram) || !Number.isFinite(threshold)) {
+        return 0;
+    }
+    let count = 0;
+    for (let i = 0; i < histogram.length; i++) {
+        if (cloudDirectNeeTopBandHistogramValue(i) >= threshold) {
+            count += histogram[i];
+        }
+    }
+    return count;
+}
+
+async function measureCloudVisibleSurfaceHotspotContributionMode(surfaceClass, targetSamples, timeoutMs) {
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const startedAt = performance.now();
+    let accumulator = null;
+
+    for (let i = 0; i < target; i++) {
+        const sample = readCloudVisibleSurfaceHotspotSample(surfaceClass.contributionMode, surfaceClass.label);
+        accumulator = mergeCloudVisibleSurfaceHotspotSample(accumulator, sample);
+    }
+
+    if (!accumulator) return null;
+    const surface = accumulator.surface;
+    const p50 = cloudDirectNeeTopBandPercentileFromHistogram(surface.histogram, surface.activePixels, 0.50);
+    const p90 = cloudDirectNeeTopBandPercentileFromHistogram(surface.histogram, surface.activePixels, 0.90);
+    const p99 = cloudDirectNeeTopBandPercentileFromHistogram(surface.histogram, surface.activePixels, 0.99);
+    const maxContribution = Number.isFinite(surface.maxContributionLuma) ? Number(surface.maxContributionLuma.toExponential(6)) : null;
+    const averageContributionLuma = surface.eventMass > 0 ? surface.contributionMass / surface.eventMass : null;
+    const averageUnweightedContributionLuma = surface.eventMass > 0 ? surface.unweightedContributionMass / surface.eventMass : null;
+    const hotspotThreshold = Number.isFinite(p50) ? Number(Math.max(p50 * 10, 1e-6).toExponential(6)) : null;
+    const hotspotPixelCount = cloudVisibleSurfaceHotspotHistogramCountAtOrAbove(surface.histogram, hotspotThreshold);
+
+    return {
+        label: surfaceClass.label,
+        contributionMode: surfaceClass.contributionMode,
+        width: accumulator.width,
+        height: accumulator.height,
+        samples: target,
+        waitElapsedMs: Math.round(performance.now() - startedAt),
+        contributionEventSamples: surface.activePixels,
+        eventMass: Number(surface.eventMass.toFixed(6)),
+        contributionMass: Number(surface.contributionMass.toFixed(6)),
+        averageContributionLuma: Number.isFinite(averageContributionLuma) ? Number(averageContributionLuma.toExponential(6)) : null,
+        averageUnweightedContributionLuma: Number.isFinite(averageUnweightedContributionLuma) ? Number(averageUnweightedContributionLuma.toExponential(6)) : null,
+        contributionPercentiles: {
+            method: 'log2Histogram',
+            p50,
+            p90,
+            p99,
+            max: maxContribution,
+            min: Number.isFinite(surface.minContributionLuma) ? Number(surface.minContributionLuma.toExponential(6)) : null
+        },
+        p90ToP50Ratio: roundCloudProbeRatio(cloudProbeRatioOrNull(p90, p50)),
+        p99ToP50Ratio: roundCloudProbeRatio(cloudProbeRatioOrNull(p99, p50)),
+        maxToP50Ratio: roundCloudProbeRatio(cloudProbeRatioOrNull(maxContribution, p50)),
+        hotspotThreshold,
+        hotspotPixelCount,
+        histogram: surface.histogram
+    };
+}
+
+async function measureCloudMisWeightProbeScreenBands(mode, targetSamples, timeoutMs) {
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const startedAt = performance.now();
+    let accumulator = null;
+
+    for (let i = 0; i < target; i++) {
+        window.setCloudMisWeightProbe(mode);
+        const sample = readCloudMisWeightProbeScreenBandSample(mode);
+        accumulator = mergeCloudDirectNeeScreenBandSample(accumulator, sample);
+    }
+
+    return cloudDirectNeeScreenBandResultFromAccumulator(
+        mode,
+        accumulator,
+        target,
+        performance.now() - startedAt
+    );
+}
+
+window.reportCloudDirectNeeScreenBandProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 16));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const expectedUniformWeightedLuma = 0.25;
+    const expectedUniformUnweightedLuma = 0.75;
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const uniformBandSentinel = await measureCloudMisWeightProbeScreenBands(8, 1, timeout);
+        const uniformBandSentinelPass = Boolean(uniformBandSentinel && uniformBandSentinel.bands.every((band) =>
+            band.eventMass > 0 &&
+            nearlyEqualProbeNumber(band.averageContributionLuma, expectedUniformWeightedLuma, 1e-3) &&
+            nearlyEqualProbeNumber(band.averageUnweightedContributionLuma, expectedUniformUnweightedLuma, 1e-3)
+        ));
+        const directNeeBandProbe = await measureCloudMisWeightProbeScreenBands(5, target, timeout);
+        const directNeeScreenBands = directNeeBandProbe ? directNeeBandProbe.bands : [];
+        const topBand = directNeeScreenBands.find((band) => band.label === 'top') || null;
+        const bottomBand = directNeeScreenBands.find((band) => band.label === 'bottom') || null;
+        const topVsBottomAverageContributionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(
+            topBand ? topBand.averageContributionLuma : null,
+            bottomBand ? bottomBand.averageContributionLuma : null
+        ));
+        const topContributionLiftVsEvents = roundCloudProbeRatio(cloudProbeRatioOrNull(
+            topBand ? topBand.contributionShare : null,
+            topBand ? topBand.eventShare : null
+        ));
+        const topBandContributionDominatesEvents = Boolean(Number.isFinite(topContributionLiftVsEvents) && topContributionLiftVsEvents > 1.25);
+        const topAverageContributionDominatesBottom = Boolean(Number.isFinite(topVsBottomAverageContributionRatio) && topVsBottomAverageContributionRatio > 1.25);
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudDirectNeeScreenBandProbe',
+            renderPathMutation: false,
+            probeShaderMutation: false,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            screenBandOrigin: 'topToBottom',
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            uniformBandSentinelPass,
+            uniformBandSentinel,
+            directNeeTotal: directNeeBandProbe ? {
+                eventMass: directNeeBandProbe.eventMass,
+                contributionMass: directNeeBandProbe.contributionMass,
+                averageContributionLuma: directNeeBandProbe.averageContributionLuma,
+                averageUnweightedContributionLuma: directNeeBandProbe.averageUnweightedContributionLuma
+            } : null,
+            directNeeScreenBands,
+            topContributionShare: topBand ? topBand.contributionShare : null,
+            topEventShare: topBand ? topBand.eventShare : null,
+            bottomContributionShare: bottomBand ? bottomBand.contributionShare : null,
+            bottomEventShare: bottomBand ? bottomBand.eventShare : null,
+            topVsBottomAverageContributionRatio,
+            topContributionLiftVsEvents,
+            topBandContributionDominatesEvents,
+            topAverageContributionDominatesBottom,
+            interpretation: {
+                sentinelMeaning: 'screenBandReadbackIsAlignedWithProbeBuffer',
+                contributionShareMeaning: 'bandShareOfTotalWeightedDirectNeeLuma',
+                eventShareMeaning: 'bandShareOfDirectNeeEvents',
+                liftMeaning: 'contributionShareDividedByEventShare',
+                topBandMeaning: 'topQuarterOfDisplayedFrame'
+            },
+            recommendedNextStep: !uniformBandSentinelPass
+                ? 'fixScreenBandReadbackBeforeDecision'
+                : ((topBandContributionDominatesEvents || topAverageContributionDominatesBottom)
+                    ? 'inspectCloudDirectNeeTopBandHotspots'
+                    : 'lookAtIndirectDiffuseTailOrSnapshotHotspotStability')
+        };
+        console.table(directNeeScreenBands.map((band) => ({
+            label: band.label,
+            eventMass: band.eventMass,
+            contributionMass: band.contributionMass,
+            averageContributionLuma: band.averageContributionLuma,
+            contributionShare: band.contributionShare,
+            eventShare: band.eventShare,
+            averageContributionLift: band.averageContributionLift
+        })));
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudDirectNeeTopBandPercentileProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 64));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const expectedUniformWeightedLuma = 0.25;
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const uniformTopBandSentinel = await measureCloudDirectNeeTopBandPercentiles(8, 1, timeout);
+        const uniformTopBandSentinelPass = Boolean(
+            uniformTopBandSentinel &&
+            uniformTopBandSentinel.topBand &&
+            uniformTopBandSentinel.topBand.eventMass > 0 &&
+            nearlyEqualProbeNumber(uniformTopBandSentinel.topBandContributionPercentiles.p50, expectedUniformWeightedLuma, 0.02) &&
+            nearlyEqualProbeNumber(uniformTopBandSentinel.topBandContributionPercentiles.p90, expectedUniformWeightedLuma, 0.02) &&
+            nearlyEqualProbeNumber(uniformTopBandSentinel.topBandContributionPercentiles.p99, expectedUniformWeightedLuma, 0.02)
+        );
+        const directNeeTopBand = await measureCloudDirectNeeTopBandPercentiles(5, target, timeout);
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudDirectNeeTopBandPercentileProbe',
+            renderPathMutation: false,
+            probeShaderMutation: false,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            screenBandOrigin: 'topToBottom',
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            uniformTopBandSentinelPass,
+            uniformTopBandSentinel,
+            topBand: directNeeTopBand ? directNeeTopBand.topBand : null,
+            topBandContributionPercentiles: directNeeTopBand ? directNeeTopBand.topBandContributionPercentiles : null,
+            topBandP90ToP50Ratio: directNeeTopBand ? directNeeTopBand.topBandP90ToP50Ratio : null,
+            topBandP99ToP50Ratio: directNeeTopBand ? directNeeTopBand.topBandP99ToP50Ratio : null,
+            topBandHotspotDominanceRatio: directNeeTopBand ? directNeeTopBand.topBandHotspotDominanceRatio : null,
+            topBandHotspotDominatesMedian: directNeeTopBand ? directNeeTopBand.topBandHotspotDominatesMedian : null,
+            topBandP99DominatesMedian: directNeeTopBand ? directNeeTopBand.topBandP99DominatesMedian : null,
+            interpretation: {
+                percentileMeaning: 'per-event weightedCloudDirectNeeLumaInsideTopQuarter',
+                p50Meaning: 'typicalTopBandDirectNeeEvent',
+                p99Meaning: 'brightTailDirectNeeEvent',
+                maxMeaning: 'largestObservedTopBandDirectNeeEvent',
+                hotspotDominanceMeaning: 'maxDividedByP50',
+                p99DominanceMeaning: 'p99DividedByP50',
+                nextQuestion: 'primarySurfaceVsBouncedSurfaceCloudNee'
+            },
+            recommendedNextStep: 'directNeeDiffuseCountSplitProbe'
+        };
+        if (result.topBandContributionPercentiles) {
+            console.table([{
+                p50: result.topBandContributionPercentiles.p50,
+                p90: result.topBandContributionPercentiles.p90,
+                p99: result.topBandContributionPercentiles.p99,
+                max: result.topBandContributionPercentiles.max,
+                p90ToP50: result.topBandP90ToP50Ratio,
+                p99ToP50: result.topBandP99ToP50Ratio,
+                maxToP50: result.topBandHotspotDominanceRatio
+            }]);
+        }
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudDirectNeeDiffuseCountSplitProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 64));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const allDirectNeeContribution = await measureCloudMisWeightProbeMode(5, target, timeout);
+        const primaryDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(4, target, timeout);
+        const bouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(5, target, timeout);
+        const primaryContributionMass = primaryDirectNeeContribution ? primaryDirectNeeContribution.contributionMass : null;
+        const bouncedContributionMass = bouncedDirectNeeContribution ? bouncedDirectNeeContribution.contributionMass : null;
+        const allContributionMass = allDirectNeeContribution ? allDirectNeeContribution.contributionMass : null;
+        const splitContributionMass = Number.isFinite(primaryContributionMass) && Number.isFinite(bouncedContributionMass)
+            ? Number((primaryContributionMass + bouncedContributionMass).toFixed(6))
+            : null;
+        const primaryContributionShare = roundCloudProbeRatio(cloudProbeRatioOrNull(primaryContributionMass, splitContributionMass));
+        const bouncedContributionShare = roundCloudProbeRatio(cloudProbeRatioOrNull(bouncedContributionMass, splitContributionMass));
+        const primaryVsBouncedContributionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(primaryContributionMass, bouncedContributionMass));
+        const splitVsAllContributionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(splitContributionMass, allContributionMass));
+        const primaryDirectNeeDominates = Boolean(Number.isFinite(primaryContributionShare) && primaryContributionShare >= 0.65);
+        const bouncedDirectNeeDominates = Boolean(Number.isFinite(bouncedContributionShare) && bouncedContributionShare >= 0.65);
+        const dominantDirectNeeSurfaceClass = primaryDirectNeeDominates
+            ? 'primarySurface'
+            : (bouncedDirectNeeDominates ? 'bouncedSurface' : (splitContributionMass > 0 ? 'mixed' : 'noEvents'));
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudDirectNeeDiffuseCountSplitProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            contributionSplitModes: {
+                primarySurface: 4,
+                bouncedSurface: 5
+            },
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            allDirectNeeContribution,
+            primaryDirectNeeContribution,
+            bouncedDirectNeeContribution,
+            splitContributionMass,
+            primaryContributionShare,
+            bouncedContributionShare,
+            primaryVsBouncedContributionRatio,
+            splitVsAllContributionRatio,
+            splitMassMatchesAllContribution: Boolean(Number.isFinite(splitVsAllContributionRatio) &&
+                splitVsAllContributionRatio >= 0.9 &&
+                splitVsAllContributionRatio <= 1.1),
+            primaryDirectNeeDominates,
+            bouncedDirectNeeDominates,
+            dominantDirectNeeSurfaceClass,
+            interpretation: {
+                primaryMeaning: 'diffuseCountZeroCameraVisibleSurfaceDirectNee',
+                bouncedMeaning: 'diffuseCountAtLeastOneIndirectSurfaceDirectNee',
+                splitVsAllMeaning: 'primaryPlusBouncedContributionDividedByAllDirectNeeContribution',
+                nextQuestion: 'chooseSamplingFixByDominantSurfaceClass'
+            },
+            recommendedNextStep: primaryDirectNeeDominates
+                ? 'testPrimarySurfaceCloudDirectNeeSamplingStrategy'
+                : (bouncedDirectNeeDominates ? 'inspectIndirectDiffuseCloudNeeTail' : 'comparePrimaryAndBouncedHotspotPercentiles')
+        };
+        console.table({
+            allContributionMass,
+            primaryContributionMass,
+            bouncedContributionMass,
+            splitContributionMass: result.splitContributionMass,
+            primaryContributionShare: result.primaryContributionShare,
+            bouncedContributionShare: result.bouncedContributionShare,
+            primaryVsBouncedContributionRatio: result.primaryVsBouncedContributionRatio,
+            splitVsAllContributionRatio: result.splitVsAllContributionRatio,
+            dominantDirectNeeSurfaceClass: result.dominantDirectNeeSurfaceClass
+        });
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudBouncedDirectNeeFloorGikProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 8));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const bouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(5, target, timeout);
+        const floorBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(6, target, timeout);
+        const gikBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(7, target, timeout);
+        const otherBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(8, target, timeout);
+        const bouncedContributionMass = bouncedDirectNeeContribution ? bouncedDirectNeeContribution.contributionMass : null;
+        const floorContributionMass = floorBouncedDirectNeeContribution ? floorBouncedDirectNeeContribution.contributionMass : null;
+        const gikContributionMass = gikBouncedDirectNeeContribution ? gikBouncedDirectNeeContribution.contributionMass : null;
+        const otherContributionMass = otherBouncedDirectNeeContribution ? otherBouncedDirectNeeContribution.contributionMass : null;
+        const floorPlusGikContributionMass = Number.isFinite(floorContributionMass) && Number.isFinite(gikContributionMass)
+            ? Number((floorContributionMass + gikContributionMass).toFixed(6))
+            : null;
+        const classifiedContributionMass = Number.isFinite(floorPlusGikContributionMass) && Number.isFinite(otherContributionMass)
+            ? Number((floorPlusGikContributionMass + otherContributionMass).toFixed(6))
+            : null;
+        const floorContributionShare = roundCloudProbeRatio(cloudProbeRatioOrNull(floorContributionMass, classifiedContributionMass));
+        const gikContributionShare = roundCloudProbeRatio(cloudProbeRatioOrNull(gikContributionMass, classifiedContributionMass));
+        const otherContributionShare = roundCloudProbeRatio(cloudProbeRatioOrNull(otherContributionMass, classifiedContributionMass));
+        const floorPlusGikContributionShare = roundCloudProbeRatio(cloudProbeRatioOrNull(floorPlusGikContributionMass, classifiedContributionMass));
+        const classifiedVsBouncedContributionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(classifiedContributionMass, bouncedContributionMass));
+        const floorPlusGikDominates = Boolean(Number.isFinite(floorPlusGikContributionShare) && floorPlusGikContributionShare >= 0.65);
+        const dominantBouncedDirectNeeReceiverClass = [
+            { label: 'floor', mass: floorContributionMass },
+            { label: 'gikPanel', mass: gikContributionMass },
+            { label: 'otherSurface', mass: otherContributionMass }
+        ].reduce((best, item) => (Number.isFinite(item.mass) && item.mass > best.mass ? item : best), { label: 'noEvents', mass: -1 }).label;
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudBouncedDirectNeeFloorGikProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            contributionSplitModes: {
+                bouncedSurface: 5,
+                floorBouncedSurface: 6,
+                gikBouncedSurface: 7,
+                otherBouncedSurface: 8
+            },
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            bouncedDirectNeeContribution,
+            floorBouncedDirectNeeContribution,
+            gikBouncedDirectNeeContribution,
+            otherBouncedDirectNeeContribution,
+            floorPlusGikContributionMass,
+            classifiedContributionMass,
+            floorContributionShare,
+            gikContributionShare,
+            otherContributionShare,
+            floorPlusGikContributionShare,
+            classifiedVsBouncedContributionRatio,
+            classifiedMassMatchesBouncedContribution: Boolean(Number.isFinite(classifiedVsBouncedContributionRatio) &&
+                classifiedVsBouncedContributionRatio >= 0.9 &&
+                classifiedVsBouncedContributionRatio <= 1.1),
+            floorPlusGikDominates,
+            dominantBouncedDirectNeeReceiverClass,
+            interpretation: {
+                floorMeaning: 'bouncedDirectNeeFromStructuralFloorReceiver',
+                gikMeaning: 'bouncedDirectNeeFromAcousticPanelReceiver',
+                otherMeaning: 'bouncedDirectNeeFromOtherReceivers',
+                nextQuestion: 'floorGikCandidateOrSplitOtherReceivers'
+            },
+            recommendedNextStep: floorPlusGikDominates
+                ? 'testFloorGikBouncedNeeCandidate'
+                : 'inspectOtherBouncedDirectNeeReceiverClasses'
+        };
+        console.table({
+            bouncedContributionMass,
+            floorContributionMass,
+            gikContributionMass,
+            otherContributionMass,
+            floorPlusGikContributionMass: result.floorPlusGikContributionMass,
+            classifiedContributionMass: result.classifiedContributionMass,
+            floorContributionShare: result.floorContributionShare,
+            gikContributionShare: result.gikContributionShare,
+            otherContributionShare: result.otherContributionShare,
+            floorPlusGikContributionShare: result.floorPlusGikContributionShare,
+            classifiedVsBouncedContributionRatio: result.classifiedVsBouncedContributionRatio,
+            dominantBouncedDirectNeeReceiverClass: result.dominantBouncedDirectNeeReceiverClass
+        });
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudBouncedDirectNeeReceiverClassProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const bouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(5, target, timeout);
+        const floorBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(6, target, timeout);
+        const gikBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(7, target, timeout);
+        const ceilingBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(9, target, timeout);
+        const wallBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(10, target, timeout);
+        const objectBouncedDirectNeeContribution = await measureCloudDirectNeeDiffuseCountContributionMode(11, target, timeout);
+        const classMasses = {
+            floor: floorBouncedDirectNeeContribution ? floorBouncedDirectNeeContribution.contributionMass : null,
+            gikPanel: gikBouncedDirectNeeContribution ? gikBouncedDirectNeeContribution.contributionMass : null,
+            ceiling: ceilingBouncedDirectNeeContribution ? ceilingBouncedDirectNeeContribution.contributionMass : null,
+            wall: wallBouncedDirectNeeContribution ? wallBouncedDirectNeeContribution.contributionMass : null,
+            object: objectBouncedDirectNeeContribution ? objectBouncedDirectNeeContribution.contributionMass : null
+        };
+        const classifiedContributionMass = Object.values(classMasses).every(Number.isFinite)
+            ? Number(Object.values(classMasses).reduce((sum, mass) => sum + mass, 0).toFixed(6))
+            : null;
+        const bouncedContributionMass = bouncedDirectNeeContribution ? bouncedDirectNeeContribution.contributionMass : null;
+        const receiverClassShares = Object.fromEntries(Object.entries(classMasses).map(([label, mass]) => [
+            label,
+            roundCloudProbeRatio(cloudProbeRatioOrNull(mass, classifiedContributionMass))
+        ]));
+        const dominant = Object.entries(classMasses).reduce(
+            (best, [label, mass]) => (Number.isFinite(mass) && mass > best.mass ? { label, mass } : best),
+            { label: 'noEvents', mass: -1 }
+        );
+        const dominantReceiverClassContributionShare = roundCloudProbeRatio(
+            cloudProbeRatioOrNull(dominant.mass, classifiedContributionMass)
+        );
+        const classifiedVsBouncedContributionRatio = roundCloudProbeRatio(
+            cloudProbeRatioOrNull(classifiedContributionMass, bouncedContributionMass)
+        );
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudBouncedDirectNeeReceiverClassProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            contributionSplitModes: {
+                bouncedSurface: 5,
+                floor: 6,
+                gikPanel: 7,
+                ceiling: 9,
+                wall: 10,
+                object: 11
+            },
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            bouncedDirectNeeContribution,
+            floorBouncedDirectNeeContribution,
+            gikBouncedDirectNeeContribution,
+            ceilingBouncedDirectNeeContribution,
+            wallBouncedDirectNeeContribution,
+            objectBouncedDirectNeeContribution,
+            classMasses,
+            classifiedContributionMass,
+            receiverClassShares,
+            classifiedVsBouncedContributionRatio,
+            classifiedMassMatchesBouncedContribution: Boolean(Number.isFinite(classifiedVsBouncedContributionRatio) &&
+                classifiedVsBouncedContributionRatio >= 0.9 &&
+                classifiedVsBouncedContributionRatio <= 1.1),
+            dominantBouncedDirectNeeReceiverClass: dominant.label,
+            dominantReceiverClassContributionMass: Number.isFinite(dominant.mass) ? Number(dominant.mass.toFixed(6)) : null,
+            dominantReceiverClassContributionShare,
+            interpretation: {
+                floorMeaning: 'structuralFloorReceiver',
+                gikMeaning: 'acousticPanelReceiver',
+                ceilingMeaning: 'structuralCeilingReceiver',
+                wallMeaning: 'structuralWallOrBeamReceiver',
+                objectMeaning: 'furnitureDoorSpeakerOutletOrTrackReceiver',
+                nextQuestion: 'candidatePatchForDominantReceiverClass'
+            },
+            recommendedNextStep: dominant.label === 'ceiling'
+                ? 'testCeilingBouncedNeeCleanupCandidate'
+                : (dominant.label === 'wall' ? 'testWallBouncedNeeCleanupCandidate' : 'splitDominantObjectReceiverClass')
+        };
+        console.table({
+            bouncedContributionMass,
+            classifiedContributionMass: result.classifiedContributionMass,
+            floorContributionMass: classMasses.floor,
+            gikContributionMass: classMasses.gikPanel,
+            ceilingContributionMass: classMasses.ceiling,
+            wallContributionMass: classMasses.wall,
+            objectContributionMass: classMasses.object,
+            floorShare: result.receiverClassShares.floor,
+            gikShare: result.receiverClassShares.gikPanel,
+            ceilingShare: result.receiverClassShares.ceiling,
+            wallShare: result.receiverClassShares.wall,
+            objectShare: result.receiverClassShares.object,
+            classifiedVsBouncedContributionRatio: result.classifiedVsBouncedContributionRatio,
+            dominantBouncedDirectNeeReceiverClass: result.dominantBouncedDirectNeeReceiverClass,
+            dominantReceiverClassContributionShare: result.dominantReceiverClassContributionShare
+        });
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudVisibleSurfaceHotspotProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 8));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const visibleSurfaceHotspotRows = [];
+        for (const surfaceClass of CLOUD_VISIBLE_SURFACE_HOTSPOT_CLASSES) {
+            const visiblePixelProbe = await measureCloudDirectNeeDiffuseCountContributionMode(surfaceClass.visiblePixelMode, target, timeout);
+            const hotspotProbe = await measureCloudVisibleSurfaceHotspotContributionMode(surfaceClass, target, timeout);
+            const visiblePixelSamples = visiblePixelProbe ? visiblePixelProbe.eventMass : null;
+            const hotspotPixelDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                hotspotProbe ? hotspotProbe.hotspotPixelCount : null,
+                visiblePixelSamples
+            ));
+            const contributionEventDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                hotspotProbe ? hotspotProbe.contributionEventSamples : null,
+                visiblePixelSamples
+            ));
+            visibleSurfaceHotspotRows.push({
+                label: surfaceClass.label,
+                contributionMode: surfaceClass.contributionMode,
+                visiblePixelMode: surfaceClass.visiblePixelMode,
+                visiblePixelSamples,
+                contributionEventSamples: hotspotProbe ? hotspotProbe.contributionEventSamples : null,
+                contributionEventDensity,
+                contributionMass: hotspotProbe ? hotspotProbe.contributionMass : null,
+                averageContributionLuma: hotspotProbe ? hotspotProbe.averageContributionLuma : null,
+                p50: hotspotProbe ? hotspotProbe.contributionPercentiles.p50 : null,
+                p90: hotspotProbe ? hotspotProbe.contributionPercentiles.p90 : null,
+                p99: hotspotProbe ? hotspotProbe.contributionPercentiles.p99 : null,
+                max: hotspotProbe ? hotspotProbe.contributionPercentiles.max : null,
+                p90ToP50Ratio: hotspotProbe ? hotspotProbe.p90ToP50Ratio : null,
+                p99ToP50Ratio: hotspotProbe ? hotspotProbe.p99ToP50Ratio : null,
+                maxToP50Ratio: hotspotProbe ? hotspotProbe.maxToP50Ratio : null,
+                hotspotThreshold: hotspotProbe ? hotspotProbe.hotspotThreshold : null,
+                hotspotPixelCount: hotspotProbe ? hotspotProbe.hotspotPixelCount : null,
+                hotspotPixelDensity,
+                visiblePixelProbe,
+                hotspotProbe
+            });
+        }
+        const dominantHotspot = visibleSurfaceHotspotRows.reduce((best, row) => (
+            Number.isFinite(row.hotspotPixelDensity) && row.hotspotPixelDensity > best.hotspotPixelDensity
+                ? row
+                : best
+        ), { label: 'noEvents', hotspotPixelDensity: -1 });
+        const floorRow = visibleSurfaceHotspotRows.find((row) => row.label === 'floor') || null;
+        const gikRow = visibleSurfaceHotspotRows.find((row) => row.label === 'gikPanel') || null;
+        const floorGikHotspotPixelCount = Number((Number(floorRow ? floorRow.hotspotPixelCount : 0) + Number(gikRow ? gikRow.hotspotPixelCount : 0)).toFixed(6));
+        const floorGikVisiblePixelSamples = Number((Number(floorRow ? floorRow.visiblePixelSamples : 0) + Number(gikRow ? gikRow.visiblePixelSamples : 0)).toFixed(6));
+        const floorGikHotspotPixelDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(floorGikHotspotPixelCount, floorGikVisiblePixelSamples));
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudVisibleSurfaceHotspotProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            visibleSurfaceClasses: CLOUD_VISIBLE_SURFACE_HOTSPOT_CLASSES.map((surfaceClass) => ({
+                label: surfaceClass.label,
+                contributionMode: surfaceClass.contributionMode,
+                visiblePixelMode: surfaceClass.visiblePixelMode
+            })),
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            visibleSurfaceHotspotRows,
+            dominantVisibleSurfaceHotspotClass: dominantHotspot.label,
+            dominantVisibleSurfaceHotspotDensity: Number.isFinite(dominantHotspot.hotspotPixelDensity)
+                ? dominantHotspot.hotspotPixelDensity
+                : null,
+            floorGikHotspotPixelCount,
+            floorGikVisiblePixelSamples,
+            floorGikHotspotPixelDensity,
+            interpretation: {
+                visibleSurfaceMeaning: 'firstCameraVisibleSurfaceClass',
+                contributionMeaning: 'bouncedCloudDirectNeeContributionLandingOnThatVisibleSurface',
+                hotspotThresholdMeaning: 'atLeastTenTimesThatSurfaceMedianContribution',
+                densityMeaning: 'hotspotPixelCountDividedByVisiblePixelSamples',
+                decisionMeaning: 'higherDensityMeansTheSurfaceReallyHasMoreBrightSpecksPerVisibleSample',
+                sampleIndependenceWarning: 'targetSamplesCurrentlyScalesReadbackCountsAndDoesNotProveIndependentRandomStability'
+            },
+            recommendedNextStep: 'testDominantVisibleSurfaceCleanupCandidate'
+        };
+        console.table(visibleSurfaceHotspotRows.map((row) => ({
+            label: row.label,
+            visiblePixelSamples: row.visiblePixelSamples,
+            contributionEventSamples: row.contributionEventSamples,
+            contributionEventDensity: row.contributionEventDensity,
+            p50: row.p50,
+            p90: row.p90,
+            p99: row.p99,
+            max: row.max,
+            maxToP50Ratio: row.maxToP50Ratio,
+            hotspotThreshold: row.hotspotThreshold,
+            hotspotPixelCount: row.hotspotPixelCount,
+            hotspotPixelDensity: row.hotspotPixelDensity
+        })));
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudDarkVisibleSurfaceHotspotSourceProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 4));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const visiblePixelProbeByMode = new Map();
+        for (const visiblePixelMode of [17, 18]) {
+            visiblePixelProbeByMode.set(
+                visiblePixelMode,
+                await measureCloudDirectNeeDiffuseCountContributionMode(visiblePixelMode, target, timeout)
+            );
+        }
+        const visibleSurfaceHotspotThresholdBySurface = {};
+        for (const surfaceClass of CLOUD_VISIBLE_SURFACE_HOTSPOT_CLASSES.filter((surfaceClass) =>
+            surfaceClass.label === 'floor' || surfaceClass.label === 'gikPanel'
+        )) {
+            const surfaceProbe = await measureCloudVisibleSurfaceHotspotContributionMode(surfaceClass, target, timeout);
+            visibleSurfaceHotspotThresholdBySurface[surfaceClass.label] = surfaceProbe ? surfaceProbe.hotspotThreshold : null;
+        }
+        const darkVisibleSurfaceHotspotSourceRows = [];
+        for (const sourceClass of CLOUD_DARK_VISIBLE_SURFACE_HOTSPOT_SOURCE_CLASSES) {
+            const sourceProbe = await measureCloudVisibleSurfaceHotspotContributionMode({
+                label: `${sourceClass.visibleSurface}From${sourceClass.sourceSurface}`,
+                contributionMode: sourceClass.contributionMode
+            }, target, timeout);
+            const visiblePixelProbe = visiblePixelProbeByMode.get(sourceClass.visiblePixelMode) || null;
+            const visiblePixelSamples = visiblePixelProbe ? visiblePixelProbe.eventMass : null;
+            const visibleSurfaceHotspotThreshold = visibleSurfaceHotspotThresholdBySurface[sourceClass.visibleSurface];
+            const absoluteHotspotPixelCount = sourceProbe
+                ? cloudVisibleSurfaceHotspotHistogramCountAtOrAbove(sourceProbe.histogram, visibleSurfaceHotspotThreshold)
+                : null;
+            const absoluteHotspotPixelDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                absoluteHotspotPixelCount,
+                visiblePixelSamples
+            ));
+            const hotspotPixelDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                sourceProbe ? sourceProbe.hotspotPixelCount : null,
+                visiblePixelSamples
+            ));
+            const contributionEventDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                sourceProbe ? sourceProbe.contributionEventSamples : null,
+                visiblePixelSamples
+            ));
+            darkVisibleSurfaceHotspotSourceRows.push({
+                visibleSurface: sourceClass.visibleSurface,
+                sourceSurface: sourceClass.sourceSurface,
+                contributionMode: sourceClass.contributionMode,
+                visiblePixelMode: sourceClass.visiblePixelMode,
+                visiblePixelSamples,
+                contributionEventSamples: sourceProbe ? sourceProbe.contributionEventSamples : null,
+                contributionEventDensity,
+                contributionMass: sourceProbe ? sourceProbe.contributionMass : null,
+                averageContributionLuma: sourceProbe ? sourceProbe.averageContributionLuma : null,
+                p50: sourceProbe ? sourceProbe.contributionPercentiles.p50 : null,
+                p90: sourceProbe ? sourceProbe.contributionPercentiles.p90 : null,
+                p99: sourceProbe ? sourceProbe.contributionPercentiles.p99 : null,
+                max: sourceProbe ? sourceProbe.contributionPercentiles.max : null,
+                maxToP50Ratio: sourceProbe ? sourceProbe.maxToP50Ratio : null,
+                hotspotThreshold: sourceProbe ? sourceProbe.hotspotThreshold : null,
+                hotspotPixelCount: sourceProbe ? sourceProbe.hotspotPixelCount : null,
+                hotspotPixelDensity,
+                visibleSurfaceHotspotThreshold,
+                absoluteHotspotPixelCount,
+                absoluteHotspotPixelDensity,
+                sourceProbe
+            });
+        }
+        const dominant = darkVisibleSurfaceHotspotSourceRows.reduce((best, row) => (
+            Number.isFinite(row.absoluteHotspotPixelDensity) && row.absoluteHotspotPixelDensity > best.absoluteHotspotPixelDensity
+                ? row
+                : best
+        ), { visibleSurface: 'none', sourceSurface: 'none', absoluteHotspotPixelDensity: -1 });
+        const groupedByVisibleSurface = {};
+        for (const visibleSurface of ['floor', 'gikPanel']) {
+            const rows = darkVisibleSurfaceHotspotSourceRows.filter((row) => row.visibleSurface === visibleSurface);
+            const dominantSource = rows.reduce((best, row) => (
+                Number.isFinite(row.absoluteHotspotPixelDensity) && row.absoluteHotspotPixelDensity > best.absoluteHotspotPixelDensity
+                    ? row
+                    : best
+            ), { sourceSurface: 'none', absoluteHotspotPixelDensity: -1 });
+            groupedByVisibleSurface[visibleSurface] = {
+                rows,
+                dominantSourceSurface: dominantSource.sourceSurface,
+                dominantSourceAbsoluteHotspotPixelDensity: Number.isFinite(dominantSource.absoluteHotspotPixelDensity)
+                    ? dominantSource.absoluteHotspotPixelDensity
+                    : null
+            };
+        }
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudDarkVisibleSurfaceHotspotSourceProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            visibleSurfaceHotspotThresholdBySurface,
+            darkVisibleSurfaceHotspotSourceRows,
+            groupedByVisibleSurface,
+            dominantDarkVisibleSurfaceHotspotSource: {
+                visibleSurface: dominant.visibleSurface,
+                sourceSurface: dominant.sourceSurface,
+                hotspotPixelDensity: Number.isFinite(dominant.hotspotPixelDensity) ? dominant.hotspotPixelDensity : null,
+                absoluteHotspotPixelDensity: Number.isFinite(dominant.absoluteHotspotPixelDensity)
+                    ? dominant.absoluteHotspotPixelDensity
+                    : null
+            },
+            interpretation: {
+                visibleSurfaceMeaning: 'firstCameraVisibleDarkSurface',
+                sourceSurfaceMeaning: 'laterBouncedSurfaceThatSampledCloudDirectNee',
+                densityMeaning: 'sourceClassHotspotPixelCountDividedByVisibleDarkSurfacePixelSamples',
+                absoluteDensityMeaning: 'sourceClassPixelsAboveTheSharedVisibleSurfaceThresholdDividedByVisibleDarkSurfacePixelSamples',
+                decisionMeaning: 'dominantSourceSurfaceUsesSharedVisibleSurfaceThresholdForCleanupRouting',
+                sampleIndependenceWarning: 'targetSamplesCurrentlyScalesReadbackCountsAndDoesNotProveIndependentRandomStability'
+            },
+            recommendedNextStep: 'testDarkVisibleSurfaceSourceCleanupCandidate'
+        };
+        console.table(darkVisibleSurfaceHotspotSourceRows.map((row) => ({
+            visibleSurface: row.visibleSurface,
+            sourceSurface: row.sourceSurface,
+            visiblePixelSamples: row.visiblePixelSamples,
+            contributionEventDensity: row.contributionEventDensity,
+            p50: row.p50,
+            p99: row.p99,
+            max: row.max,
+            maxToP50Ratio: row.maxToP50Ratio,
+            hotspotPixelCount: row.hotspotPixelCount,
+            hotspotPixelDensity: row.hotspotPixelDensity,
+            visibleSurfaceHotspotThreshold: row.visibleSurfaceHotspotThreshold,
+            absoluteHotspotPixelCount: row.absoluteHotspotPixelCount,
+            absoluteHotspotPixelDensity: row.absoluteHotspotPixelDensity
+        })));
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.setCloudDarkSurfaceCleanupCandidate = function (mode, clampLuma) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudDarkSurfaceCleanupMode || !pathTracingUniforms.uCloudDarkSurfaceCleanupLuma) {
+        return null;
+    }
+    const modeValue = Number(mode) > 0 ? 1 : 0;
+    const clampValue = Math.max(0, Number.isFinite(Number(clampLuma)) ? Number(clampLuma) : 1.0);
+    pathTracingUniforms.uCloudDarkSurfaceCleanupMode.value = modeValue;
+    pathTracingUniforms.uCloudDarkSurfaceCleanupLuma.value = clampValue;
+    if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+        pathTracingMaterial.uniformsNeedUpdate = true;
+    }
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return {
+        version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+        cleanupMode: modeValue,
+        cleanupClampLuma: clampValue,
+        scope: 'visibleFloorOrGikFromCeilingOrWallCloudDirectNee',
+        defaultRenderMode: 0
+    };
+};
+
+window.reportCloudDarkSurfaceCleanupCandidateAfterSamples = async function (targetSamples, timeoutMs, clampLuma) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudDarkSurfaceCleanupMode || !pathTracingUniforms.uCloudDarkSurfaceCleanupLuma) {
+        return null;
+    }
+    const originalCleanupMode = pathTracingUniforms.uCloudDarkSurfaceCleanupMode.value;
+    const originalCleanupLuma = pathTracingUniforms.uCloudDarkSurfaceCleanupLuma.value;
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 4));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const clampValue = Math.max(0, Number.isFinite(Number(clampLuma)) ? Number(clampLuma) : 1.0);
+
+    try {
+        window.setCloudDarkSurfaceCleanupCandidate(0, clampValue);
+        const baseline = await window.reportCloudVisibleSurfaceHotspotProbeAfterSamples(target, timeout);
+        window.setCloudDarkSurfaceCleanupCandidate(1, clampValue);
+        const candidate = await window.reportCloudVisibleSurfaceHotspotProbeAfterSamples(target, timeout);
+        const cleanupCandidateRows = ['floor', 'gikPanel', 'ceiling', 'wall', 'object'].map((label) => {
+            const before = baseline && baseline.visibleSurfaceHotspotRows
+                ? baseline.visibleSurfaceHotspotRows.find((row) => row.label === label)
+                : null;
+            const after = candidate && candidate.visibleSurfaceHotspotRows
+                ? candidate.visibleSurfaceHotspotRows.find((row) => row.label === label)
+                : null;
+            const hotspotDensityReductionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                before && after ? before.hotspotPixelDensity - after.hotspotPixelDensity : null,
+                before ? before.hotspotPixelDensity : null
+            ));
+            const maxReductionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                before && after ? before.max - after.max : null,
+                before ? before.max : null
+            ));
+            const p99ReductionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                before && after ? before.p99 - after.p99 : null,
+                before ? before.p99 : null
+            ));
+            return {
+                label,
+                baselineHotspotPixelDensity: before ? before.hotspotPixelDensity : null,
+                candidateHotspotPixelDensity: after ? after.hotspotPixelDensity : null,
+                hotspotDensityReductionRatio,
+                baselineP99: before ? before.p99 : null,
+                candidateP99: after ? after.p99 : null,
+                p99ReductionRatio,
+                baselineMax: before ? before.max : null,
+                candidateMax: after ? after.max : null,
+                maxReductionRatio
+            };
+        });
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudDarkSurfaceCleanupCandidateProbe',
+            renderPathMutation: false,
+            candidateRenderMutationAvailable: true,
+            candidateDefaultEnabled: false,
+            cleanupScope: 'visibleFloorOrGikFromCeilingOrWallCloudDirectNee',
+            cleanupClampLuma: clampValue,
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            baseline,
+            candidate,
+            cleanupCandidateRows,
+            interpretation: {
+                candidateMeaning: 'temporaryUniformToggleThatClampsOnlyDarkVisibleSurfaceCeilingWallCloudNeeSpikes',
+                successMeaning: 'floorAndGikHotspotDensityOrMaxDropsWhileCeilingAndWallVisibleRowsStayNearBaseline',
+                nextValidation: 'visualCompareAtLowSppThenCheckHighSppBrightness'
+            },
+            recommendedNextStep: 'visualABLowSppThenHighSppGuard'
+        };
+        console.table(cleanupCandidateRows);
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudDarkSurfaceCleanupMode.value = originalCleanupMode;
+        pathTracingUniforms.uCloudDarkSurfaceCleanupLuma.value = originalCleanupLuma;
+        if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+            pathTracingMaterial.uniformsNeedUpdate = true;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudBrightSampleCoverageProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null,
+        cleanupMode: pathTracingUniforms.uCloudDarkSurfaceCleanupMode ? pathTracingUniforms.uCloudDarkSurfaceCleanupMode.value : null,
+        cleanupLuma: pathTracingUniforms.uCloudDarkSurfaceCleanupLuma ? pathTracingUniforms.uCloudDarkSurfaceCleanupLuma.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 4));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const coverageSurfaces = CLOUD_VISIBLE_SURFACE_HOTSPOT_CLASSES.filter((surfaceClass) =>
+        surfaceClass.label === 'floor' || surfaceClass.label === 'gikPanel'
+    );
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        window.setCloudDarkSurfaceCleanupCandidate(0, 1.0);
+        const brightSampleCoverageRows = [];
+        for (const surfaceClass of coverageSurfaces) {
+            const visiblePixelProbe = await measureCloudDirectNeeDiffuseCountContributionMode(surfaceClass.visiblePixelMode, target, timeout);
+            const hotspotProbe = await measureCloudVisibleSurfaceHotspotContributionMode(surfaceClass, target, timeout);
+            const visiblePixelSamples = visiblePixelProbe ? visiblePixelProbe.eventMass : null;
+            const normalBrightThreshold = hotspotProbe ? hotspotProbe.contributionPercentiles.p50 : null;
+            const strongBrightThreshold = hotspotProbe ? hotspotProbe.contributionPercentiles.p90 : null;
+            const medianBrightPixelCount = hotspotProbe
+                ? cloudVisibleSurfaceHotspotHistogramCountAtOrAbove(hotspotProbe.histogram, normalBrightThreshold)
+                : null;
+            const strongBrightPixelCount = hotspotProbe
+                ? cloudVisibleSurfaceHotspotHistogramCountAtOrAbove(hotspotProbe.histogram, strongBrightThreshold)
+                : null;
+            const contributionEventDensity = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                hotspotProbe ? hotspotProbe.contributionEventSamples : null,
+                visiblePixelSamples
+            ));
+            const medianBrightCoverage = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                medianBrightPixelCount,
+                visiblePixelSamples
+            ));
+            const strongBrightCoverage = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                strongBrightPixelCount,
+                visiblePixelSamples
+            ));
+            const darkWaitingShareAtMedian = roundCloudProbeRatio(
+                Number.isFinite(medianBrightCoverage) ? 1 - medianBrightCoverage : null
+            );
+            const darkWaitingShareAtStrong = roundCloudProbeRatio(
+                Number.isFinite(strongBrightCoverage) ? 1 - strongBrightCoverage : null
+            );
+            let coverageVerdict = 'noVisiblePixelsMeasured';
+            if (Number.isFinite(visiblePixelSamples) && visiblePixelSamples > 0) {
+                if (!Number.isFinite(contributionEventDensity) || contributionEventDensity <= 0) {
+                    coverageVerdict = 'noCloudNeeEventsOnVisibleSurface';
+                } else if (Number.isFinite(medianBrightCoverage) && medianBrightCoverage < 0.15) {
+                    coverageVerdict = 'coverageInsufficient';
+                } else if (Number.isFinite(darkWaitingShareAtMedian) && darkWaitingShareAtMedian > 0.65) {
+                    coverageVerdict = 'coverageSparse';
+                } else if (hotspotProbe && Number.isFinite(hotspotProbe.maxToP50Ratio) && hotspotProbe.maxToP50Ratio >= 10 &&
+                    Number.isFinite(strongBrightCoverage) && strongBrightCoverage < 0.05) {
+                    coverageVerdict = 'brightTailConcentrated';
+                } else {
+                    coverageVerdict = 'coverageModerate';
+                }
+            }
+            brightSampleCoverageRows.push({
+                label: surfaceClass.label,
+                contributionMode: surfaceClass.contributionMode,
+                visiblePixelMode: surfaceClass.visiblePixelMode,
+                visiblePixelSamples,
+                contributionEventSamples: hotspotProbe ? hotspotProbe.contributionEventSamples : null,
+                contributionEventDensity,
+                contributionMass: hotspotProbe ? hotspotProbe.contributionMass : null,
+                averageContributionLuma: hotspotProbe ? hotspotProbe.averageContributionLuma : null,
+                normalBrightThreshold,
+                strongBrightThreshold,
+                medianBrightPixelCount,
+                strongBrightPixelCount,
+                medianBrightCoverage,
+                normalBrightCoverage: medianBrightCoverage,
+                strongBrightCoverage,
+                darkWaitingShareAtMedian,
+                darkWaitingShareAtStrong,
+                p50: hotspotProbe ? hotspotProbe.contributionPercentiles.p50 : null,
+                p90: hotspotProbe ? hotspotProbe.contributionPercentiles.p90 : null,
+                p99: hotspotProbe ? hotspotProbe.contributionPercentiles.p99 : null,
+                max: hotspotProbe ? hotspotProbe.contributionPercentiles.max : null,
+                p90ToP50Ratio: hotspotProbe ? hotspotProbe.p90ToP50Ratio : null,
+                p99ToP50Ratio: hotspotProbe ? hotspotProbe.p99ToP50Ratio : null,
+                maxToP50Ratio: hotspotProbe ? hotspotProbe.maxToP50Ratio : null,
+                coverageVerdict,
+                visiblePixelProbe,
+                hotspotProbe
+            });
+        }
+        const measuredRows = brightSampleCoverageRows.filter((row) => Number.isFinite(row.medianBrightCoverage));
+        const lowestCoverage = measuredRows.reduce((best, row) => (
+            row.medianBrightCoverage < best.medianBrightCoverage ? row : best
+        ), { label: 'noMeasuredRows', medianBrightCoverage: Infinity });
+        const highestWaitingShare = measuredRows.reduce((best, row) => (
+            Number.isFinite(row.darkWaitingShareAtMedian) && row.darkWaitingShareAtMedian > best.darkWaitingShareAtMedian ? row : best
+        ), { label: 'noMeasuredRows', darkWaitingShareAtMedian: -1 });
+        const floorGikVisiblePixelSamples = Number(brightSampleCoverageRows.reduce((sum, row) =>
+            sum + (Number.isFinite(row.visiblePixelSamples) ? row.visiblePixelSamples : 0), 0).toFixed(6));
+        const floorGikMedianBrightPixelCount = Number(brightSampleCoverageRows.reduce((sum, row) =>
+            sum + (Number.isFinite(row.medianBrightPixelCount) ? row.medianBrightPixelCount : 0), 0).toFixed(6));
+        const floorGikStrongBrightPixelCount = Number(brightSampleCoverageRows.reduce((sum, row) =>
+            sum + (Number.isFinite(row.strongBrightPixelCount) ? row.strongBrightPixelCount : 0), 0).toFixed(6));
+        const floorGikMedianBrightCoverage = roundCloudProbeRatio(cloudProbeRatioOrNull(
+            floorGikMedianBrightPixelCount,
+            floorGikVisiblePixelSamples
+        ));
+        const floorGikStrongBrightCoverage = roundCloudProbeRatio(cloudProbeRatioOrNull(
+            floorGikStrongBrightPixelCount,
+            floorGikVisiblePixelSamples
+        ));
+        const floorGikDarkWaitingShareAtMedian = roundCloudProbeRatio(
+            Number.isFinite(floorGikMedianBrightCoverage) ? 1 - floorGikMedianBrightCoverage : null
+        );
+        const floorGikDarkWaitingShareAtStrong = roundCloudProbeRatio(
+            Number.isFinite(floorGikStrongBrightCoverage) ? 1 - floorGikStrongBrightCoverage : null
+        );
+        const coverageInsufficientSurfaces = brightSampleCoverageRows
+            .filter((row) => row.coverageVerdict === 'coverageInsufficient' || row.coverageVerdict === 'coverageSparse' || row.coverageVerdict === 'noCloudNeeEventsOnVisibleSurface')
+            .map((row) => row.label);
+        const brightTailConcentratedSurfaces = brightSampleCoverageRows
+            .filter((row) => row.coverageVerdict === 'brightTailConcentrated')
+            .map((row) => row.label);
+        const coverageSupportsCandidate = coverageInsufficientSurfaces.length > 0 ||
+            (Number.isFinite(floorGikDarkWaitingShareAtMedian) && floorGikDarkWaitingShareAtMedian > 0.65);
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudBrightSampleCoverageProbe',
+            renderPathMutation: false,
+            probeShaderMutation: false,
+            normalRenderProbeMode: 0,
+            directNeeProbeMode: 5,
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            brightSampleCoverageRows,
+            floorGikVisiblePixelSamples,
+            floorGikMedianBrightPixelCount,
+            floorGikStrongBrightPixelCount,
+            floorGikMedianBrightCoverage,
+            floorGikStrongBrightCoverage,
+            floorGikDarkWaitingShareAtMedian,
+            floorGikDarkWaitingShareAtStrong,
+            lowestMedianBrightCoverageSurface: lowestCoverage.label,
+            lowestMedianBrightCoverage: Number.isFinite(lowestCoverage.medianBrightCoverage)
+                ? lowestCoverage.medianBrightCoverage
+                : null,
+            highestDarkWaitingShareSurface: highestWaitingShare.label,
+            highestDarkWaitingShareAtMedian: Number.isFinite(highestWaitingShare.darkWaitingShareAtMedian)
+                ? highestWaitingShare.darkWaitingShareAtMedian
+                : null,
+            coverageInsufficientSurfaces,
+            brightTailConcentratedSurfaces,
+            coverageSupportsCandidate,
+            interpretation: {
+                visiblePixelMeaning: 'cameraVisibleFloorOrGikSamples',
+                normalBrightThresholdMeaning: 'thatSurfaceMedianNonzeroCloudNeeContribution',
+                medianBrightCoverageMeaning: 'visibleSamplesThatAlreadyGotAtLeastTheSurfaceMedianCloudNeeContribution',
+                darkWaitingShareMeaning: 'visibleSamplesStillMissingThatNormalBrightnessSample',
+                decisionMeaning: 'highDarkWaitingShareSupportsAConservativeSameSurfaceFillCandidate',
+                sampleIndependenceWarning: 'targetSamplesCurrentlyScalesReadbackCountsAndDoesNotProveIndependentRandomStability'
+            },
+            recommendedNextStep: 'designGuardedSameSurfaceDarkFillCandidate'
+        };
+        console.table(brightSampleCoverageRows.map((row) => ({
+            label: row.label,
+            visiblePixelSamples: row.visiblePixelSamples,
+            contributionEventSamples: row.contributionEventSamples,
+            contributionEventDensity: row.contributionEventDensity,
+            normalBrightThreshold: row.normalBrightThreshold,
+            medianBrightPixelCount: row.medianBrightPixelCount,
+            medianBrightCoverage: row.medianBrightCoverage,
+            darkWaitingShareAtMedian: row.darkWaitingShareAtMedian,
+            maxToP50Ratio: row.maxToP50Ratio,
+            coverageVerdict: row.coverageVerdict
+        })));
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        if (pathTracingUniforms.uCloudDarkSurfaceCleanupMode && original.cleanupMode !== null) {
+            pathTracingUniforms.uCloudDarkSurfaceCleanupMode.value = original.cleanupMode;
+        }
+        if (pathTracingUniforms.uCloudDarkSurfaceCleanupLuma && original.cleanupLuma !== null) {
+            pathTracingUniforms.uCloudDarkSurfaceCleanupLuma.value = original.cleanupLuma;
+        }
+        if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+            pathTracingMaterial.uniformsNeedUpdate = true;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.setCloudSameSurfaceDarkFillCandidate = function (mode, strength, maxSamples, floorLuma, gikLuma) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudSameSurfaceDarkFillMode ||
+        !pathTracingUniforms.uCloudSameSurfaceDarkFillStrength ||
+        !pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples ||
+        !pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma ||
+        !pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma) {
+        return null;
+    }
+    const modeValue = Number(mode) > 0 ? 1 : 0;
+    const strengthValue = Math.max(0, Math.min(1, Number.isFinite(Number(strength))
+        ? Number(strength)
+        : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_STRENGTH));
+    const maxSamplesValue = Math.max(1, Number.isFinite(Number(maxSamples))
+        ? Number(maxSamples)
+        : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_MAX_SAMPLES);
+    const floorLumaValue = Math.max(0, Number.isFinite(Number(floorLuma))
+        ? Number(floorLuma)
+        : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_FLOOR_LUMA);
+    const gikLumaValue = Math.max(0, Number.isFinite(Number(gikLuma))
+        ? Number(gikLuma)
+        : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_GIK_LUMA);
+    pathTracingUniforms.uCloudSameSurfaceDarkFillMode.value = modeValue;
+    pathTracingUniforms.uCloudSameSurfaceDarkFillStrength.value = strengthValue;
+    pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples.value = maxSamplesValue;
+    pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma.value = floorLumaValue;
+    pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma.value = gikLumaValue;
+    if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+        pathTracingMaterial.uniformsNeedUpdate = true;
+    }
+    resetCloudVisibilityProbeAccumulation();
+    wakeRender();
+    return {
+        version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+        sameSurfaceDarkFillMode: modeValue,
+        sameSurfaceDarkFillStrength: strengthValue,
+        sameSurfaceDarkFillMaxSamples: maxSamplesValue,
+        sameSurfaceDarkFillFloorLuma: floorLumaValue,
+        sameSurfaceDarkFillGikLuma: gikLumaValue,
+        scope: 'visibleFloorOrGikWeakCloudNeeContribution',
+        candidateDefaultEnabled: false
+    };
+};
+
+function cloudCoverageRowByLabel(report, label) {
+    return report && Array.isArray(report.brightSampleCoverageRows)
+        ? report.brightSampleCoverageRows.find((row) => row.label === label) || null
+        : null;
+}
+
+function cloudCoverageAtThreshold(row, threshold) {
+    if (!row || !row.hotspotProbe || !Array.isArray(row.hotspotProbe.histogram) || !Number.isFinite(threshold)) {
+        return {
+            brightPixelCount: null,
+            brightCoverage: null,
+            darkWaitingShare: null
+        };
+    }
+    const brightPixelCount = cloudVisibleSurfaceHotspotHistogramCountAtOrAbove(row.hotspotProbe.histogram, threshold);
+    const brightCoverage = roundCloudProbeRatio(cloudProbeRatioOrNull(brightPixelCount, row.visiblePixelSamples));
+    return {
+        brightPixelCount,
+        brightCoverage,
+        darkWaitingShare: roundCloudProbeRatio(Number.isFinite(brightCoverage) ? 1 - brightCoverage : null)
+    };
+}
+
+window.reportCloudSameSurfaceDarkFillCandidateAfterSamples = async function (targetSamples, timeoutMs, strength, maxSamples) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudSameSurfaceDarkFillMode) {
+        return null;
+    }
+    const original = {
+        mode: pathTracingUniforms.uCloudSameSurfaceDarkFillMode.value,
+        strength: pathTracingUniforms.uCloudSameSurfaceDarkFillStrength ? pathTracingUniforms.uCloudSameSurfaceDarkFillStrength.value : null,
+        maxSamples: pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples ? pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples.value : null,
+        floorLuma: pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma ? pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma.value : null,
+        gikLuma: pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma ? pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 4));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const strengthValue = Math.max(0, Math.min(1, Number.isFinite(Number(strength))
+        ? Number(strength)
+        : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_STRENGTH));
+    const maxSamplesValue = Math.max(1, Number.isFinite(Number(maxSamples))
+        ? Number(maxSamples)
+        : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_MAX_SAMPLES);
+
+    try {
+        window.setCloudSameSurfaceDarkFillCandidate(0, strengthValue, maxSamplesValue);
+        const baseline = await window.reportCloudBrightSampleCoverageProbeAfterSamples(target, timeout);
+        const baselineFloor = cloudCoverageRowByLabel(baseline, 'floor');
+        const baselineGik = cloudCoverageRowByLabel(baseline, 'gikPanel');
+        const floorLumaValue = baselineFloor && Number.isFinite(baselineFloor.normalBrightThreshold)
+            ? baselineFloor.normalBrightThreshold
+            : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_FLOOR_LUMA;
+        const gikLumaValue = baselineGik && Number.isFinite(baselineGik.normalBrightThreshold)
+            ? baselineGik.normalBrightThreshold
+            : CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_GIK_LUMA;
+        window.setCloudSameSurfaceDarkFillCandidate(1, strengthValue, maxSamplesValue, floorLumaValue, gikLumaValue);
+        const candidate = await window.reportCloudBrightSampleCoverageProbeAfterSamples(target, timeout);
+        const sameSurfaceDarkFillCandidateRows = ['floor', 'gikPanel'].map((label) => {
+            const before = cloudCoverageRowByLabel(baseline, label);
+            const after = cloudCoverageRowByLabel(candidate, label);
+            const baselineThreshold = before ? before.normalBrightThreshold : null;
+            const candidateAtBaseline = cloudCoverageAtThreshold(after, baselineThreshold);
+            const candidateCoverage = Number.isFinite(candidateAtBaseline.brightCoverage)
+                ? candidateAtBaseline.brightCoverage
+                : (after ? after.medianBrightCoverage : null);
+            const candidateDarkWaitingShare = Number.isFinite(candidateAtBaseline.darkWaitingShare)
+                ? candidateAtBaseline.darkWaitingShare
+                : (after ? after.darkWaitingShareAtMedian : null);
+            const baselineCoverage = before ? before.medianBrightCoverage : null;
+            const baselineDarkWaitingShare = before ? before.darkWaitingShareAtMedian : null;
+            const medianBrightCoverageLift = Number.isFinite(candidateCoverage) && Number.isFinite(baselineCoverage)
+                ? Number((candidateCoverage - baselineCoverage).toFixed(6))
+                : null;
+            const darkWaitingShareReductionRatio = roundCloudProbeRatio(cloudProbeRatioOrNull(
+                Number.isFinite(baselineDarkWaitingShare) && Number.isFinite(candidateDarkWaitingShare)
+                    ? baselineDarkWaitingShare - candidateDarkWaitingShare
+                    : null,
+                baselineDarkWaitingShare
+            ));
+            const maxToP50RatioChange = Number.isFinite(after ? after.maxToP50Ratio : null) && Number.isFinite(before ? before.maxToP50Ratio : null)
+                ? Number((after.maxToP50Ratio - before.maxToP50Ratio).toFixed(6))
+                : null;
+            return {
+                label,
+                baselineNormalBrightThreshold: baselineThreshold,
+                candidateBrightPixelCountAtBaselineThreshold: candidateAtBaseline.brightPixelCount,
+                baselineMedianBrightCoverage: baselineCoverage,
+                candidateMedianBrightCoverageAtBaselineThreshold: candidateCoverage,
+                medianBrightCoverageLift,
+                baselineDarkWaitingShareAtMedian: baselineDarkWaitingShare,
+                candidateDarkWaitingShareAtBaselineThreshold: candidateDarkWaitingShare,
+                darkWaitingShareReductionRatio,
+                baselineContributionEventDensity: before ? before.contributionEventDensity : null,
+                candidateContributionEventDensity: after ? after.contributionEventDensity : null,
+                baselineMaxToP50Ratio: before ? before.maxToP50Ratio : null,
+                candidateMaxToP50Ratio: after ? after.maxToP50Ratio : null,
+                maxToP50RatioChange
+            };
+        });
+        const floorRow = sameSurfaceDarkFillCandidateRows.find((row) => row.label === 'floor') || null;
+        const gikRow = sameSurfaceDarkFillCandidateRows.find((row) => row.label === 'gikPanel') || null;
+        const medianBrightCoverageLiftAverage = Number(((Number(floorRow && Number.isFinite(floorRow.medianBrightCoverageLift) ? floorRow.medianBrightCoverageLift : 0) +
+            Number(gikRow && Number.isFinite(gikRow.medianBrightCoverageLift) ? gikRow.medianBrightCoverageLift : 0)) / 2).toFixed(6));
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudSameSurfaceDarkFillCandidateProbe',
+            renderPathMutation: false,
+            candidateRenderMutationAvailable: true,
+            candidateDefaultEnabled: false,
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            sameSurfaceDarkFillStrength: strengthValue,
+            sameSurfaceDarkFillMaxSamples: maxSamplesValue,
+            sameSurfaceDarkFillFloorLuma: floorLumaValue,
+            sameSurfaceDarkFillGikLuma: gikLumaValue,
+            baseline,
+            candidate,
+            sameSurfaceDarkFillCandidateRows,
+            medianBrightCoverageLiftAverage,
+            candidatePassesFirstMetric: sameSurfaceDarkFillCandidateRows.every((row) =>
+                Number.isFinite(row.medianBrightCoverageLift) && row.medianBrightCoverageLift > 0
+            ),
+            interpretation: {
+                candidateMeaning: 'raisesWeakFloorOrGikCloudNeeEventsTowardThatSurfaceMeasuredMedian',
+                guardMeaning: 'visibleSurfaceClassAndDiffuseBounceAndSampleFade',
+                sampleFadeMeaning: 'fullUntilMaxSamplesThenSmoothFadeForSameLength',
+                nextValidation: 'visualCompareLowSppThenHighSppMaterialCheck'
+            },
+            recommendedNextStep: 'visualABLowSppThenHighSppGuard'
+        };
+        console.table(sameSurfaceDarkFillCandidateRows);
+        return result;
+    } finally {
+        if (pathTracingUniforms.uCloudSameSurfaceDarkFillMode) pathTracingUniforms.uCloudSameSurfaceDarkFillMode.value = original.mode;
+        if (pathTracingUniforms.uCloudSameSurfaceDarkFillStrength && original.strength !== null) pathTracingUniforms.uCloudSameSurfaceDarkFillStrength.value = original.strength;
+        if (pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples && original.maxSamples !== null) pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples.value = original.maxSamples;
+        if (pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma && original.floorLuma !== null) pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma.value = original.floorLuma;
+        if (pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma && original.gikLuma !== null) pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma.value = original.gikLuma;
+        if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial) {
+            pathTracingMaterial.uniformsNeedUpdate = true;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudMisWeightProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 32));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const directNeeWeight = await measureCloudMisWeightProbeMode(1, target, timeout);
+        const directNeePdf = await measureCloudMisWeightProbeMode(2, target, timeout);
+        const bsdfHitWeight = await measureCloudMisWeightProbeMode(3, target, timeout);
+        const bsdfHitPdf = await measureCloudMisWeightProbeMode(4, target, timeout);
+        const directNeeContribution = await measureCloudMisWeightProbeMode(5, target, timeout);
+        const bsdfHitContribution = await measureCloudMisWeightProbeMode(6, target, timeout);
+        const directNeeDerivedAverageWeight = misWeightFromNeeOverBsdfRatio(
+            directNeePdf ? directNeePdf.averagePdfRatio : null,
+            'nee'
+        );
+        const bsdfHitDerivedAverageWeight = misWeightFromNeeOverBsdfRatio(
+            bsdfHitPdf ? bsdfHitPdf.averagePdfRatio : null,
+            'bsdf'
+        );
+        const bsdfHitContributionHasEvents = Boolean(bsdfHitContribution && bsdfHitContribution.eventMass > 0);
+        const bsdfHitPdfHasEvents = Boolean(bsdfHitPdf && bsdfHitPdf.eventMass > 0);
+        const bsdfHitContributionAliasedToPdf = Boolean(bsdfHitContributionHasEvents && bsdfHitPdfHasEvents &&
+            nearlyEqualProbeNumber(bsdfHitContribution.channelMass.r, bsdfHitPdf.channelMass.r) &&
+            nearlyEqualProbeNumber(bsdfHitContribution.channelMass.g, bsdfHitPdf.channelMass.g) &&
+            nearlyEqualProbeNumber(bsdfHitContribution.channelMass.b, bsdfHitPdf.channelMass.b));
+        const bsdfHitContributionPhysicallyPlausible = Boolean(bsdfHitContribution &&
+            Number.isFinite(bsdfHitContribution.averageContributionLuma) &&
+            Number.isFinite(bsdfHitContribution.averageUnweightedContributionLuma) &&
+            bsdfHitContribution.averageContributionLuma <= bsdfHitContribution.averageUnweightedContributionLuma + 1e-6);
+        const bsdfHitContributionReadbackReliable = bsdfHitContributionPhysicallyPlausible && !bsdfHitContributionAliasedToPdf;
+
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudMisWeightProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            questions: ['misDilution', 'directVsIndirect'],
+            modes: CLOUD_MIS_WEIGHT_PROBE_MODE_LABELS.slice(),
+            currentPanelConfig,
+            currentCameraPreset,
+            targetSamples: target,
+            currentIndirectMultiplier: pathTracingUniforms.uIndirectMultiplier ? pathTracingUniforms.uIndirectMultiplier.value : null,
+            currentMaxBounces: pathTracingUniforms.uMaxBounces ? pathTracingUniforms.uMaxBounces.value : null,
+            weightSource: 'derivedFromPdfRatio',
+            contributionSource: 'weightedLumaPerEvent',
+            directNeeAverageWeight: directNeeDerivedAverageWeight,
+            directNeeWeightChannelAverage: directNeeWeight ? directNeeWeight.averageWeight : null,
+            directNeeEventMass: directNeeWeight ? directNeeWeight.eventMass : null,
+            directNeeAveragePnee: directNeePdf ? directNeePdf.averagePdfA : null,
+            directNeeAveragePbsdf: directNeePdf ? directNeePdf.averagePdfB : null,
+            directNeeAveragePdfRatio: directNeePdf ? directNeePdf.averagePdfRatio : null,
+            directNeeContributionMass: directNeeContribution ? directNeeContribution.contributionMass : null,
+            directNeeAverageContributionLuma: directNeeContribution ? directNeeContribution.averageContributionLuma : null,
+            directNeeAverageUnweightedContributionLuma: directNeeContribution ? directNeeContribution.averageUnweightedContributionLuma : null,
+            bsdfHitAverageWeight: bsdfHitDerivedAverageWeight,
+            bsdfHitWeightChannelAverage: bsdfHitWeight ? bsdfHitWeight.averageWeight : null,
+            bsdfHitEventMass: bsdfHitWeight ? bsdfHitWeight.eventMass : null,
+            bsdfHitAveragePneeReverse: bsdfHitPdf ? bsdfHitPdf.averagePdfA : null,
+            bsdfHitAveragePbsdf: bsdfHitPdf ? bsdfHitPdf.averagePdfB : null,
+            bsdfHitAveragePdfRatio: bsdfHitPdf ? bsdfHitPdf.averagePdfRatio : null,
+            bsdfHitContributionMass: bsdfHitContribution ? bsdfHitContribution.contributionMass : null,
+            bsdfHitAverageContributionLuma: bsdfHitContribution ? bsdfHitContribution.averageContributionLuma : null,
+            bsdfHitAverageUnweightedContributionLuma: bsdfHitContribution ? bsdfHitContribution.averageUnweightedContributionLuma : null,
+            bsdfHitContributionObserved: bsdfHitContributionHasEvents,
+            bsdfHitPdfObserved: bsdfHitPdfHasEvents,
+            bsdfHitContributionAliasedToPdf,
+            bsdfHitContributionPhysicallyPlausible,
+            bsdfHitContributionReadbackReliable,
+            directNeeWeight,
+            directNeePdf,
+            bsdfHitWeight,
+            bsdfHitPdf,
+            directNeeContribution,
+            bsdfHitContribution,
+            interpretation: {
+                lowAverageWeightThreshold: 0.25,
+                highPdfRatioMeaning: 'neePdfDominatesBsdfPdf',
+                lowEventMassMeaning: 'fewValidEventsInCapturedSamples',
+                contributionMassMeaning: 'totalWeightedLumaCapturedByProbe',
+                unreliableBsdfContributionMeaning: 'doNotUseBsdfContributionFieldsForDecision',
+                zeroBsdfEventMeaning: 'increaseSamplesOrUseForcedBsdfHitProbeBeforeContributionDecision'
+            },
+            recommendedNextStep: bsdfHitContributionReadbackReliable
+                ? 'compareBsdfHitContributionBeforePatchTarget'
+                : (!bsdfHitContributionHasEvents && !bsdfHitPdfHasEvents
+                    ? 'increaseBsdfHitSamplesOrAddForcedBsdfHitProbe'
+                    : 'fixBsdfContributionReadbackBeforePatchTarget')
+        };
+        console.table({
+            directNeeAverageWeight: result.directNeeAverageWeight,
+            directNeeAveragePdfRatio: result.directNeeAveragePdfRatio,
+            directNeeEventMass: result.directNeeEventMass,
+            directNeeContributionMass: result.directNeeContributionMass,
+            directNeeAverageContributionLuma: result.directNeeAverageContributionLuma,
+            bsdfHitAverageWeight: result.bsdfHitAverageWeight,
+            bsdfHitAveragePdfRatio: result.bsdfHitAveragePdfRatio,
+            bsdfHitEventMass: result.bsdfHitEventMass,
+            bsdfHitContributionMass: result.bsdfHitContributionMass,
+            bsdfHitAverageContributionLuma: result.bsdfHitAverageContributionLuma,
+            bsdfHitContributionReadbackReliable: result.bsdfHitContributionReadbackReliable
+        });
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudBsdfContributionSentinelAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const expectedWeightedLuma = 0.125;
+    const expectedUnweightedLuma = 0.5;
+    const expectedUniformWeightedLuma = 0.25;
+    const expectedUniformUnweightedLuma = 0.75;
+    const expectedContributionUniformWeightedLuma = 0.375;
+    const expectedContributionUniformUnweightedLuma = 0.875;
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const uniformSentinel = await measureCloudMisWeightProbeMode(8, target, timeout);
+        const contributionUniformSentinel = await measureCloudMisWeightProbeMode(9, target, timeout);
+        const sentinel = await measureCloudMisWeightProbeMode(7, target, timeout);
+        const probeUniformSentinelPass = Boolean(uniformSentinel &&
+            uniformSentinel.eventMass > 0 &&
+            nearlyEqualProbeNumber(uniformSentinel.averageContributionLuma, expectedUniformWeightedLuma, 1e-3) &&
+            nearlyEqualProbeNumber(uniformSentinel.averageUnweightedContributionLuma, expectedUniformUnweightedLuma, 1e-3));
+        const contributionUniformSentinelPass = Boolean(contributionUniformSentinel &&
+            contributionUniformSentinel.eventMass > 0 &&
+            nearlyEqualProbeNumber(contributionUniformSentinel.averageContributionLuma, expectedContributionUniformWeightedLuma, 1e-3) &&
+            nearlyEqualProbeNumber(contributionUniformSentinel.averageUnweightedContributionLuma, expectedContributionUniformUnweightedLuma, 1e-3));
+        const bsdfHitContributionSentinelPass = Boolean(sentinel &&
+            sentinel.eventMass > 0 &&
+            nearlyEqualProbeNumber(sentinel.averageContributionLuma, expectedWeightedLuma, 1e-3) &&
+            nearlyEqualProbeNumber(sentinel.averageUnweightedContributionLuma, expectedUnweightedLuma, 1e-3));
+        const bsdfHitContributionSentinelNoEvent = Boolean(sentinel &&
+            sentinel.eventMass === 0 &&
+            sentinel.channelMass &&
+            nearlyEqualProbeNumber(sentinel.channelMass.r, 0, 1e-6) &&
+            nearlyEqualProbeNumber(sentinel.channelMass.g, 0, 1e-6) &&
+            nearlyEqualProbeNumber(sentinel.channelMass.b, 0, 1e-6));
+        const bsdfHitContributionSentinelContaminated = Boolean(sentinel &&
+            sentinel.eventMass > 0 &&
+            !bsdfHitContributionSentinelPass);
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'cloudBsdfContributionSentinel',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            targetSamples: target,
+            expectedWeightedLuma,
+            expectedUnweightedLuma,
+            expectedUniformWeightedLuma,
+            expectedUniformUnweightedLuma,
+            expectedContributionUniformWeightedLuma,
+            expectedContributionUniformUnweightedLuma,
+            probeUniformSentinelPass,
+            contributionUniformSentinelPass,
+            bsdfHitContributionSentinelPass,
+            bsdfHitContributionSentinelNoEvent,
+            bsdfHitContributionSentinelContaminated,
+            probeUniformSentinel: uniformSentinel,
+            contributionUniformSentinel,
+            bsdfHitContributionSentinel: sentinel,
+            interpretation: {
+                uniformPassMeaning: 'misProbeModeUniformAndReadbackAreLive',
+                contributionUniformPassMeaning: 'contributionProbeModeUniformAndReadbackAreLive',
+                bsdfPassMeaning: 'bsdfContributionBranchAndReadbackAreIsolated',
+                failMeaning: 'failedSentinelMarksTheNextRoutingLayerToFix',
+                noEventMeaning: 'routingIsIsolatedButNoBsdfHitWasObservedInCapturedSamples'
+            },
+            recommendedNextStep: probeUniformSentinelPass && contributionUniformSentinelPass && bsdfHitContributionSentinelPass
+                ? 'inspectBsdfContributionFormula'
+                : (probeUniformSentinelPass && contributionUniformSentinelPass && bsdfHitContributionSentinelNoEvent
+                    ? 'increaseBsdfHitSamplesOrAddForcedBsdfHitProbe'
+                    : (probeUniformSentinelPass && contributionUniformSentinelPass ? 'fixBsdfContributionProbeRouting' : 'fixProbeUniformRouting'))
+        };
+        console.table({
+            probeUniformSentinelPass: result.probeUniformSentinelPass,
+            contributionUniformSentinelPass: result.contributionUniformSentinelPass,
+            bsdfHitContributionSentinelPass: result.bsdfHitContributionSentinelPass,
+            bsdfHitContributionSentinelNoEvent: result.bsdfHitContributionSentinelNoEvent,
+            bsdfHitContributionSentinelContaminated: result.bsdfHitContributionSentinelContaminated,
+            uniformEventMass: uniformSentinel ? uniformSentinel.eventMass : null,
+            uniformAverageContributionLuma: uniformSentinel ? uniformSentinel.averageContributionLuma : null,
+            uniformAverageUnweightedContributionLuma: uniformSentinel ? uniformSentinel.averageUnweightedContributionLuma : null,
+            contributionUniformEventMass: contributionUniformSentinel ? contributionUniformSentinel.eventMass : null,
+            contributionUniformAverageContributionLuma: contributionUniformSentinel ? contributionUniformSentinel.averageContributionLuma : null,
+            contributionUniformAverageUnweightedContributionLuma: contributionUniformSentinel ? contributionUniformSentinel.averageUnweightedContributionLuma : null,
+            eventMass: sentinel ? sentinel.eventMass : null,
+            averageContributionLuma: sentinel ? sentinel.averageContributionLuma : null,
+            averageUnweightedContributionLuma: sentinel ? sentinel.averageUnweightedContributionLuma : null
+        });
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportForcedCloudBsdfHitProbeAfterSamples = async function (targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 1));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const expectedSentinelWeightedLuma = 0.125;
+    const expectedSentinelUnweightedLuma = 0.5;
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const forcedSentinel = await measureCloudMisWeightProbeMode(10, target, timeout);
+        const forcedContribution = await measureCloudMisWeightProbeMode(11, target, timeout);
+        const forcedPdf = await measureCloudMisWeightProbeMode(12, target, timeout);
+        const forcedWeight = await measureCloudMisWeightProbeMode(13, target, timeout);
+        const forcedBsdfHitEventObserved = Boolean(forcedSentinel && forcedSentinel.eventMass > 0);
+        const forcedSentinelPass = Boolean(forcedSentinel &&
+            forcedSentinel.eventMass > 0 &&
+            nearlyEqualProbeNumber(forcedSentinel.averageContributionLuma, expectedSentinelWeightedLuma, 1e-3) &&
+            nearlyEqualProbeNumber(forcedSentinel.averageUnweightedContributionLuma, expectedSentinelUnweightedLuma, 1e-3));
+        const forcedContributionObserved = Boolean(forcedContribution && forcedContribution.eventMass > 0);
+        const forcedPdfObserved = Boolean(forcedPdf && forcedPdf.eventMass > 0);
+        const forcedWeightObserved = Boolean(forcedWeight && forcedWeight.eventMass > 0);
+        const forcedDerivedAverageWeight = misWeightFromNeeOverBsdfRatio(
+            forcedPdf ? forcedPdf.averagePdfRatio : null,
+            'bsdf'
+        );
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'forcedCloudBsdfHitProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            targetSamples: target,
+            forcedProbeScope: 'forcedAnalyticBsdfHitIgnoresOcclusion',
+            forcedAnalyticBsdfHitIgnoresOcclusion: true,
+            forcedBsdfHitEventObserved,
+            forcedSentinelPass,
+            forcedContributionObserved,
+            forcedPdfObserved,
+            forcedWeightObserved,
+            forcedBsdfHitAverageWeight: forcedWeight ? forcedWeight.averageWeight : null,
+            forcedBsdfHitDerivedWeightFromAveragePdfRatio: forcedDerivedAverageWeight,
+            forcedBsdfHitWeightChannelAverage: forcedWeight ? forcedWeight.averageWeight : null,
+            forcedBsdfHitAveragePdfRatio: forcedPdf ? forcedPdf.averagePdfRatio : null,
+            forcedBsdfHitAveragePneeReverse: forcedPdf ? forcedPdf.averagePdfA : null,
+            forcedBsdfHitAveragePbsdf: forcedPdf ? forcedPdf.averagePdfB : null,
+            forcedBsdfHitContributionMass: forcedContribution ? forcedContribution.contributionMass : null,
+            forcedBsdfHitAverageContributionLuma: forcedContribution ? forcedContribution.averageContributionLuma : null,
+            forcedBsdfHitAverageUnweightedContributionLuma: forcedContribution ? forcedContribution.averageUnweightedContributionLuma : null,
+            forcedSentinel,
+            forcedContribution,
+            forcedPdf,
+            forcedWeight,
+            interpretation: {
+                eventMeaning: 'forcedProbeCanReachCloudBsdfHitBranch',
+                contributionMeaning: 'analyticWeightedLumaForAForcedCloudHit',
+                pdfMeaning: 'reverseNeePdfAndBsdfPdfAtForcedHitPoint',
+                scopeLimit: 'forcedAnalyticBsdfHitIgnoresOcclusionAndDoesNotMeasureNaturalHitFrequency'
+            },
+            recommendedNextStep: forcedSentinelPass && forcedContributionObserved && forcedPdfObserved && forcedWeightObserved
+                ? 'compareForcedBsdfPdfAndContributionAgainstNaturalProbe'
+                : 'fixForcedBsdfHitProbeRouting'
+        };
+        console.table({
+            forcedBsdfHitEventObserved: result.forcedBsdfHitEventObserved,
+            forcedSentinelPass: result.forcedSentinelPass,
+            forcedBsdfHitAverageWeight: result.forcedBsdfHitAverageWeight,
+            forcedBsdfHitDerivedWeightFromAveragePdfRatio: result.forcedBsdfHitDerivedWeightFromAveragePdfRatio,
+            forcedBsdfHitWeightChannelAverage: result.forcedBsdfHitWeightChannelAverage,
+            forcedBsdfHitAveragePdfRatio: result.forcedBsdfHitAveragePdfRatio,
+            forcedBsdfHitContributionMass: result.forcedBsdfHitContributionMass,
+            forcedBsdfHitAverageContributionLuma: result.forcedBsdfHitAverageContributionLuma,
+            forcedBsdfHitAverageUnweightedContributionLuma: result.forcedBsdfHitAverageUnweightedContributionLuma
+        });
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportNaturalCloudBsdfHitFrequencyAfterSamples = async function (samplePlan, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudMisWeightProbeMode) {
+        return null;
+    }
+    const original = {
+        misMode: pathTracingUniforms.uCloudMisWeightProbeMode.value,
+        contributionMode: pathTracingUniforms.uCloudContributionProbeMode ? pathTracingUniforms.uCloudContributionProbeMode.value : null,
+        displayMode: cloudMisWeightProbeDisplayMode,
+        visibilityMode: pathTracingUniforms.uCloudVisibilityProbeMode ? pathTracingUniforms.uCloudVisibilityProbeMode.value : null
+    };
+    const naturalBsdfHitFrequencyPlan = normalizeCloudBsdfHitFrequencyPlan(samplePlan);
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const expectedWeightedLuma = 0.125;
+    const expectedUnweightedLuma = 0.5;
+
+    try {
+        if (pathTracingUniforms.uCloudVisibilityProbeMode) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = 0;
+        }
+        const forcedReference = await measureCloudMisWeightProbeMode(10, 1, timeout);
+        const forcedReferencePass = Boolean(forcedReference &&
+            forcedReference.eventMass > 0 &&
+            nearlyEqualProbeNumber(forcedReference.averageContributionLuma, expectedWeightedLuma, 1e-3) &&
+            nearlyEqualProbeNumber(forcedReference.averageUnweightedContributionLuma, expectedUnweightedLuma, 1e-3));
+        const rows = [];
+        for (const target of naturalBsdfHitFrequencyPlan) {
+            const sentinel = await measureCloudMisWeightProbeMode(7, target, timeout);
+            const totalPixelSamples = sentinel ? sentinel.width * sentinel.height * target : 0;
+            const naturalBsdfHitObserved = Boolean(sentinel &&
+                sentinel.eventMass > 0 &&
+                nearlyEqualProbeNumber(sentinel.averageContributionLuma, expectedWeightedLuma, 1e-3) &&
+                nearlyEqualProbeNumber(sentinel.averageUnweightedContributionLuma, expectedUnweightedLuma, 1e-3));
+            const naturalBsdfHitNoEvent = Boolean(sentinel &&
+                sentinel.eventMass === 0 &&
+                sentinel.channelMass &&
+                nearlyEqualProbeNumber(sentinel.channelMass.r, 0, 1e-6) &&
+                nearlyEqualProbeNumber(sentinel.channelMass.g, 0, 1e-6) &&
+                nearlyEqualProbeNumber(sentinel.channelMass.b, 0, 1e-6));
+            const naturalBsdfHitContaminated = Boolean(sentinel &&
+                sentinel.eventMass > 0 &&
+                !naturalBsdfHitObserved);
+            const eventRate = totalPixelSamples > 0 ? sentinel.eventMass / totalPixelSamples : null;
+            rows.push({
+                targetSamples: target,
+                eventMass: sentinel ? sentinel.eventMass : null,
+                naturalBsdfHitObserved,
+                naturalBsdfHitNoEvent,
+                naturalBsdfHitContaminated,
+                eventsPerIsolatedSample: sentinel ? Number((sentinel.eventMass / target).toExponential(6)) : null,
+                naturalBsdfHitEventRatePerPixelSample: Number.isFinite(eventRate) ? Number(eventRate.toExponential(6)) : null,
+                averageContributionLuma: sentinel ? sentinel.averageContributionLuma : null,
+                averageUnweightedContributionLuma: sentinel ? sentinel.averageUnweightedContributionLuma : null,
+                sentinel
+            });
+        }
+        const firstObserved = rows.find((row) => row.naturalBsdfHitObserved);
+        const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+        const noEventRows = rows.filter((row) => row.naturalBsdfHitNoEvent);
+        const naturalBsdfHitNoEventUpToSamples = firstObserved
+            ? null
+            : (noEventRows.length > 0 ? noEventRows[noEventRows.length - 1].targetSamples : null);
+        const result = {
+            version: CLOUD_MIS_WEIGHT_PROBE_VERSION,
+            analysisScope: 'naturalCloudBsdfHitFrequencyProbe',
+            renderPathMutation: false,
+            probeShaderMutation: true,
+            normalRenderProbeMode: 0,
+            naturalProbeMode: 7,
+            naturalBsdfHitFrequencyPlan,
+            currentPanelConfig,
+            currentCameraPreset,
+            forcedReferencePass,
+            forcedReference,
+            naturalBsdfHitObserved: Boolean(firstObserved),
+            naturalBsdfHitFirstObservedAtSamples: firstObserved ? firstObserved.targetSamples : null,
+            naturalBsdfHitNoEventUpToSamples,
+            naturalBsdfHitEventMass: lastRow ? lastRow.eventMass : null,
+            naturalBsdfHitEventsPerIsolatedSample: lastRow ? lastRow.eventsPerIsolatedSample : null,
+            naturalBsdfHitEventRatePerPixelSample: lastRow ? lastRow.naturalBsdfHitEventRatePerPixelSample : null,
+            rows,
+            interpretation: {
+                forcedReferenceMeaning: 'probeRoutingStillWorks',
+                noEventMeaning: 'naturalCloudBsdfHitWasNotObservedWithinThisIsolatedSamplePlan',
+                observedMeaning: 'naturalCloudBsdfHitCanBeMeasuredAndShouldGetHistogramNext',
+                contaminatedMeaning: 'naturalSentinelReadbackNeedsRepairBeforeFrequencyDecision'
+            },
+            recommendedNextStep: !forcedReferencePass
+                ? 'fixForcedReferenceBeforeNaturalFrequencyDecision'
+                : (firstObserved
+                    ? 'buildNaturalBsdfHitHistogram'
+                    : 'deprioritizeNaturalBsdfHitAsPrimarySuspectOrRunLargerPlan')
+        };
+        console.table(rows.map((row) => ({
+            targetSamples: row.targetSamples,
+            eventMass: row.eventMass,
+            naturalBsdfHitObserved: row.naturalBsdfHitObserved,
+            naturalBsdfHitNoEvent: row.naturalBsdfHitNoEvent,
+            naturalBsdfHitContaminated: row.naturalBsdfHitContaminated,
+            eventsPerIsolatedSample: row.eventsPerIsolatedSample,
+            naturalBsdfHitEventRatePerPixelSample: row.naturalBsdfHitEventRatePerPixelSample
+        })));
+        return result;
+    } finally {
+        pathTracingUniforms.uCloudMisWeightProbeMode.value = original.misMode;
+        if (pathTracingUniforms.uCloudContributionProbeMode && original.contributionMode !== null) {
+            pathTracingUniforms.uCloudContributionProbeMode.value = original.contributionMode;
+        }
+        cloudMisWeightProbeDisplayMode = original.displayMode;
+        if (pathTracingUniforms.uCloudVisibilityProbeMode && original.visibilityMode !== null) {
+            pathTracingUniforms.uCloudVisibilityProbeMode.value = original.visibilityMode;
+        }
+        resetCloudVisibilityProbeAccumulation();
+        wakeRender();
+    }
+};
+
+window.reportCloudVisibilityProbeAfterSamples = async function (mode, rod, blockerClass, thetaBin, thetaBinCount, targetSamples, timeoutMs) {
+    const setResult = window.setCloudVisibilityProbe(
+        mode == null ? 3 : mode,
+        rod == null ? -1 : rod,
+        blockerClass == null ? 'zeroCloudFacing' : blockerClass,
+        thetaBin == null ? -1 : thetaBin,
+        thetaBinCount == null ? CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT : thetaBinCount
+    );
+    renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+    const waitResult = await waitForCloudVisibilityProbeSamples(targetSamples == null ? 200 : targetSamples, timeoutMs == null ? 120000 : timeoutMs, 250);
+    const summary = cloudVisibilityProbeSummary({ logTable: false });
+    summary.setResult = setResult;
+    summary.targetSamples = waitResult.targetSamples;
+    summary.waitTimedOut = waitResult.timedOut;
+    summary.waitElapsedMs = waitResult.elapsedMs;
+    return summary;
+};
+
+window.reportCloudVisibilityProbeThetaScanAfterSamples = async function (blockerClass, rod, thetaBinCount, targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeMode || !pathTracingUniforms.uCloudVisibilityProbeRod ||
+        !pathTracingUniforms.uCloudVisibilityProbeClass || !pathTracingUniforms.uCloudVisibilityProbeThetaBin ||
+        !pathTracingUniforms.uCloudVisibilityProbeThetaBinCount) {
+        return null;
+    }
+
+    const original = {
+        mode: pathTracingUniforms.uCloudVisibilityProbeMode.value,
+        rod: pathTracingUniforms.uCloudVisibilityProbeRod.value,
+        blockerClass: pathTracingUniforms.uCloudVisibilityProbeClass.value,
+        thetaBin: pathTracingUniforms.uCloudVisibilityProbeThetaBin.value,
+        thetaBinCount: pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value
+    };
+    const rodValue = normalizeCloudVisibilityProbeRod(rod);
+    const classValue = normalizeCloudVisibilityProbeClass(blockerClass == null ? 'zeroCloudFacing' : blockerClass);
+    const countValue = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 200));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const bins = [];
+
+    for (let bin = 0; bin < countValue; bin++) {
+        window.setCloudVisibilityProbe(3, rodValue, classValue, bin, countValue);
+        renderCloudVisibilityProbeReadbackSampleIfNeeded(3);
+        const waitResult = await waitForCloudVisibilityProbeSamples(target, timeout, 250);
+        const summary = cloudVisibilityProbeSummary({ logTable: false });
+        bins.push({
+            thetaBin: summary.thetaBin,
+            thetaLabel: summary.thetaLabel,
+            thetaStartDeg: summary.thetaStartDeg,
+            thetaEndDeg: summary.thetaEndDeg,
+            samples: summary.samples,
+            targetSamples: waitResult.targetSamples,
+            waitTimedOut: waitResult.timedOut,
+            waitElapsedMs: waitResult.elapsedMs,
+            selectedClass: summary.selectedClass,
+            selectedClassRatio: summary.selectedClassRatio,
+            selectedClassMass: summary.selectedClassMass,
+            otherClassMass: summary.otherClassMass,
+            selectedClassPixels: summary.selectedClassPixels,
+            otherClassPixels: summary.otherClassPixels
+        });
+    }
+
+    window.setCloudVisibilityProbe(original.mode, original.rod, original.blockerClass, original.thetaBin, original.thetaBinCount);
+    const result = {
+        probeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        rod: rodValue,
+        rodLabel: rodValue < 0 ? 'all' : CLOUD_VISIBILITY_PROBE_ROD_LABELS[rodValue],
+        selectedClass: classValue >= 0 ? CLOUD_VISIBILITY_PROBE_CLASS_LABELS[classValue] : 'all',
+        thetaBinCount: countValue,
+        targetSamples: target,
+        bins
+    };
+    return result;
+};
+
+window.reportCloudFacingDiagnosticAfterSamples = async function (rod, thetaBin, thetaBinCount, targetSamples, timeoutMs) {
+    const setResult = window.setCloudVisibilityProbe(
+        4,
+        rod == null ? -1 : rod,
+        -1,
+        thetaBin == null ? -1 : thetaBin,
+        thetaBinCount == null ? CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT : thetaBinCount
+    );
+    renderCloudVisibilityProbeReadbackSampleIfNeeded(4);
+    const waitResult = await waitForCloudVisibilityProbeSamples(targetSamples == null ? 200 : targetSamples, timeoutMs == null ? 120000 : timeoutMs, 250);
+    const summary = cloudVisibilityProbeSummary({ logTable: false });
+    summary.setResult = setResult;
+    summary.targetSamples = waitResult.targetSamples;
+    summary.waitTimedOut = waitResult.timedOut;
+    summary.waitElapsedMs = waitResult.elapsedMs;
+    return summary;
+};
+
+function summarizeCloudFacingThetaScanRatioRange(bins, key) {
+    let minValue = Infinity;
+    let maxValue = -Infinity;
+    let minBin = null;
+    let maxBin = null;
+    let total = 0;
+    let count = 0;
+
+    bins.forEach((bin) => {
+        const value = Number(bin[key]);
+        if (!Number.isFinite(value)) return;
+        count++;
+        total += value;
+        if (value < minValue) {
+            minValue = value;
+            minBin = bin;
+        }
+        if (value > maxValue) {
+            maxValue = value;
+            maxBin = bin;
+        }
+    });
+
+    if (!count) {
+        return {
+            min: null,
+            max: null,
+            spread: null,
+            average: null,
+            minBin: null,
+            maxBin: null,
+            count: 0
+        };
+    }
+
+    return {
+        min: minValue,
+        max: maxValue,
+        spread: maxValue - minValue,
+        average: total / count,
+        minBin: minBin ? minBin.thetaBin : null,
+        maxBin: maxBin ? maxBin.thetaBin : null,
+        count
+    };
+}
+
+function summarizeCloudFacingThetaScanBin(bin, key) {
+    if (!bin) return null;
+    return {
+        thetaBin: bin.thetaBin,
+        thetaLabel: bin.thetaLabel,
+        thetaStartDeg: bin.thetaStartDeg,
+        thetaEndDeg: bin.thetaEndDeg,
+        value: Number.isFinite(Number(bin[key])) ? Number(bin[key]) : null
+    };
+}
+
+function summarizeCloudFacingThetaScanTrend(bins) {
+    const values = bins
+        .map((bin) => Number(bin.normalMinusProbeFacingZeroRatio))
+        .filter((value) => Number.isFinite(value));
+    if (values.length < 2) return 'insufficient';
+
+    const first = values[0];
+    const last = values[values.length - 1];
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const spread = maxValue - minValue;
+    const threshold = Math.max(0.005, spread * 0.05);
+    if (spread <= threshold) return 'flat';
+
+    const maxIndex = values.indexOf(maxValue);
+    const peakNearEnd = maxIndex >= Math.max(0, values.length - 2);
+    const lastStillHigh = last >= minValue + spread * 0.75;
+    if (last > first + threshold && peakNearEnd && lastStillHigh) return 'risesAndStaysHigh';
+    if (last > first + threshold) return 'rising';
+    if (last < first - threshold) return 'falling';
+    return 'mixed';
+}
+
+function summarizeCloudFacingThetaGeometry(thetaBinCount, maxDiffBin) {
+    const count = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const bins = [];
+    let maxNormalUpwardBin = null;
+    let maxNormalUpward = -Infinity;
+
+    for (let bin = 0; bin < count; bin++) {
+        const thetaStart = (bin / count) * CLOUD_ARC_THETA_MAX;
+        const thetaEnd = ((bin + 1) / count) * CLOUD_ARC_THETA_MAX;
+        const thetaMid = (thetaStart + thetaEnd) * 0.5;
+        const normalOutward = Math.cos(thetaMid);
+        const normalUpward = Math.sin(thetaMid);
+        const item = {
+            thetaBin: bin,
+            thetaLabel: bin + '/' + count,
+            thetaStartDeg: Number((thetaStart * 180 / Math.PI).toFixed(2)),
+            thetaEndDeg: Number((thetaEnd * 180 / Math.PI).toFixed(2)),
+            normalOutward: Number(normalOutward.toFixed(4)),
+            normalUpward: Number(normalUpward.toFixed(4)),
+            probeInward: Number(normalOutward.toFixed(4)),
+            probeDownward: Number(normalUpward.toFixed(4))
+        };
+        bins.push(item);
+        if (normalUpward > maxNormalUpward) {
+            maxNormalUpward = normalUpward;
+            maxNormalUpwardBin = item;
+        }
+    }
+
+    const maxDiffBinNumber = Number(maxDiffBin);
+    const highUpwardBinStart = Math.max(0, count - 2);
+    return {
+        cloudArcNormalFormula: 'outAxis * cos(theta) + up * sin(theta)',
+        cloudArcEmissionNormalRelation: '-cloudArcNormal',
+        normalUpwardTrend: 'increasesWithTheta',
+        highUpwardBinStart,
+        maxNormalUpwardBin,
+        maxDiffNearHighUpwardEnd: Number.isFinite(maxDiffBinNumber) ? maxDiffBinNumber >= highUpwardBinStart : null,
+        bins
+    };
+}
+
+function summarizeCloudFacingThetaScan(bins) {
+    const safeBins = Array.isArray(bins) ? bins : [];
+    const diffRange = summarizeCloudFacingThetaScanRatioRange(safeBins, 'normalMinusProbeFacingZeroRatio');
+    const minDiffSource = safeBins.find((bin) => bin.thetaBin === diffRange.minBin) || null;
+    const maxDiffSource = safeBins.find((bin) => bin.thetaBin === diffRange.maxBin) || null;
+    const geometryHint = summarizeCloudFacingThetaGeometry(safeBins.length || CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT, diffRange.maxBin);
+
+    return {
+        binCount: safeBins.length,
+        validDiffBinCount: diffRange.count,
+        waitTimedOutCount: safeBins.filter((bin) => bin.waitTimedOut).length,
+        diffTrend: summarizeCloudFacingThetaScanTrend(safeBins),
+        geometryHint,
+        maxDiffNearHighUpwardEnd: geometryHint.maxDiffNearHighUpwardEnd,
+        minDiffBin: summarizeCloudFacingThetaScanBin(minDiffSource, 'normalMinusProbeFacingZeroRatio'),
+        maxDiffBin: summarizeCloudFacingThetaScanBin(maxDiffSource, 'normalMinusProbeFacingZeroRatio'),
+        normalCloudFacingZeroRatioRange: summarizeCloudFacingThetaScanRatioRange(safeBins, 'normalCloudFacingZeroRatio'),
+        probeCloudFacingZeroRatioRange: summarizeCloudFacingThetaScanRatioRange(safeBins, 'probeCloudFacingZeroRatio'),
+        normalMinusProbeFacingZeroRatioRange: diffRange
+    };
+}
+
+function summarizeCloudFacingRodThetaScans(rods) {
+    const safeRods = Array.isArray(rods) ? rods : [];
+    const maxDiffByRod = safeRods.map((scan) => {
+        const maxDiff = scan && scan.summary ? scan.summary.maxDiffBin : null;
+        const range = scan && scan.summary ? scan.summary.normalMinusProbeFacingZeroRatioRange : null;
+        return {
+            rod: scan ? scan.rod : null,
+            rodLabel: scan ? scan.rodLabel : null,
+            maxDiffBin: maxDiff ? maxDiff.thetaBin : null,
+            maxDiffThetaLabel: maxDiff ? maxDiff.thetaLabel : null,
+            maxDiffValue: maxDiff ? maxDiff.value : null,
+            diffTrend: scan && scan.summary ? scan.summary.diffTrend : null,
+            maxDiffNearHighUpwardEnd: scan && scan.summary ? scan.summary.maxDiffNearHighUpwardEnd : null,
+            diffSpread: range ? range.spread : null,
+            waitTimedOutCount: scan && scan.summary ? scan.summary.waitTimedOutCount : null
+        };
+    });
+    const validMaxDiffs = maxDiffByRod.filter((item) =>
+        Number.isFinite(Number(item.maxDiffBin)) && Number.isFinite(Number(item.maxDiffValue))
+    );
+    const uniqueMaxDiffBins = Array.from(new Set(validMaxDiffs.map((item) => item.maxDiffBin))).sort((a, b) => a - b);
+    let dominantRod = null;
+    validMaxDiffs.forEach((item) => {
+        if (!dominantRod || item.maxDiffValue > dominantRod.maxDiffValue) dominantRod = item;
+    });
+    const maxDiffValues = validMaxDiffs.map((item) => item.maxDiffValue);
+    const minMaxDiff = maxDiffValues.length ? Math.min(...maxDiffValues) : null;
+    const maxMaxDiff = maxDiffValues.length ? Math.max(...maxDiffValues) : null;
+
+    return {
+        rodCount: safeRods.length,
+        rodLabels: safeRods.map((scan) => scan.rodLabel),
+        maxDiffByRod,
+        uniqueMaxDiffBins,
+        sharedMaxDiffBin: uniqueMaxDiffBins.length === 1 ? uniqueMaxDiffBins[0] : null,
+        maxDiffBinPattern: !validMaxDiffs.length ? 'insufficient' : (uniqueMaxDiffBins.length === 1 ? 'same' : 'mixed'),
+        allRodsMaxDiffNearHighUpwardEnd: validMaxDiffs.length === safeRods.length && validMaxDiffs.every((item) => item.maxDiffNearHighUpwardEnd === true),
+        dominantRod,
+        maxDiffValueRange: {
+            min: minMaxDiff,
+            max: maxMaxDiff,
+            spread: maxDiffValues.length ? maxMaxDiff - minMaxDiff : null,
+            count: maxDiffValues.length
+        }
+    };
+}
+
+function summarizeCloudThetaImportanceSamplingCandidate(rodThetaScan, options = { protectedFloor: 0.65 }) {
+    const source = rodThetaScan || {};
+    const sourceRods = Array.isArray(source.rods) ? source.rods : [];
+    const inferredBinCount = sourceRods.reduce((maxCount, scan) => {
+        const bins = scan && Array.isArray(scan.bins) ? scan.bins : [];
+        return Math.max(maxCount, bins.length);
+    }, 0);
+    const thetaBinCount = normalizeCloudVisibilityProbeThetaBinCount(source.thetaBinCount || inferredBinCount);
+    const uniformThetaBinPdf = Number((1 / thetaBinCount).toFixed(6));
+    const protectedFloor = normalizeCloudThetaImportanceProtectedFloor(options && options.protectedFloor);
+    const maxReduction = 1 - protectedFloor;
+    const metric = 'normalMinusProbeFacingZeroRatio';
+
+    const averageDiffByBin = [];
+    for (let bin = 0; bin < thetaBinCount; bin++) {
+        const values = sourceRods.map((scan) => {
+            const bins = scan && Array.isArray(scan.bins) ? scan.bins : [];
+            const item = bins.find((entry) => entry && entry.thetaBin === bin) || bins[bin];
+            return item ? Number(item[metric]) : NaN;
+        }).filter((value) => Number.isFinite(value));
+        const averageDiff = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+        averageDiffByBin.push({
+            thetaBin: bin,
+            thetaLabel: bin + '/' + thetaBinCount,
+            valueCount: values.length,
+            averageDiff
+        });
+    }
+
+    const validDiffs = averageDiffByBin
+        .map((item) => item.averageDiff)
+        .filter((value) => Number.isFinite(value));
+    const minDiff = validDiffs.length ? Math.min(...validDiffs) : null;
+    const maxDiff = validDiffs.length ? Math.max(...validDiffs) : null;
+    const diffSpread = Number.isFinite(minDiff) && Number.isFinite(maxDiff) ? maxDiff - minDiff : 0;
+    const rawWeights = averageDiffByBin.map((item) => {
+        if (!Number.isFinite(item.averageDiff) || diffSpread <= 0) return 1;
+        const diff01 = (item.averageDiff - minDiff) / diffSpread;
+        return Math.max(protectedFloor, 1 - diff01 * maxReduction);
+    });
+    const rawWeightSum = rawWeights.reduce((sum, value) => sum + value, 0) || thetaBinCount;
+    const geometryHint = summarizeCloudFacingThetaGeometry(thetaBinCount, source.summary ? source.summary.sharedMaxDiffBin : null);
+    const bins = averageDiffByBin.map((item, index) => {
+        const candidateThetaBinPdf = rawWeights[index] / rawWeightSum;
+        const relativeToUniform = candidateThetaBinPdf / uniformThetaBinPdf;
+        const pdfCompensationMultiplier = uniformThetaBinPdf / candidateThetaBinPdf;
+        const geometry = geometryHint.bins[index] || cloudVisibilityProbeThetaBinInfo(index, thetaBinCount);
+        return {
+            thetaBin: item.thetaBin,
+            thetaLabel: item.thetaLabel,
+            thetaStartDeg: geometry.thetaStartDeg,
+            thetaEndDeg: geometry.thetaEndDeg,
+            normalUpward: geometry.normalUpward,
+            metric,
+            averageNormalMinusProbeFacingZeroRatio: Number.isFinite(item.averageDiff) ? Number(item.averageDiff.toFixed(4)) : null,
+            valueCount: item.valueCount,
+            rawWeight: Number(rawWeights[index].toFixed(4)),
+            uniformThetaBinPdf,
+            candidateThetaBinPdf: Number(candidateThetaBinPdf.toFixed(6)),
+            relativeToUniform: Number(relativeToUniform.toFixed(4)),
+            pdfCompensationMultiplier: Number(pdfCompensationMultiplier.toFixed(4)),
+            candidateAction: relativeToUniform < 0.98 ? 'sampleLess' : (relativeToUniform > 1.02 ? 'sampleMore' : 'keepNearUniform')
+        };
+    });
+    const reducedBins = bins.filter((item) => item.candidateAction === 'sampleLess');
+    const boostedBins = bins.filter((item) => item.candidateAction === 'sampleMore');
+    const maxPdfCompensationMultiplier = bins.length ? Math.max(...bins.map((item) => item.pdfCompensationMultiplier)) : null;
+    const maxReductionBin = reducedBins.reduce((best, item) => {
+        if (!best || item.relativeToUniform < best.relativeToUniform) return item;
+        return best;
+    }, null);
+
+    return {
+        candidateVersion: CLOUD_THETA_IMPORTANCE_CANDIDATE_VERSION,
+        sourceProbeVersion: source.probeVersion || null,
+        analysisScope: 'probeOnlyThetaImportanceCandidate',
+        renderPathMutation: false,
+        shaderMutation: false,
+        thetaBinCount,
+        metric: 'normalMinusProbeFacingZeroRatio',
+        protectedFloor,
+        renderEnergyNormal: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.renderEnergyNormal,
+        probeClassificationNormal: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.probeClassificationNormal,
+        pdfContract: {
+            requiresThetaPdfCompensation: true,
+            uniformThetaBinPdf,
+            candidatePdfField: 'candidateThetaBinPdf',
+            compensationField: 'pdfCompensationMultiplier'
+        },
+        evidence: {
+            sharedMaxDiffBin: source.summary ? source.summary.sharedMaxDiffBin : null,
+            maxDiffBinPattern: source.summary ? source.summary.maxDiffBinPattern : null,
+            allRodsMaxDiffNearHighUpwardEnd: source.summary ? source.summary.allRodsMaxDiffNearHighUpwardEnd : null,
+            dominantRod: source.summary ? source.summary.dominantRod : null
+        },
+        diffRange: {
+            min: Number.isFinite(minDiff) ? Number(minDiff.toFixed(4)) : null,
+            max: Number.isFinite(maxDiff) ? Number(maxDiff.toFixed(4)) : null,
+            spread: Number.isFinite(diffSpread) ? Number(diffSpread.toFixed(4)) : null,
+            count: validDiffs.length
+        },
+        maxPdfCompensationMultiplier: Number.isFinite(maxPdfCompensationMultiplier) ? Number(maxPdfCompensationMultiplier.toFixed(4)) : null,
+        maxReductionBin,
+        reducedBins,
+        boostedBins,
+        bins,
+        recommendedNextStep: 'probeOnlyAB'
+    };
+}
+
+window.summarizeCloudThetaImportanceSamplingCandidate = summarizeCloudThetaImportanceSamplingCandidate;
+
+function summarizeCloudThetaImportanceProbeAB(rodThetaScan, options) {
+    const candidate = summarizeCloudThetaImportanceSamplingCandidate(rodThetaScan, options);
+    const bins = Array.isArray(candidate.bins) ? candidate.bins : [];
+    const metric = 'normalMinusProbeFacingZeroRatio';
+    let estimatedUniformWasteProxy = 0;
+    let estimatedCandidateWasteProxy = 0;
+    const comparisonBins = bins.map((bin) => {
+        const averageDiff = Number(bin.averageNormalMinusProbeFacingZeroRatio);
+        const uniformThetaBinPdf = Number(bin.uniformThetaBinPdf);
+        const candidateThetaBinPdf = Number(bin.candidateThetaBinPdf);
+        const uniformWasteProxy = Number.isFinite(averageDiff) ? uniformThetaBinPdf * averageDiff : 0;
+        const candidateWasteProxy = Number.isFinite(averageDiff) ? candidateThetaBinPdf * averageDiff : 0;
+        estimatedUniformWasteProxy += uniformWasteProxy;
+        estimatedCandidateWasteProxy += candidateWasteProxy;
+        return {
+            thetaBin: bin.thetaBin,
+            thetaLabel: bin.thetaLabel,
+            metric,
+            averageNormalMinusProbeFacingZeroRatio: bin.averageNormalMinusProbeFacingZeroRatio,
+            uniformThetaBinPdf,
+            candidateThetaBinPdf,
+            candidateToUniformSampleRatio: Number(bin.relativeToUniform),
+            pdfCompensationMultiplier: bin.pdfCompensationMultiplier,
+            uniformWasteProxy: Number(uniformWasteProxy.toFixed(6)),
+            candidateWasteProxy: Number(candidateWasteProxy.toFixed(6)),
+            wasteProxyDelta: Number((uniformWasteProxy - candidateWasteProxy).toFixed(6)),
+            candidateAction: bin.candidateAction
+        };
+    });
+    const estimatedWasteProxyDelta = estimatedUniformWasteProxy - estimatedCandidateWasteProxy;
+    const estimatedWasteProxyReductionRatio = estimatedUniformWasteProxy > 0 ? estimatedWasteProxyDelta / estimatedUniformWasteProxy : 0;
+
+    return {
+        abVersion: CLOUD_THETA_IMPORTANCE_AB_VERSION,
+        candidateVersion: candidate.candidateVersion,
+        sourceProbeVersion: candidate.sourceProbeVersion,
+        analysisScope: 'probeOnlyThetaImportanceAB',
+        renderPathMutation: false,
+        shaderMutation: false,
+        baselineStrategy: 'uniformTheta',
+        candidateStrategy: 'thetaImportanceCandidate',
+        estimateBasis: 'rodThetaScanBinAverages',
+        thetaBinCount: candidate.thetaBinCount,
+        metric: 'normalMinusProbeFacingZeroRatio',
+        protectedFloor: candidate.protectedFloor,
+        renderEnergyNormal: candidate.renderEnergyNormal,
+        probeClassificationNormal: candidate.probeClassificationNormal,
+        pdfContract: candidate.pdfContract,
+        evidence: candidate.evidence,
+        estimatedUniformWasteProxy: Number(estimatedUniformWasteProxy.toFixed(6)),
+        estimatedCandidateWasteProxy: Number(estimatedCandidateWasteProxy.toFixed(6)),
+        estimatedWasteProxyDelta: Number(estimatedWasteProxyDelta.toFixed(6)),
+        estimatedWasteProxyReductionRatio: Number(estimatedWasteProxyReductionRatio.toFixed(4)),
+        maxPdfCompensationMultiplier: candidate.maxPdfCompensationMultiplier,
+        maxReductionBin: candidate.maxReductionBin,
+        reducedBins: candidate.reducedBins,
+        boostedBins: candidate.boostedBins,
+        bins: comparisonBins,
+        recommendedNextStep: 'shaderAB'
+    };
+}
+
+window.summarizeCloudThetaImportanceProbeAB = summarizeCloudThetaImportanceProbeAB;
+
+function summarizeCloudThetaImportanceStrengthSweep(rodThetaScan, protectedFloors) {
+    const agreedSweep = { protectedFloors: [0.5, 0.65, 0.8] };
+    const requestedFloors = Array.isArray(protectedFloors) && protectedFloors.length ? protectedFloors : agreedSweep.protectedFloors;
+    const sweepFloors = requestedFloors
+        .map((value) => normalizeCloudThetaImportanceProtectedFloor(value))
+        .filter((value, index, values) => values.indexOf(value) === index);
+    const activeFloors = sweepFloors.length ? sweepFloors : agreedSweep.protectedFloors;
+    const candidates = activeFloors.map((protectedFloor) => {
+        const ab = summarizeCloudThetaImportanceProbeAB(rodThetaScan, { protectedFloor });
+        const maxReductionBin = ab.maxReductionBin ? {
+            thetaBin: ab.maxReductionBin.thetaBin,
+            thetaLabel: ab.maxReductionBin.thetaLabel,
+            averageNormalMinusProbeFacingZeroRatio: ab.maxReductionBin.averageNormalMinusProbeFacingZeroRatio,
+            candidateToUniformSampleRatio: ab.maxReductionBin.relativeToUniform,
+            pdfCompensationMultiplier: ab.maxReductionBin.pdfCompensationMultiplier
+        } : null;
+        return {
+            protectedFloor,
+            estimatedUniformWasteProxy: ab.estimatedUniformWasteProxy,
+            estimatedCandidateWasteProxy: ab.estimatedCandidateWasteProxy,
+            estimatedWasteProxyDelta: ab.estimatedWasteProxyDelta,
+            estimatedWasteProxyReductionRatio: ab.estimatedWasteProxyReductionRatio,
+            maxPdfCompensationMultiplier: ab.maxPdfCompensationMultiplier,
+            maxReductionBin,
+            reducedBinCount: Array.isArray(ab.reducedBins) ? ab.reducedBins.length : 0,
+            boostedBinCount: Array.isArray(ab.boostedBins) ? ab.boostedBins.length : 0,
+            recommendedNextStep: ab.recommendedNextStep
+        };
+    });
+    const validCandidates = candidates.filter((candidate) =>
+        Number.isFinite(candidate.estimatedWasteProxyReductionRatio) &&
+        Number.isFinite(candidate.maxPdfCompensationMultiplier)
+    );
+    const bestByReduction = validCandidates.reduce((best, candidate) => {
+        if (!best) return candidate;
+        if (candidate.estimatedWasteProxyReductionRatio > best.estimatedWasteProxyReductionRatio) return candidate;
+        if (candidate.estimatedWasteProxyReductionRatio === best.estimatedWasteProxyReductionRatio &&
+            candidate.maxPdfCompensationMultiplier < best.maxPdfCompensationMultiplier) return candidate;
+        return best;
+    }, null);
+    const safestByPdf = validCandidates.reduce((best, candidate) => {
+        if (!best) return candidate;
+        if (candidate.maxPdfCompensationMultiplier < best.maxPdfCompensationMultiplier) return candidate;
+        if (candidate.maxPdfCompensationMultiplier === best.maxPdfCompensationMultiplier &&
+            candidate.estimatedWasteProxyReductionRatio > best.estimatedWasteProxyReductionRatio) return candidate;
+        return best;
+    }, null);
+
+    return {
+        sweepVersion: CLOUD_THETA_IMPORTANCE_STRENGTH_SWEEP_VERSION,
+        abVersion: CLOUD_THETA_IMPORTANCE_AB_VERSION,
+        sourceProbeVersion: rodThetaScan && rodThetaScan.probeVersion ? rodThetaScan.probeVersion : null,
+        analysisScope: 'probeOnlyThetaImportanceStrengthSweep',
+        renderPathMutation: false,
+        shaderMutation: false,
+        baselineStrategy: 'uniformTheta',
+        candidateStrategy: 'thetaImportanceCandidate',
+        estimateBasis: 'rodThetaScanBinAverages',
+        defaultProtectedFloors: agreedSweep.protectedFloors,
+        protectedFloors: activeFloors,
+        candidateCount: candidates.length,
+        candidates,
+        bestByReduction,
+        safestByPdf,
+        recommendedProtectedFloor: bestByReduction ? bestByReduction.protectedFloor : null,
+        recommendedNextStep: 'reviewStrengthSweepBeforeShaderAB'
+    };
+}
+
+window.summarizeCloudThetaImportanceStrengthSweep = summarizeCloudThetaImportanceStrengthSweep;
+
+window.reportCloudFacingDiagnosticRodThetaScanAfterSamples = async function (thetaBinCount, targetSamples, timeoutMs) {
+    const rods = [];
+    for (let rod = 0; rod < CLOUD_VISIBILITY_PROBE_ROD_LABELS.length; rod++) {
+        const scan = await window.reportCloudFacingDiagnosticThetaScanAfterSamples(rod, thetaBinCount, targetSamples, timeoutMs);
+        rods.push(scan);
+    }
+
+    return {
+        probeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        thetaBinCount: normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount),
+        targetSamples: Math.max(1, Math.trunc(Number(targetSamples) || 200)),
+        legacyZeroCloudFacingAlias: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.legacyZeroCloudFacingAlias,
+        renderEnergyNormal: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.renderEnergyNormal,
+        probeClassificationNormal: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.probeClassificationNormal,
+        summary: summarizeCloudFacingRodThetaScans(rods),
+        rods
+    };
+};
+
+window.reportCloudFacingDiagnosticThetaScanAfterSamples = async function (rod, thetaBinCount, targetSamples, timeoutMs) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uCloudVisibilityProbeMode || !pathTracingUniforms.uCloudVisibilityProbeRod ||
+        !pathTracingUniforms.uCloudVisibilityProbeClass || !pathTracingUniforms.uCloudVisibilityProbeThetaBin ||
+        !pathTracingUniforms.uCloudVisibilityProbeThetaBinCount) {
+        return null;
+    }
+
+    const original = {
+        mode: pathTracingUniforms.uCloudVisibilityProbeMode.value,
+        rod: pathTracingUniforms.uCloudVisibilityProbeRod.value,
+        blockerClass: pathTracingUniforms.uCloudVisibilityProbeClass.value,
+        thetaBin: pathTracingUniforms.uCloudVisibilityProbeThetaBin.value,
+        thetaBinCount: pathTracingUniforms.uCloudVisibilityProbeThetaBinCount.value
+    };
+    const rodValue = normalizeCloudVisibilityProbeRod(rod);
+    const countValue = normalizeCloudVisibilityProbeThetaBinCount(thetaBinCount);
+    const target = Math.max(1, Math.trunc(Number(targetSamples) || 200));
+    const timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+    const bins = [];
+
+    for (let bin = 0; bin < countValue; bin++) {
+        window.setCloudVisibilityProbe(4, rodValue, -1, bin, countValue);
+        renderCloudVisibilityProbeReadbackSampleIfNeeded(4);
+        const waitResult = await waitForCloudVisibilityProbeSamples(target, timeout, 250);
+        const summary = cloudVisibilityProbeSummary({ logTable: false });
+        bins.push({
+            thetaBin: summary.thetaBin,
+            thetaLabel: summary.thetaLabel,
+            thetaStartDeg: summary.thetaStartDeg,
+            thetaEndDeg: summary.thetaEndDeg,
+            samples: summary.samples,
+            targetSamples: waitResult.targetSamples,
+            waitTimedOut: waitResult.timedOut,
+            waitElapsedMs: waitResult.elapsedMs,
+            sourceFacingZeroRatio: summary.sourceFacingZeroRatio,
+            normalCloudFacingZeroRatio: summary.normalCloudFacingZeroRatio,
+            probeCloudFacingZeroRatio: summary.probeCloudFacingZeroRatio,
+            normalMinusProbeFacingZeroRatio: summary.normalMinusProbeFacingZeroRatio,
+            sourceFacingZeroMass: summary.sourceFacingZeroMass,
+            normalCloudFacingZeroMass: summary.normalCloudFacingZeroMass,
+            probeCloudFacingZeroMass: summary.probeCloudFacingZeroMass,
+            normalMinusProbeFacingZeroMass: summary.normalMinusProbeFacingZeroMass,
+            facingDiagnosticMass: summary.facingDiagnosticMass
+        });
+    }
+
+    window.setCloudVisibilityProbe(original.mode, original.rod, original.blockerClass, original.thetaBin, original.thetaBinCount);
+    return {
+        probeVersion: CLOUD_VISIBILITY_PROBE_VERSION,
+        rod: rodValue,
+        rodLabel: rodValue < 0 ? 'all' : CLOUD_VISIBILITY_PROBE_ROD_LABELS[rodValue],
+        thetaBinCount: countValue,
+        targetSamples: target,
+        legacyZeroCloudFacingAlias: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.legacyZeroCloudFacingAlias,
+        renderEnergyNormal: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.renderEnergyNormal,
+        probeClassificationNormal: CLOUD_FACING_DIAGNOSTIC_DEFINITIONS.probeClassificationNormal,
+        summary: summarizeCloudFacingThetaScan(bins),
+        bins
+    };
+};
+
+window.reportCloudVisibilityProbe = function () {
+    return cloudVisibilityProbeSummary({ logTable: true });
+};
 
 function buildSnapshotBar() {
     const bar = document.getElementById('snapshot-bar');
@@ -906,9 +4802,39 @@ function buildSnapshotBar() {
         };
         bar.appendChild(chip);
     });
+    updateSnapshotControls();
 }
 
+function updateSnapshotControls() {
+    const toggle = document.getElementById('btn-toggle-snapshots');
+    const manual = document.getElementById('btn-manual-capture');
+    const saveAll = document.getElementById('btn-save-all');
+    if (toggle) toggle.textContent = SNAPSHOT_CAPTURE_ENABLED ? '快照：開' : '快照：關';
+    if (manual) manual.disabled = !SNAPSHOT_CAPTURE_ENABLED;
+    if (saveAll) saveAll.disabled = !SNAPSHOT_CAPTURE_ENABLED || snapshots.length === 0;
+}
+
+function setSnapshotCaptureEnabled(enabled) {
+    SNAPSHOT_CAPTURE_ENABLED = !!enabled;
+    if (!SNAPSHOT_CAPTURE_ENABLED) {
+        snapshots.length = 0;
+        capturedMilestones.clear();
+        lastSnapshotCheck = -1;
+        const bar = document.getElementById('snapshot-bar');
+        if (bar) bar.innerHTML = '';
+    }
+    updateSnapshotControls();
+    return {
+        enabled: SNAPSHOT_CAPTURE_ENABLED,
+        milestoneCount: SNAPSHOT_CAPTURE_ENABLED ? SNAPSHOT_MILESTONE_PRESET.length : 0,
+        snapshots: snapshots.length
+    };
+}
+
+window.setSnapshotCaptureEnabled = setSnapshotCaptureEnabled;
+
 function downloadAllSnapshots() {
+    if (!SNAPSHOT_CAPTURE_ENABLED) return;
     snapshots.forEach((snap, i) => {
         setTimeout(() => {
             const a = document.createElement('a');
@@ -922,11 +4848,16 @@ function downloadAllSnapshots() {
 }
 
 (function wireSnapshotButtons() {
+    const toggle = document.getElementById('btn-toggle-snapshots');
+    if (toggle) toggle.onclick = function () {
+        setSnapshotCaptureEnabled(!SNAPSHOT_CAPTURE_ENABLED);
+    };
     const saveAll = document.getElementById('btn-save-all');
     if (saveAll) saveAll.onclick = downloadAllSnapshots;
     const manual = document.getElementById('btn-manual-capture');
     if (manual) manual.onclick = function () {
         const dataURL = captureSnapshot();
+        if (!dataURL) return;
         const a = document.createElement('a');
         a.href = dataURL;
         a.download = makeFilename(Math.round(sampleCounter));
@@ -934,6 +4865,7 @@ function downloadAllSnapshots() {
         a.click();
         document.body.removeChild(a);
     };
+    updateSnapshotControls();
 })();
 
 // ==================== R3-2: 色溫→RGB 換算 ====================
@@ -1007,6 +4939,9 @@ function switchCamera(preset) {
     const cam = CAMERA_PRESETS[preset];
     if (!cam) return;
 
+    if (typeof invalidateMovementProtectionStableFrame === 'function') {
+        invalidateMovementProtectionStableFrame('switchCamera');
+    }
     currentCameraPreset = preset;
     lockedPreset = cam;
     cameraSwitchFrames = 3;
@@ -1038,7 +4973,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=p1c-cloud-base83';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r6-3-movement-preview-v22d';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -1366,6 +5301,21 @@ function initSceneData() {
     pathTracingUniforms.uActiveLightIndex.value[0] = 0; // CONFIG 1 ceiling 獨佔
 
     pathTracingUniforms.uR3ProbeSentinel = { value: 1.0 }; // R3-6.5 S2.5 DCE debug-only sentinel（正常恆為 1.0；手動改 -200 觸發 DCE guard 活體驗證）
+    pathTracingUniforms.uCloudVisibilityProbeMode = { value: 0 };
+    pathTracingUniforms.uCloudVisibilityProbeRod = { value: -1 };
+    pathTracingUniforms.uCloudVisibilityProbeClass = { value: -1 };
+    pathTracingUniforms.uCloudVisibilityProbeThetaBin = { value: -1 };
+    pathTracingUniforms.uCloudVisibilityProbeThetaBinCount = { value: CLOUD_VISIBILITY_PROBE_THETA_BIN_COUNT_DEFAULT };
+    pathTracingUniforms.uCloudThetaImportanceShaderABMode = { value: 0 };
+    pathTracingUniforms.uCloudMisWeightProbeMode = { value: 0 };
+    pathTracingUniforms.uCloudContributionProbeMode = { value: 0 };
+    pathTracingUniforms.uCloudDarkSurfaceCleanupMode = { value: 0 };
+    pathTracingUniforms.uCloudDarkSurfaceCleanupLuma = { value: 1.0 };
+    pathTracingUniforms.uCloudSameSurfaceDarkFillMode = { value: 0 };
+    pathTracingUniforms.uCloudSameSurfaceDarkFillStrength = { value: CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_STRENGTH };
+    pathTracingUniforms.uCloudSameSurfaceDarkFillMaxSamples = { value: CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_MAX_SAMPLES };
+    pathTracingUniforms.uCloudSameSurfaceDarkFillFloorLuma = { value: CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_FLOOR_LUMA };
+    pathTracingUniforms.uCloudSameSurfaceDarkFillGikLuma = { value: CLOUD_SAME_SURFACE_DARK_FILL_DEFAULT_GIK_LUMA };
 
     // R3-6.5 throw-first assertion：LUT 型別 / 長度
     if (!(pathTracingUniforms.uActiveLightIndex.value instanceof Int32Array) ||
@@ -1548,6 +5498,9 @@ function rebuildActiveLightLUT(source) {
 
     pathTracingUniforms.uActiveLightCount.value = count;
 
+    if (typeof invalidateMovementProtectionStableFrame === 'function') {
+        invalidateMovementProtectionStableFrame('rebuildActiveLightLUT');
+    }
     needClearAccumulation = true;
     cameraIsMoving = true;
     cameraSwitchFrames = 3;
@@ -2775,7 +6728,7 @@ function updateVariablesAndUniforms() {
     var _hibernating = (sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
     if (_hibernating) window._fpsAcc.fps = 0;
     var _displaySamples = _hibernating ? MAX_SAMPLES : sampleCounter;
-    cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + _displaySamples + " / 耗時: " + _timeStr + (_hibernating ? " (休眠)" : "");
+    cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + _displaySamples + " / 耗時: " + _timeStr + (_hibernating ? " (休眠)" : "") + getCloudVisibilityProbeLabel() + getCloudThetaImportanceShaderABLabel() + getCloudMisWeightProbeLabel();
 
     if (sampleCounter < lastSnapshotCheck) {
         snapshots.length = 0;
@@ -2785,9 +6738,10 @@ function updateVariablesAndUniforms() {
     }
     lastSnapshotCheck = sampleCounter;
 
-    if ((SNAPSHOT_MILESTONES.includes(sampleCounter) || (sampleCounter % 10000 === 0 && sampleCounter >= 10000)) && !capturedMilestones.has(sampleCounter)) {
+    if (SNAPSHOT_CAPTURE_ENABLED && (SNAPSHOT_MILESTONE_PRESET.includes(sampleCounter) || (sampleCounter % 10000 === 0 && sampleCounter >= 10000)) && !capturedMilestones.has(sampleCounter)) {
         capturedMilestones.add(sampleCounter);
         const dataURL = captureSnapshot();
+        if (!dataURL) return;
         snapshots.push({
             samples: sampleCounter,
             src: dataURL,
