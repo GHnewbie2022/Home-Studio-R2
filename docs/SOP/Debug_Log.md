@@ -4731,9 +4731,9 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - setR71BlueNoiseSamplingEnabled(true / false)
         - reportR71BlueNoiseSamplingConfig()
     cache_bust:
-      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v4
-      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v4
-      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v4
+      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v5
+      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v5
+      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v5
   validation:
     red_green:
       - node docs/tests/r7-1-blue-noise-sampling.test.js 先紅，缺 uR71BlueNoiseSamplingMode。
@@ -4767,7 +4767,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - firstFrameRecoveryMovingTargetSamples 預設改回 1。
     - firstFrameRecoveryTargetSamples 維持 4，停止後補幀路徑維持原本設定。
     - setFirstFrameRecoveryConfig({ movingTargetSamples: 2 }) 仍可手動切回 2 SPP 做比較。
-    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v4，避免瀏覽器沿用舊檔。
+    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v5，避免瀏覽器沿用舊檔。
   validation:
     - 新增 docs/tests/r7-1-blue-noise-sampling.test.js 合約檢查，要求 R7-1 C3 / C4 moving validation 可停在 1 SPP。
 
@@ -4825,4 +4825,25 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - updateVariablesAndUniforms() 看到 cameraIsMoving、needClearAccumulation 或 sampleCounter 回退時，重置 render timer。
   validation:
     - docs/tests/r6-3-max-samples.test.js 新增累積重啟會重置 render timer 的合約。
+
+- id: R7-1-common-vertex-shader-load-order-followup
+  date: 2026-05-07
+  type: bugfix
+  context:
+    - 使用者回報 C3 Console 有 5 筆警告：THREE.Material: parameter 'vertexShader' has value of undefined.
+  root_cause:
+    - common_PathTracing_Vertex.glsl 與 ScreenCopy / ScreenOutput / Bloom fragment shaders 都是非同步載入。
+    - pathTracingMaterial 原本在 common vertex shader callback 內建立，因此不會拿到 undefined。
+    - screenCopyMaterial、screenOutputMaterial、bloomBrightpassMaterial、bloomDownsampleMaterial、bloomUpsampleMaterial 原本各自用 fragment shader callback 建立。
+    - 只要 fragment shader 比 common vertex shader 早完成，就會用尚未填好的 pathTracingVertexShader 建立 ShaderMaterial，剛好對應 5 筆 warning。
+  fix:
+    - 新增 pendingCommonVertexShaderCallbacks 佇列。
+    - 新增 runAfterCommonVertexShaderReady(callback) 與 flushCommonVertexShaderCallbacks()。
+    - 新增 createCommonVertexShaderMaterial(params)，所有共用 vertex shader 的 ShaderMaterial 都經由此 helper 建立。
+    - InitCommon / Home_Studio / shader cache token 同步升到 r7-1-blue-noise-sampling-v5，避免瀏覽器沿用舊檔。
+  validation:
+    - 新增 docs/tests/r7-1-shader-load-order.test.js，先確認舊版缺少等待 common vertex shader 的合約會紅燈。
+    - 實作後同一測試轉綠。
+    - headless Brave 載入 http://localhost:9002/Home_Studio.html 時讀到 r7-1-blue-noise-sampling-v5；Console logs 未再出現 vertexShader undefined。
+    - headless SwiftShader 仍會輸出 GPU / context lost 類測試環境訊息，和本次 THREE.Material warning 無關。
 ```

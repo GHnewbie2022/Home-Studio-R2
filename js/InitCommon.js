@@ -9,6 +9,7 @@ let pathTracingUniformsGroups = [];
 let screenCopyUniforms, screenOutputUniforms;
 let pathTracingDefines;
 let pathTracingVertexShader, pathTracingFragmentShader;
+const pendingCommonVertexShaderCallbacks = [];
 let demoFragmentShaderFileName;
 let screenCopyVertexShader, screenCopyFragmentShader;
 let screenOutputVertexShader, screenOutputFragmentShader;
@@ -91,6 +92,32 @@ let movementProtectionLastBlend = 0.0;
 let movementProtectionLastPreviewStrength = 0.0;
 let movementProtectionLastSpatialPreviewStrength = 0.0;
 let movementProtectionLastWidePreviewStrength = 0.0;
+
+function runAfterCommonVertexShaderReady(callback)
+{
+	if (typeof pathTracingVertexShader === 'string' && pathTracingVertexShader.length > 0)
+	{
+		callback();
+		return;
+	}
+	pendingCommonVertexShaderCallbacks.push(callback);
+}
+
+function flushCommonVertexShaderCallbacks()
+{
+	while (pendingCommonVertexShaderCallbacks.length > 0)
+		pendingCommonVertexShaderCallbacks.shift()();
+}
+
+function createCommonVertexShaderMaterial(params)
+{
+	if (typeof pathTracingVertexShader !== 'string' || pathTracingVertexShader.length === 0)
+		throw new Error('[InitCommon] common vertex shader must load before creating ShaderMaterial');
+
+	var materialParams = Object.assign({}, params);
+	materialParams.vertexShader = pathTracingVertexShader;
+	return new THREE.ShaderMaterial(materialParams);
+}
 let movementPreviewLastMode = 0.0;
 let movementProtectionPeakPreviewStrength = 0.0;
 let movementProtectionPeakPreviewSamples = 0;
@@ -244,7 +271,7 @@ window.setR71BlueNoiseSamplingEnabled = function(enabled)
 window.reportR71BlueNoiseSamplingConfig = function()
 {
 	return {
-		version: 'r7-1-blue-noise-sampling-v4',
+		version: 'r7-1-blue-noise-sampling-v5',
 		enabled: r71BlueNoiseSamplingEnabled,
 		uniformMode: pathTracingUniforms && pathTracingUniforms.uR71BlueNoiseSamplingMode
 			? pathTracingUniforms.uR71BlueNoiseSamplingMode.value
@@ -1074,29 +1101,32 @@ function initTHREEjs()
 	fileLoader.load('shaders/common_PathTracing_Vertex.glsl', function (vertexShaderText)
 	{
 		pathTracingVertexShader = vertexShaderText;
+		flushCommonVertexShaderCallbacks();
 
 		fileLoader.load('shaders/' + demoFragmentShaderFileName, function (fragmentShaderText)
 		{
 
 			pathTracingFragmentShader = fragmentShaderText;
 
-			pathTracingMaterial = new THREE.ShaderMaterial({
-				uniforms: pathTracingUniforms,
-				uniformsGroups: pathTracingUniformsGroups,
-				defines: pathTracingDefines,
-				vertexShader: pathTracingVertexShader,
-				fragmentShader: pathTracingFragmentShader,
-				depthTest: false,
-				depthWrite: false
+			runAfterCommonVertexShaderReady(function ()
+			{
+				pathTracingMaterial = createCommonVertexShaderMaterial({
+					uniforms: pathTracingUniforms,
+					uniformsGroups: pathTracingUniformsGroups,
+					defines: pathTracingDefines,
+					fragmentShader: pathTracingFragmentShader,
+					depthTest: false,
+					depthWrite: false
+				});
+
+				pathTracingMesh = new THREE.Mesh(triangleGeometry, pathTracingMaterial);
+				pathTracingScene.add(pathTracingMesh);
+
+				// the following keeps the oversized full-screen triangle right in front
+				//   of the camera at all times. This is necessary because without it, the full-screen
+				//   triangle will fall out of view and get clipped when the camera rotates past 180 degrees.
+				worldCamera.add(pathTracingMesh);
 			});
-
-			pathTracingMesh = new THREE.Mesh(triangleGeometry, pathTracingMaterial);
-			pathTracingScene.add(pathTracingMesh);
-
-			// the following keeps the oversized full-screen triangle right in front
-			//   of the camera at all times. This is necessary because without it, the full-screen
-			//   triangle will fall out of view and get clipped when the camera rotates past 180 degrees.
-			worldCamera.add(pathTracingMesh);
 
 		});
 	});
@@ -1113,16 +1143,18 @@ function initTHREEjs()
 
 		screenCopyFragmentShader = shaderText;
 
-		screenCopyMaterial = new THREE.ShaderMaterial({
-			uniforms: screenCopyUniforms,
-			vertexShader: pathTracingVertexShader,
-			fragmentShader: screenCopyFragmentShader,
-			depthWrite: false,
-			depthTest: false
-		});
+		runAfterCommonVertexShaderReady(function ()
+		{
+			screenCopyMaterial = createCommonVertexShaderMaterial({
+				uniforms: screenCopyUniforms,
+				fragmentShader: screenCopyFragmentShader,
+				depthWrite: false,
+				depthTest: false
+			});
 
-		screenCopyMesh = new THREE.Mesh(triangleGeometry, screenCopyMaterial);
-		screenCopyScene.add(screenCopyMesh);
+			screenCopyMesh = new THREE.Mesh(triangleGeometry, screenCopyMaterial);
+			screenCopyScene.add(screenCopyMesh);
+		});
 	});
 
 
@@ -1178,16 +1210,18 @@ function initTHREEjs()
 
 		screenOutputFragmentShader = shaderText;
 
-		screenOutputMaterial = new THREE.ShaderMaterial({
-			uniforms: screenOutputUniforms,
-			vertexShader: pathTracingVertexShader,
-			fragmentShader: screenOutputFragmentShader,
-			depthWrite: false,
-			depthTest: false
-		});
+		runAfterCommonVertexShaderReady(function ()
+		{
+			screenOutputMaterial = createCommonVertexShaderMaterial({
+				uniforms: screenOutputUniforms,
+				fragmentShader: screenOutputFragmentShader,
+				depthWrite: false,
+				depthTest: false
+			});
 
-		screenOutputMesh = new THREE.Mesh(triangleGeometry, screenOutputMaterial);
-		screenOutputScene.add(screenOutputMesh);
+			screenOutputMesh = new THREE.Mesh(triangleGeometry, screenOutputMaterial);
+			screenOutputScene.add(screenOutputMesh);
+		});
 	});
 
 
@@ -1220,44 +1254,50 @@ function initTHREEjs()
 
 	fileLoader.load('shaders/Bloom_Brightpass_Fragment.glsl', function (shaderText)
 	{
-		bloomBrightpassMaterial = new THREE.ShaderMaterial({
-			uniforms: bloomBrightpassUniforms,
-			vertexShader: pathTracingVertexShader,
-			fragmentShader: shaderText,
-			depthWrite: false,
-			depthTest: false
+		runAfterCommonVertexShaderReady(function ()
+		{
+			bloomBrightpassMaterial = createCommonVertexShaderMaterial({
+				uniforms: bloomBrightpassUniforms,
+				fragmentShader: shaderText,
+				depthWrite: false,
+				depthTest: false
+			});
+			bloomBrightpassMesh = new THREE.Mesh(triangleGeometry, bloomBrightpassMaterial);
+			bloomBrightpassScene.add(bloomBrightpassMesh);
 		});
-		bloomBrightpassMesh = new THREE.Mesh(triangleGeometry, bloomBrightpassMaterial);
-		bloomBrightpassScene.add(bloomBrightpassMesh);
 	});
 
 	fileLoader.load('shaders/Bloom_Downsample_Fragment.glsl', function (shaderText)
 	{
-		bloomDownsampleMaterial = new THREE.ShaderMaterial({
-			uniforms: bloomDownsampleUniforms,
-			vertexShader: pathTracingVertexShader,
-			fragmentShader: shaderText,
-			depthWrite: false,
-			depthTest: false
+		runAfterCommonVertexShaderReady(function ()
+		{
+			bloomDownsampleMaterial = createCommonVertexShaderMaterial({
+				uniforms: bloomDownsampleUniforms,
+				fragmentShader: shaderText,
+				depthWrite: false,
+				depthTest: false
+			});
+			bloomDownsampleMesh = new THREE.Mesh(triangleGeometry, bloomDownsampleMaterial);
+			bloomDownsampleScene.add(bloomDownsampleMesh);
 		});
-		bloomDownsampleMesh = new THREE.Mesh(triangleGeometry, bloomDownsampleMaterial);
-		bloomDownsampleScene.add(bloomDownsampleMesh);
 	});
 
 	fileLoader.load('shaders/Bloom_Upsample_Fragment.glsl', function (shaderText)
 	{
-		bloomUpsampleMaterial = new THREE.ShaderMaterial({
-			uniforms: bloomUpsampleUniforms,
-			vertexShader: pathTracingVertexShader,
-			fragmentShader: shaderText,
-			depthWrite: false,
-			depthTest: false,
-			// R2-UI：加法混合 → upsample 結果與 dest mip 既有 downsample 結果疊加
-			blending: THREE.AdditiveBlending,
-			transparent: true
+		runAfterCommonVertexShaderReady(function ()
+		{
+			bloomUpsampleMaterial = createCommonVertexShaderMaterial({
+				uniforms: bloomUpsampleUniforms,
+				fragmentShader: shaderText,
+				depthWrite: false,
+				depthTest: false,
+				// R2-UI：加法混合 → upsample 結果與 dest mip 既有 downsample 結果疊加
+				blending: THREE.AdditiveBlending,
+				transparent: true
+			});
+			bloomUpsampleMesh = new THREE.Mesh(triangleGeometry, bloomUpsampleMaterial);
+			bloomUpsampleScene.add(bloomUpsampleMesh);
 		});
-		bloomUpsampleMesh = new THREE.Mesh(triangleGeometry, bloomUpsampleMaterial);
-		bloomUpsampleScene.add(bloomUpsampleMesh);
 	});
 
 
