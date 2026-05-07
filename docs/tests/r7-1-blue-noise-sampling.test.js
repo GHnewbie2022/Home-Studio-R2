@@ -28,7 +28,7 @@ assert(initCommon.includes('let r71BlueNoiseSamplingEnabled = true'), 'R7-1 blue
 assert(initCommon.includes('pathTracingUniforms.uR71BlueNoiseSamplingMode'), 'InitCommon must create the R7-1 sampling mode uniform');
 assert(initCommon.includes('window.setR71BlueNoiseSamplingEnabled = function'), 'R7-1 must expose a console setter');
 assert(initCommon.includes('window.reportR71BlueNoiseSamplingConfig = function'), 'R7-1 must expose a console reporter');
-assert(initCommon.includes("version: 'r7-1-blue-noise-sampling-v2'"), 'R7-1 reporter must expose a version token');
+assert(initCommon.includes("version: 'r7-1-blue-noise-sampling-v3'"), 'R7-1 reporter must expose a version token');
 assert(initCommon.includes('blueNoiseTextureReady'), 'R7-1 reporter must expose blue-noise texture readiness');
 assert(initCommon.includes('let firstFrameRecoveryMovingTargetSamples = 1'), 'R7-1 C3/C4 visual validation must allow the 1 SPP moving frame');
 
@@ -38,8 +38,8 @@ assert(pathTracingCommon.includes('seed += r71BlueNoiseSeedJitter();'), 'R7-1 mu
 assert(pathTracingCommon.includes('uSampleCounter + uFrameCounter'), 'R7-1 seed mix must vary across samples and frames');
 assert(!pathTracingCommon.includes('uR71BlueNoiseSamplingMode > 0.5 &&'), 'R7-1 blue-noise seed mix must apply globally without a config gate');
 
-assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v2'), 'Home_Studio shader cache token must identify R7-1');
-assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v2'), 'HTML must cache-bust InitCommon.js for R7-1');
-assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v2'), 'HTML must cache-bust Home_Studio.js for R7-1');
+assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v3'), 'Home_Studio shader cache token must identify R7-1');
+assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v3'), 'HTML must cache-bust InitCommon.js for R7-1');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v3'), 'HTML must cache-bust Home_Studio.js for R7-1');
 
 console.log('PASS  R7-1 blue noise sampling contract');

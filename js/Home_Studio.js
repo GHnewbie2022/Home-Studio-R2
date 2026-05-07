@@ -5013,7 +5013,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v2';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v3';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -6734,31 +6734,50 @@ function updateVariablesAndUniforms() {
         cameraControlsObject.position.z
     );
 
+    var _samplingReport = (typeof window.reportSamplingPaused === 'function') ? window.reportSamplingPaused() : null;
+    var _samplingPausedForMetrics = !!(_samplingReport && _samplingReport.paused && !cameraIsMoving);
+
     // R4-5：FPS 累積器（每秒重算）
     if (typeof window._fpsAcc === 'undefined') { window._fpsAcc = { frames: 0, lastT: performance.now(), fps: 0 }; }
-    window._fpsAcc.frames++;
+    if (!_samplingPausedForMetrics) window._fpsAcc.frames++;
     var _nowT = performance.now();
     if (_nowT - window._fpsAcc.lastT >= 500) {
         window._fpsAcc.fps = Math.round(window._fpsAcc.frames * 1000 / (_nowT - window._fpsAcc.lastT));
         window._fpsAcc.frames = 0;
         window._fpsAcc.lastT = _nowT;
     }
+    if (_samplingPausedForMetrics) window._fpsAcc.fps = 0;
     if (typeof window._renderTimer === 'undefined') {
-        window._renderTimer = { startMs: performance.now(), finalMs: 0, frozen: false };
+        window._renderTimer = { startMs: performance.now(), finalMs: 0, frozen: false, paused: false, pauseStartMs: 0, pausedMs: 0 };
     }
     if (sampleCounter < lastSnapshotCheck) {
         window._renderTimer.startMs = performance.now();
         window._renderTimer.frozen = false;
+        window._renderTimer.paused = false;
+        window._renderTimer.pauseStartMs = 0;
+        window._renderTimer.pausedMs = 0;
+    }
+    if (_samplingPausedForMetrics) {
+        if (!window._renderTimer.paused) {
+            window._renderTimer.paused = true;
+            window._renderTimer.pauseStartMs = _nowT;
+        }
+    } else if (window._renderTimer.paused) {
+        window._renderTimer.pausedMs += _nowT - window._renderTimer.pauseStartMs;
+        window._renderTimer.paused = false;
+        window._renderTimer.pauseStartMs = 0;
     }
     let _elapsedMs;
-    if (sampleCounter >= MAX_SAMPLES) {
+    if (_samplingPausedForMetrics) {
+        _elapsedMs = window._renderTimer.pauseStartMs - window._renderTimer.startMs - window._renderTimer.pausedMs;
+    } else if (sampleCounter >= MAX_SAMPLES) {
         if (!window._renderTimer.frozen) {
-            window._renderTimer.finalMs = performance.now() - window._renderTimer.startMs;
+            window._renderTimer.finalMs = _nowT - window._renderTimer.startMs - window._renderTimer.pausedMs;
             window._renderTimer.frozen = true;
         }
         _elapsedMs = window._renderTimer.finalMs;
     } else {
-        _elapsedMs = performance.now() - window._renderTimer.startMs;
+        _elapsedMs = _nowT - window._renderTimer.startMs - window._renderTimer.pausedMs;
     }
     const _totalSec = Math.floor(_elapsedMs / 1000);
     const _h = Math.floor(_totalSec / 3600);
@@ -6768,7 +6787,7 @@ function updateVariablesAndUniforms() {
     var _hibernating = (sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
     if (_hibernating) window._fpsAcc.fps = 0;
     var _displaySamples = _hibernating ? MAX_SAMPLES : sampleCounter;
-    cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + _displaySamples + " / 耗時: " + _timeStr + (_hibernating ? " (休眠)" : "") + getCloudVisibilityProbeLabel() + getCloudThetaImportanceShaderABLabel() + getCloudMisWeightProbeLabel();
+    cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + _displaySamples + " / 耗時: " + _timeStr + (_samplingPausedForMetrics ? " (暫停)" : "") + (_hibernating ? " (休眠)" : "") + getCloudVisibilityProbeLabel() + getCloudThetaImportanceShaderABLabel() + getCloudMisWeightProbeLabel();
 
 }
 

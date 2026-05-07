@@ -4731,9 +4731,9 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         - setR71BlueNoiseSamplingEnabled(true / false)
         - reportR71BlueNoiseSamplingConfig()
     cache_bust:
-      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v2
-      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v2
-      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v2
+      InitCommon: js/InitCommon.js?v=r7-1-blue-noise-sampling-v3
+      Home_Studio: js/Home_Studio.js?v=r7-1-blue-noise-sampling-v3
+      Shader: Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v3
   validation:
     red_green:
       - node docs/tests/r7-1-blue-noise-sampling.test.js 先紅，缺 uR71BlueNoiseSamplingMode。
@@ -4767,7 +4767,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - firstFrameRecoveryMovingTargetSamples 預設改回 1。
     - firstFrameRecoveryTargetSamples 維持 4，停止後補幀路徑維持原本設定。
     - setFirstFrameRecoveryConfig({ movingTargetSamples: 2 }) 仍可手動切回 2 SPP 做比較。
-    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v2，避免瀏覽器沿用舊檔。
+    - Home_Studio.html 的 InitCommon cache token 同步改為 r7-1-blue-noise-sampling-v3，避免瀏覽器沿用舊檔。
   validation:
     - 新增 docs/tests/r7-1-blue-noise-sampling.test.js 合約檢查，要求 R7-1 C3 / C4 moving validation 可停在 1 SPP。
 
@@ -4791,4 +4791,22 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
   validation:
     - docs/tests/r6-3-max-samples.test.js 新增 per-sample 快照與採樣暫停合約。
     - docs/tests/r7-1-blue-noise-sampling.test.js 新增 blue noise 無 config gate 合約。
+
+- id: R7-1-sampling-pause-fps-timer-followup
+  date: 2026-05-07
+  type: bugfix
+  context:
+    - 使用者回報暫停採樣時 FPS 與耗時計時器仍繼續輸出。
+    - 使用者判斷暫停採樣時 FPS 應為 1 或 0，耗時計時器應暫停。
+  root_cause:
+    - samplingPaused 只接到 render loop 的 renderingStopped。
+    - updateVariablesAndUniforms() 內的 FPS 累積器與 render timer 沒有讀取 samplingPaused。
+    - requestAnimationFrame 仍每幀呼叫 UI 更新，所以資訊列看起來仍在持續跑。
+  fix:
+    - 新增 _samplingPausedForMetrics，使用 reportSamplingPaused().paused 且 cameraIsMoving 為 false 時啟用。
+    - 暫停時不再把 animation frame 累積進 FPS，並把 FPS 顯示為 0。
+    - render timer 新增 pauseStartMs / pausedMs，暫停時固定 elapsed，繼續後扣掉暫停時間。
+    - 資訊列新增「暫停」狀態標籤。
+  validation:
+    - docs/tests/r6-3-max-samples.test.js 新增 FPS / timer pause 合約。
 ```

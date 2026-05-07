@@ -52,5 +52,13 @@ assert(initCommon.includes('var samplingPausedForFrame = samplingPaused && !came
 assert(initCommon.includes('var renderingStopped = samplingPausedForFrame ||'), 'Sampling pause must reuse the stopped-render path');
 assert(src.includes('function updateSamplingControls()'), 'Sampling pause button must keep its label in sync');
 assert(src.includes('window.setSamplingPaused(!window.reportSamplingPaused().paused)'), 'Sampling pause button must toggle the runtime state');
+assert(src.includes('var _samplingPausedForMetrics = !!(_samplingReport && _samplingReport.paused && !cameraIsMoving);'), 'Sampling pause must drive the FPS and timer display');
+assert(src.includes('if (!_samplingPausedForMetrics) window._fpsAcc.frames++;'), 'Sampling pause must stop counting animation frames as render FPS');
+assert(src.includes('if (_samplingPausedForMetrics) window._fpsAcc.fps = 0;'), 'Sampling pause must show render FPS as 0');
+assert(src.includes('pauseStartMs: 0'), 'Render timer must track pause start time');
+assert(src.includes('pausedMs: 0'), 'Render timer must track total paused time');
+assert(src.includes('window._renderTimer.pausedMs += _nowT - window._renderTimer.pauseStartMs;'), 'Render timer must subtract paused duration after resume');
+assert(src.includes('_elapsedMs = window._renderTimer.pauseStartMs - window._renderTimer.startMs - window._renderTimer.pausedMs;'), 'Render timer must freeze elapsed time while sampling is paused');
+assert(src.includes('(_samplingPausedForMetrics ? " (暫停)" : "")'), 'Info line must label paused sampling state');
 
 console.log('PASS  MAX_SAMPLES = 1000');

@@ -71,9 +71,9 @@ assert(initCommon.includes('updateMovementProtectionUniforms'), 'Movement protec
 assert(initCommon.includes('updateMovementProtectionUniforms(cameraIsMoving);'), 'Movement protection display blend must use actual camera movement, not first-frame burst render mode');
 assert(initCommon.includes('if (!cameraIsMoving)\n\t\t\tcaptureMovementProtectionStableFrame();'), 'Movement protection must capture stable frames only when the actual camera is still');
 assert(initCommon.includes('ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22d'), 'ScreenOutput shader cache token must identify v22d');
-assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v2'), 'HTML must cache-bust InitCommon for R7-1');
-assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v2'), 'HTML must cache-bust Home_Studio for R7-1');
-assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v2'), 'Home_Studio shader cache token must identify R7-1 blue noise sampling');
+assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v3'), 'HTML must cache-bust InitCommon for R7-1');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v3'), 'HTML must cache-bust Home_Studio for R7-1');
+assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v3'), 'Home_Studio shader cache token must identify R7-1 blue noise sampling');
 
 assert(homeStudio.includes('invalidateMovementProtectionStableFrame'), 'Home_Studio must invalidate stable frame for non-camera content changes');
 assert(homeStudio.includes("invalidateMovementProtectionStableFrame('applyPanelConfig')"), 'Panel config changes must drop stale stable frame');

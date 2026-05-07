@@ -126,8 +126,8 @@ assert(shader.includes('vec3 emissionNormal = cloudArcRenderNormal(rodIdx, theta
 assert(shader.includes('vec3 reverseEmissionNormal = (uCloudVisibilityProbeMode > 0) ? -hitNormal : hitNormal;'), 'reverse Cloud PDF must preserve normal render when probe is off');
 assert(shader.includes('vec3 cloudVisibilityProbeSelectedClassColor(int blockerClass, int thetaBin)'), 'selected-class probe output must accept a theta-bin filter');
 assert(shader.includes('cloudVisibilityProbeSelectedClassColor(blockerClass, lastNeeProbeThetaBin)'), 'selected-class probe output must pass the sampled theta bin');
-assert(js.includes('r7-1-blue-noise-sampling-v2'), 'shader cache-bust token must identify latest R7-1 experiment version');
+assert(js.includes('r7-1-blue-noise-sampling-v3'), 'shader cache-bust token must identify latest R7-1 experiment version');
 assert(js.includes('r6-3-phase2-sampling-budget-diagnostic'), 'JS probe version must report sampling-budget diagnostic version');
-assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v2'), 'HTML must cache-bust Home_Studio.js for latest R7-1 experiment version');
+assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v3'), 'HTML must cache-bust Home_Studio.js for latest R7-1 experiment version');
 
 console.log('PASS  R6-3 Cloud visibility probe contract');
