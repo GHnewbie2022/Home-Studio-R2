@@ -43,13 +43,13 @@ assert(pathTracingCommon.includes('seed += r71BlueNoiseSeedJitter();'), 'R7-1 mu
 assert(pathTracingCommon.includes('uSampleCounter + uFrameCounter'), 'R7-1 seed mix must vary across samples and frames');
 assert(!pathTracingCommon.includes('uR71BlueNoiseSamplingMode > 0.5 &&'), 'R7-1 blue-noise seed mix must apply globally without a config gate');
 
-assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v6-no-go'), 'Home_Studio shader cache token must identify the R7-1 no-go closeout');
-assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v6-no-go'), 'HTML must cache-bust InitCommon.js for R7-1 no-go closeout');
-assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v6-no-go'), 'HTML must cache-bust Home_Studio.js for R7-1 no-go closeout');
+assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al'), 'Home_Studio shader cache token must identify the current R7 experiment');
+assert(html.includes('InitCommon.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust InitCommon.js for current R7 experiment');
+assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust Home_Studio.js for current R7 experiment');
 
 assert(fs.existsSync(handoffPath), 'R7-1 no-go closeout must create a handoff MD for R7-2 takeover');
 assert(r7Sop.includes('R7-1：blue noise sampling 升級（NO-GO）'), 'R7 SOP must mark R7-1 as NO-GO');
-assert(r7Sop.includes('R7-2：光源 importance sampling 機率優化（下一步）'), 'R7 SOP must mark R7-2 as next');
+assert(r7Sop.includes('R7-2：光源 importance sampling 機率優化（v1 已驗收，主痛點未解）'), 'R7 SOP must mark R7-2 v1 as validated with the main pain point unresolved');
 assert(debugLog.includes('R7-1-blue-noise-seed-mix-no-go-closeout'), 'Debug_Log must record the R7-1 no-go closeout');
 
 console.log('PASS  R7-1 blue noise sampling contract');

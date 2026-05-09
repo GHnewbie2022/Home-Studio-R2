@@ -17,6 +17,8 @@ uniform float uMovementProtectionBlend;
 uniform float uMovementProtectionLowSppPreviewStrength;
 uniform float uMovementProtectionSpatialPreviewStrength;
 uniform float uMovementProtectionWidePreviewStrength;
+uniform float uR73QuickPreviewFillMode;
+uniform float uR73QuickPreviewFillStrength;
 
 // R2-UI Bloom：multi-pass 做好的 1/4 解析度 bloom 貼圖，這裡只負責 composite
 uniform sampler2D tBloomTexture;
@@ -436,6 +438,37 @@ void main()
 
 		vec3 movementSpatialMixHdr = mix(movementClampedHdr, movementSpatialPreviewHdr, 0.55);
 		filteredPixelColor = mix(filteredPixelColor, movementSpatialMixHdr, spatialStrength);
+	}
+
+	if (uR73QuickPreviewFillMode > 0.5 && uR73QuickPreviewFillStrength > 0.0)
+	{
+		float r73QuickPreviewStrength = clamp(uR73QuickPreviewFillStrength, 0.0, 1.0);
+		float r73QuickPreviewLowSppFade = 1.0 - smoothstep(4.0, 24.0, uSampleCounter);
+		vec3 r73QuickPreviewWideSum =
+			m37[ 0].rgb + m37[ 1].rgb + m37[ 2].rgb + m37[ 3].rgb + m37[ 4].rgb +
+			m37[ 5].rgb + m37[ 6].rgb + m37[ 7].rgb + m37[ 8].rgb + m37[ 9].rgb +
+			m37[10].rgb + m37[11].rgb + m37[12].rgb + m37[13].rgb + m37[14].rgb +
+			m37[15].rgb + m37[16].rgb + m37[17].rgb + m37[18].rgb + m37[19].rgb +
+			m37[20].rgb + m37[21].rgb + m37[22].rgb + m37[23].rgb + m37[24].rgb +
+			m37[25].rgb + m37[26].rgb + m37[27].rgb + m37[28].rgb + m37[29].rgb +
+			m37[30].rgb + m37[31].rgb + m37[32].rgb + m37[33].rgb + m37[34].rgb +
+			m37[35].rgb + m37[36].rgb;
+		vec3 r73QuickPreviewFillHdr = r73QuickPreviewWideSum * (uOneOverSampleCounter / 37.0);
+		float r73QuickPreviewCenterLuma = dot(filteredPixelColor, vec3(0.299, 0.587, 0.114));
+		float r73QuickPreviewFillLuma = dot(r73QuickPreviewFillHdr, vec3(0.299, 0.587, 0.114));
+		float r73QuickPreviewHighLimit = max(r73QuickPreviewFillLuma * 1.45, r73QuickPreviewFillLuma + 0.045);
+		float r73QuickPreviewLowLift = r73QuickPreviewFillLuma * 0.84;
+		vec3 r73QuickPreviewClampedHdr = filteredPixelColor;
+		if (r73QuickPreviewCenterLuma > r73QuickPreviewHighLimit && r73QuickPreviewCenterLuma > 0.0001)
+			r73QuickPreviewClampedHdr *= r73QuickPreviewHighLimit / r73QuickPreviewCenterLuma;
+		if (r73QuickPreviewCenterLuma < r73QuickPreviewFillLuma * 0.58)
+			r73QuickPreviewClampedHdr = max(r73QuickPreviewClampedHdr, r73QuickPreviewFillHdr * 0.84);
+		vec3 r73QuickPreviewDenoisedHdr = mix(r73QuickPreviewClampedHdr, r73QuickPreviewFillHdr, 0.62);
+		r73QuickPreviewDenoisedHdr = max(r73QuickPreviewDenoisedHdr, vec3(r73QuickPreviewLowLift * 0.25));
+		float r73QuickPreviewBrightEnough = smoothstep(0.018, 0.11, r73QuickPreviewFillLuma);
+		float r73QuickPreviewEdgeGate = nextToAnEdgePixel == FALSE ? 1.0 : 0.0;
+		float r73QuickPreviewFillMask = r73QuickPreviewBrightEnough * r73QuickPreviewEdgeGate * r73QuickPreviewLowSppFade;
+		filteredPixelColor = mix(filteredPixelColor, r73QuickPreviewDenoisedHdr, r73QuickPreviewFillMask * r73QuickPreviewStrength);
 	}
 
 	// R2-UI Bloom：multi-pass composite（1 次 bilinear fetch，上採樣 1/4 res bloom 貼圖）

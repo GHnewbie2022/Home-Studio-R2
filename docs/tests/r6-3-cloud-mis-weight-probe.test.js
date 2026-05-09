@@ -187,7 +187,7 @@ assert(js.includes("sampleFadeMeaning: 'fullUntilMaxSamplesThenSmoothFadeForSame
 assert(shader.includes('smoothstep(maxSamples, maxSamples + fadeSamples, uSampleCounter)'), 'Same-surface dark-fill shader must hold through maxSamples then fade smoothly');
 assert(js.includes('bsdfHitPdf.eventMass > 0'), 'Cloud MIS weight probe must not treat zero-event BSDF PDF readback as alias evidence');
 assert(js.includes('window.setCloudSameSurfaceDarkFillCandidate = function'), 'JS must preserve same-surface dark-fill candidate controls');
-assert(js.includes('Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v6-no-go'), 'JS shader cache token must identify R7-1 blue noise sampling');
+assert(js.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al'), 'JS shader cache token must identify current R7 experiment');
 
 assert(js.includes('r6-3-phase2-first-frame-burst-v19'), 'JS must label the v19 first-frame recovery experiment');
 assert(initCommon.includes('firstFrameRecoveryTargetSamples = 4'), 'First-frame recovery must default to 4 SPP');
@@ -205,7 +205,7 @@ assert(initCommon.includes('firstFrameRecoveryClearWhileMoving = true'), 'First-
 assert(initCommon.includes('firstFrameRecoveryActiveRenderCameraMoving = false'), 'First-frame burst passes must render as still samples after clearing stale accumulation');
 assert(initCommon.includes('firstFrameRecoveryPassTarget = Math.max(firstFrameRecoveryPassTarget, firstFrameRecoveryActiveTargetSamples)'), 'First-frame recovery must use the active target selected for normal or moving preview frames');
 assert(initCommon.includes('for (var firstFrameRecoveryPassSample = sampleCounter; firstFrameRecoveryPassSample <= firstFrameRecoveryPassTarget; firstFrameRecoveryPassSample += 1.0)'), 'Render loop must execute multiple accumulation passes inside one visible frame');
-assert(html.includes('InitCommon.js?v=r7-1-blue-noise-sampling-v6-no-go'), 'HTML must cache-bust InitCommon for R7-1');
-assert(html.includes('Home_Studio.js?v=r7-1-blue-noise-sampling-v6-no-go'), 'HTML must cache-bust Home_Studio JS for R7-1 blue noise sampling');
+assert(html.includes('InitCommon.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust InitCommon for current R7 experiment');
+assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust Home_Studio JS for current R7 experiment');
 
 console.log('PASS  R6-3 Cloud MIS weight probe contract');

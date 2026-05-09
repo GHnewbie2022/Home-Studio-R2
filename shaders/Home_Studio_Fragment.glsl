@@ -35,6 +35,9 @@ uniform float uMaxBounces; // R2-UI：最大反彈次數 1~14，runtime 可調�
 uniform sampler2D tBorrowTexture; // R6 LGG-r16 J3：1/8 res 14 彈借光 buffer，主 pass 在 terminal 採樣
 uniform float uBorrowStrength;    // R6 LGG-r16 J3：借光強度 0~1，0=關（不跑借光 pass）
 uniform float uIsBorrowPass;      // R6 LGG-r16 J3：1=當前 frame 是借光 pass，shader 跳過借光採樣避免遞迴
+uniform float uR73QuickPreviewTerminalMode;
+uniform float uR73QuickPreviewTerminalStrength;
+uniform int uR73GikWallProbeMode;
 
 // R2-13 X-ray 透視剝離
 uniform vec3 uCamPos;
@@ -81,6 +84,9 @@ uniform float uLegacyGain;
 //   uActiveLightIndex[11]：slot→real idx LUT（未用 slot 填 -1，僅前 count 個有效）。
 uniform int uActiveLightCount;
 uniform int uActiveLightIndex[11];
+uniform float uActiveLightPickPdf[11];
+uniform float uActiveLightPickCdf[11];
+uniform float uR72LightImportanceSamplingMode;
 uniform float uR3ProbeSentinel;
 uniform int uCloudVisibilityProbeMode;
 uniform int uCloudVisibilityProbeRod;
@@ -394,6 +400,38 @@ float pdfNeeForLight(vec3 x, vec3 lightPoint, vec3 lightNormal, float lightArea,
 	float safeArea = max(lightArea, 1e-6);
 	return selectPdfArg * (dist2 / (cosLight * safeArea));
 }
+
+int sampleActiveLightSlot(float randomValue)
+{
+	if (uActiveLightCount <= 0)
+		return 0;
+	if (uR72LightImportanceSamplingMode < 0.5)
+		return clamp(int(floor(randomValue * float(uActiveLightCount))), 0, uActiveLightCount - 1);
+	for (int i = 0; i < 11; i++)
+	{
+		if (i >= uActiveLightCount)
+			break;
+		if (randomValue <= uActiveLightPickCdf[i])
+			return i;
+	}
+	return uActiveLightCount - 1;
+}
+
+float activeLightPickPdfByIndex(int lightIndex)
+{
+	if (uActiveLightCount <= 0)
+		return 1e-6;
+	if (uR72LightImportanceSamplingMode < 0.5)
+		return 1.0 / float(uActiveLightCount);
+	for (int i = 0; i < 11; i++)
+	{
+		if (i >= uActiveLightCount)
+			break;
+		if (uActiveLightIndex[i] == lightIndex)
+			return max(uActiveLightPickPdf[i], 1e-6);
+	}
+	return 1e-6;
+}
 // R6-3 Phase 1C：Cloud 鋁槽 1/4 圓弧 diffuser。
 // 16mm × 16mm 外接正方形對應完整 1/4 pizza，發光弧面半徑 16mm。
 // uCloudFaceArea = 0.016 × rodLength；真實弧面 A_arc = (π/2) × uCloudFaceArea。
@@ -565,7 +603,7 @@ bool cloudMisWeightProbeForcedBsdfHit(vec3 x, vec3 nl, vec3 sourceMask, out vec3
 	float cloudArcArea = uCloudFaceArea[bestRod] * CLOUD_ARC_AREA_SCALE;
 	float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(bestRod, cloudArcArea, bestNormal);
 	float pBsdf = cosWeightedPdf(bestDir, nl);
-	float pNeeReverse = pdfNeeForLight(x, bestTarget, bestNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+	float pNeeReverse = pdfNeeForLight(x, bestTarget, bestNormal, reverseCloudPdfArea, activeLightPickPdfByIndex(bestRod + 7));
 	float wBsdf = misPowerWeight(pBsdf, pNeeReverse);
 	vec3 emission = min(uCloudEmission[bestRod], vec3(uEmissiveClamp));
 	vec3 weightedContribution = min(sourceMask * emission * wBsdf, vec3(uEmissiveClamp));
@@ -788,10 +826,10 @@ vec3 sampleStochasticLightDynamic(vec3 x, vec3 nl, Quad ql0, out vec3 throughput
 		pickedIdx = -1;
 		return nl;
 	}
-	int slot = int(floor(rng() * float(uActiveLightCount)));
-	slot = clamp(slot, 0, uActiveLightCount - 1);
+	int slot = sampleActiveLightSlot(rng());
 	int neeIdx = uActiveLightIndex[slot];
-	float selectPdf = 1.0 / float(uActiveLightCount);
+	float selectPdf = uActiveLightPickPdf[slot];
+	selectPdf = max(selectPdf, 1e-6);
 	pickedIdx = neeIdx;       // R3-6：observability + MIS reverse-NEE 用
 	pdfNeeOmega = 0.0;        // 預設；每分支覆寫
 	if (neeIdx == 0)
@@ -1627,6 +1665,14 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			firstVisibleObjectID = hitObjectID;
 			firstVisibleNormal = nl;
 			firstVisiblePosition = x;
+			if (uR73GikWallProbeMode > 0)
+			{
+				bool r73ProbeMatch =
+					(uR73GikWallProbeMode == 1 && cloudVisibleSurfaceIsGik(firstVisibleHitType)) ||
+					(uR73GikWallProbeMode == 2 && cloudVisibleSurfaceIsWall(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal));
+				accumCol += r73ProbeMatch ? vec3(1.0) : vec3(0.0);
+				break;
+			}
 			// 有貼圖的表面：標記為 edge pixel，跳過降噪模糊核心
 			if (hitType == BACKDROP || hitType == SPEAKER || hitType == WOOD_DOOR || hitType == IRON_DOOR || hitType == SUBWOOFER || hitType == ACOUSTIC_PANEL || hitType == OUTLET)
 				pixelSharpness = 1.0;
@@ -1695,7 +1741,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				vec3 lampExt1 = light.v1 - light.v0;
 				vec3 lampExt2 = light.v3 - light.v0;
 				float lampArea = length(lampExt1) * length(lampExt2);
-				float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, lampCenter, light.normal, lampArea, 1.0 / float(uActiveLightCount));
+				float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, lampCenter, light.normal, lampArea, activeLightPickPdfByIndex(0));
 				float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
 				accumCol += mask * hitEmission * wBsdf;
 			}
@@ -2410,7 +2456,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 						float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
 						vec3 reverseEmissionNormal = hitNormal;
 						float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);
-						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, activeLightPickPdfByIndex(rodIdx + 7));
 						float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
 						vec3 weightedContribution = min(mask * emission * wBsdf, vec3(uEmissiveClamp));
 						vec3 unweightedContribution = min(mask * emission, vec3(uEmissiveClamp));
@@ -2465,7 +2511,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 						float cloudArcArea = uCloudFaceArea[rodIdx] * CLOUD_ARC_AREA_SCALE;
 						vec3 reverseEmissionNormal = hitNormal;
 						float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);
-						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+						float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, activeLightPickPdfByIndex(rodIdx + 7));
 						float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
 						if (uCloudMisWeightProbeMode == 7)
 							accumCol += cloudMisWeightProbeBsdfHitContributionSentinel();
@@ -2515,7 +2561,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					float reverseLongOffset = clamp(dot(x - arcCenter, longAxis), -longHalf, longHalf);
 					vec3 reverseEmissionNormal = (uCloudVisibilityProbeMode > 0) ? -hitNormal : hitNormal;
 					float reverseCloudPdfArea = cloudThetaImportanceEffectiveArcAreaForNormal(rodIdx, cloudArcArea, hitNormal);
-					float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount));
+					float pNeeReverse = pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, activeLightPickPdfByIndex(rodIdx + 7));
 					float wBsdf = misPowerWeight(misPBsdfStashed, pNeeReverse);
 					accumCol += min(mask * emission * wBsdf, vec3(uEmissiveClamp));
 				}
@@ -2657,6 +2703,14 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			float borrowLuma = dot(borrowedAvg, vec3(0.299, 0.587, 0.114));
 			float positionGate = 1.0 - smoothstep(0.0, 0.3, borrowLuma);
 			accumCol += mask * borrowedAvg * uBorrowStrength * positionGate;
+		}
+		if (uR73QuickPreviewTerminalMode > 0.5 && uR73QuickPreviewTerminalStrength > 0.0)
+		{
+			float r73QuickPreviewSampleFade = 1.0 - smoothstep(4.0, 24.0, uSampleCounter);
+			vec3 r73QuickPreviewTerminalColor = vec3(0.075, 0.066, 0.054);
+			float r73QuickPreviewSkyFacing = clamp(nl.y * 0.5 + 0.5, 0.0, 1.0);
+			r73QuickPreviewTerminalColor *= mix(0.72, 1.18, r73QuickPreviewSkyFacing);
+			accumCol += mask * r73QuickPreviewTerminalColor * uR73QuickPreviewTerminalStrength * r73QuickPreviewSampleFade;
 		}
 	}
 

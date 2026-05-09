@@ -70,6 +70,8 @@ let TWO_PI = Math.PI * 2;
 let sampleCounter = 0.0; // will get increased by 1 in animation loop before rendering
 let frameCounter = 1.0; // 1 instead of 0 because it is used as a rng() seed in pathtracing shader
 let samplingPaused = false;
+let samplingStepOnceRequested = false;
+let samplingStepHistory = [];
 let firstFrameRecoveryEnabled = true;
 let firstFrameRecoveryTargetSamples = 4;
 let firstFrameRecoveryMovingTargetSamples = 1;
@@ -123,6 +125,10 @@ let movementProtectionPeakPreviewStrength = 0.0;
 let movementProtectionPeakPreviewSamples = 0;
 let movementProtectionPeakPreviewConfig = 0;
 let movementProtectionLastInvalidationReason = 'initial';
+const R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT = [3.20, 1.70, 1.50, 1.25];
+let r73QuickPreviewFillEnabled = true;
+let r73QuickPreviewFillStrength = R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0];
+let r73QuickPreviewFillEffectiveStrength = 1.00;
 let cameraIsMoving = false;
 let cameraRecentlyMoving = false;
 let isPaused = true;
@@ -235,6 +241,7 @@ window.reportFirstFrameRecoveryConfig = function()
 		targetSamples: firstFrameRecoveryTargetSamples,
 		movingTargetSamples: firstFrameRecoveryMovingTargetSamples,
 		configTargetSamples: firstFrameRecoveryConfigTargetSamples(cameraIsMoving),
+		c3c4DropVisibleFirstSpp: firstFrameRecoveryConfigTargetSamples(true) === 2,
 		clearWhileMoving: firstFrameRecoveryClearWhileMoving,
 		lastPassCount: firstFrameRecoveryLastPassCount,
 		lastReason: firstFrameRecoveryLastReason,
@@ -245,7 +252,41 @@ window.reportFirstFrameRecoveryConfig = function()
 
 window.setSamplingPaused = function(paused)
 {
+	var wasSamplingPaused = samplingPaused;
 	samplingPaused = !!paused;
+	if (!samplingPaused)
+	{
+		samplingStepOnceRequested = false;
+		resetSamplingStepHistory();
+	}
+	else if (!wasSamplingPaused || samplingStepHistory.length === 0)
+	{
+		captureSamplingStepHistoryState();
+	}
+	if (typeof window.updateSamplingControls === 'function')
+		window.updateSamplingControls();
+	return window.reportSamplingPaused();
+};
+
+window.requestSamplingStepOnce = function()
+{
+	samplingPaused = true;
+	if (samplingStepHistory.length === 0)
+		captureSamplingStepHistoryState();
+	samplingStepOnceRequested = true;
+	if (typeof window.updateSamplingControls === 'function')
+		window.updateSamplingControls();
+	return window.reportSamplingPaused();
+};
+
+window.requestSamplingStepBack = function()
+{
+	if (!samplingPaused || samplingStepOnceRequested || samplingStepHistory.length <= 1)
+		return window.reportSamplingPaused();
+
+	disposeSamplingStepHistoryState(samplingStepHistory.pop());
+	var previousState = samplingStepHistory[samplingStepHistory.length - 1];
+	restoreSamplingStepHistoryState(previousState);
 	if (typeof window.updateSamplingControls === 'function')
 		window.updateSamplingControls();
 	return window.reportSamplingPaused();
@@ -255,9 +296,120 @@ window.reportSamplingPaused = function()
 {
 	return {
 		paused: samplingPaused,
+		stepOncePending: samplingStepOnceRequested,
+		stepHistoryDepth: Math.max(0, samplingStepHistory.length - 1),
 		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 	};
 };
+
+function createSamplingHistoryRenderTarget(sourceRenderTarget)
+{
+	if (!sourceRenderTarget || !sourceRenderTarget.texture || !THREE)
+		return null;
+	var sourceTexture = sourceRenderTarget.texture;
+	var historyRenderTarget = new THREE.WebGLRenderTarget(sourceRenderTarget.width, sourceRenderTarget.height, {
+		minFilter: sourceTexture.minFilter,
+		magFilter: sourceTexture.magFilter,
+		format: sourceTexture.format,
+		type: sourceTexture.type,
+		depthBuffer: false,
+		stencilBuffer: false
+	});
+	historyRenderTarget.texture.generateMipmaps = false;
+	return historyRenderTarget;
+}
+
+function copySamplingRenderTarget(sourceRenderTarget, targetRenderTarget)
+{
+	if (!renderer || !sourceRenderTarget || !targetRenderTarget || !screenCopyUniforms || !screenCopyScene || !orthoCamera)
+		return false;
+	var savedSourceTexture = screenCopyUniforms.tPathTracedImageTexture.value;
+	screenCopyUniforms.tPathTracedImageTexture.value = sourceRenderTarget.texture;
+	renderer.setRenderTarget(targetRenderTarget);
+	renderer.render(screenCopyScene, orthoCamera);
+	screenCopyUniforms.tPathTracedImageTexture.value = savedSourceTexture;
+	return true;
+}
+
+function disposeSamplingStepHistoryState(state)
+{
+	if (!state)
+		return;
+	['pathTracing', 'screenCopy', 'borrowPathTracing', 'borrowScreenCopy'].forEach(function(key)
+	{
+		if (state[key] && typeof state[key].dispose === 'function')
+			state[key].dispose();
+	});
+}
+
+function resetSamplingStepHistory()
+{
+	samplingStepHistory.forEach(disposeSamplingStepHistoryState);
+	samplingStepHistory = [];
+}
+
+function captureSamplingStepHistoryState()
+{
+	if (!samplingPaused || !pathTracingRenderTarget || !screenCopyRenderTarget)
+		return null;
+
+	var state = {
+		sampleCounter: sampleCounter,
+		frameCounter: frameCounter,
+		pathTracing: createSamplingHistoryRenderTarget(pathTracingRenderTarget),
+		screenCopy: createSamplingHistoryRenderTarget(screenCopyRenderTarget),
+		borrowPathTracing: borrowPathTracingRenderTarget ? createSamplingHistoryRenderTarget(borrowPathTracingRenderTarget) : null,
+		borrowScreenCopy: borrowScreenCopyRenderTarget ? createSamplingHistoryRenderTarget(borrowScreenCopyRenderTarget) : null
+	};
+
+	var copied = state.pathTracing && state.screenCopy
+		&& copySamplingRenderTarget(pathTracingRenderTarget, state.pathTracing)
+		&& copySamplingRenderTarget(screenCopyRenderTarget, state.screenCopy);
+	if (copied && borrowPathTracingRenderTarget && state.borrowPathTracing)
+		copied = copySamplingRenderTarget(borrowPathTracingRenderTarget, state.borrowPathTracing);
+	if (copied && borrowScreenCopyRenderTarget && state.borrowScreenCopy)
+		copied = copySamplingRenderTarget(borrowScreenCopyRenderTarget, state.borrowScreenCopy);
+
+	if (!copied)
+	{
+		disposeSamplingStepHistoryState(state);
+		return null;
+	}
+
+	samplingStepHistory.push(state);
+	return state;
+}
+
+function restoreSamplingStepHistoryState(state)
+{
+	if (!state || !pathTracingRenderTarget || !screenCopyRenderTarget)
+		return false;
+
+	var copied = copySamplingRenderTarget(state.pathTracing, pathTracingRenderTarget)
+		&& copySamplingRenderTarget(state.screenCopy, screenCopyRenderTarget);
+	if (copied && state.borrowPathTracing && borrowPathTracingRenderTarget)
+		copied = copySamplingRenderTarget(state.borrowPathTracing, borrowPathTracingRenderTarget);
+	if (copied && state.borrowScreenCopy && borrowScreenCopyRenderTarget)
+		copied = copySamplingRenderTarget(state.borrowScreenCopy, borrowScreenCopyRenderTarget);
+	if (!copied)
+		return false;
+
+	sampleCounter = state.sampleCounter;
+	frameCounter = state.frameCounter;
+	firstFrameRecoveryLastFinalSamples = Math.round(sampleCounter);
+	if (pathTracingUniforms)
+	{
+		if (pathTracingUniforms.uSampleCounter) pathTracingUniforms.uSampleCounter.value = sampleCounter;
+		if (pathTracingUniforms.uFrameCounter) pathTracingUniforms.uFrameCounter.value = frameCounter;
+	}
+	if (screenOutputUniforms)
+	{
+		if (screenOutputUniforms.uSampleCounter) screenOutputUniforms.uSampleCounter.value = sampleCounter;
+		if (screenOutputUniforms.uOneOverSampleCounter) screenOutputUniforms.uOneOverSampleCounter.value = 1.0 / Math.max(1.0, sampleCounter);
+	}
+	postProcessChanged = true;
+	return true;
+}
 
 window.setR71BlueNoiseSamplingEnabled = function(enabled)
 {
@@ -392,6 +544,9 @@ function firstFrameRecoveryMovementConfigAllowed()
 
 function firstFrameRecoveryConfigTargetSamples(activeCameraMoving)
 {
+	var config = (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0;
+	if ((config === 3 || config === 4) && activeCameraMoving)
+		return 2;
 	if (!movementProtectionConfigAllowed())
 		return 1;
 	if (activeCameraMoving)
@@ -408,6 +563,320 @@ function movementPreviewActive(activeCameraMoving)
 {
 	return movementPreviewEnabled && movementProtectionEnabled && movementProtectionConfigAllowed() && !!activeCameraMoving;
 }
+
+function r73QuickPreviewFillConfigAllowed()
+{
+	var config = (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0;
+	return config === 3;
+}
+
+function r73QuickPreviewFillQuickModeActive()
+{
+	var btnB = document.getElementById('btnGroupB');
+	return !!(btnB && btnB.classList.contains('glow-white'));
+}
+
+function currentR73QuickPreviewFillSamples()
+{
+	return Math.max(1.0, Math.round(typeof sampleCounter === 'number' ? sampleCounter : 1.0));
+}
+
+function computeR73QuickPreviewFillEffectiveStrength(samples)
+{
+	samples = Math.max(1.0, Math.round(Number(samples) || 1.0));
+	if (samples <= 4.0)
+		return R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[samples - 1];
+	var spp4Strength = R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[3];
+	if (spp4Strength <= 1.0)
+		return spp4Strength;
+	return 1.0 + (spp4Strength - 1.0) / Math.pow(2.0, samples - 4.0);
+}
+
+function updateR73QuickPreviewFillUniforms()
+{
+	var applied = r73QuickPreviewFillEnabled && r73QuickPreviewFillConfigAllowed() && r73QuickPreviewFillQuickModeActive();
+	r73QuickPreviewFillStrength = R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0];
+	var effectiveStrength = computeR73QuickPreviewFillEffectiveStrength(currentR73QuickPreviewFillSamples());
+	r73QuickPreviewFillEffectiveStrength = effectiveStrength;
+	if (screenOutputUniforms && screenOutputUniforms.uR73QuickPreviewFillMode)
+		screenOutputUniforms.uR73QuickPreviewFillMode.value = applied ? 1.0 : 0.0;
+	if (screenOutputUniforms && screenOutputUniforms.uR73QuickPreviewFillStrength)
+		screenOutputUniforms.uR73QuickPreviewFillStrength.value = effectiveStrength;
+	if (pathTracingUniforms && pathTracingUniforms.uR73QuickPreviewTerminalMode)
+		pathTracingUniforms.uR73QuickPreviewTerminalMode.value = applied ? 1.0 : 0.0;
+	if (pathTracingUniforms && pathTracingUniforms.uR73QuickPreviewTerminalStrength)
+		pathTracingUniforms.uR73QuickPreviewTerminalStrength.value = effectiveStrength;
+	return applied;
+}
+
+function updateR73QuickPreviewFillControls()
+{
+	var checkbox = document.getElementById('chk-r73-quick-preview-fill');
+	if (checkbox)
+		checkbox.checked = !!r73QuickPreviewFillEnabled;
+}
+
+function initR73QuickPreviewFillControls()
+{
+	var checkbox = document.getElementById('chk-r73-quick-preview-fill');
+	if (!checkbox)
+		return;
+	checkbox.checked = !!r73QuickPreviewFillEnabled;
+	checkbox.addEventListener('change', function()
+	{
+		window.setR73QuickPreviewFillEnabled(checkbox.checked);
+	}, false);
+}
+
+window.setR73QuickPreviewFillEnabled = function(enabled)
+{
+	r73QuickPreviewFillEnabled = !!enabled;
+	r73QuickPreviewFillStrength = R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0];
+	updateR73QuickPreviewFillUniforms();
+	updateR73QuickPreviewFillControls();
+	if (typeof wakeRender === 'function')
+		wakeRender();
+	return window.reportR73QuickPreviewFillConfig();
+};
+
+window.reportR73QuickPreviewFillConfig = function()
+{
+	var applied = updateR73QuickPreviewFillUniforms();
+	return {
+		version: 'r7-3-quick-preview-fill-v3al',
+		enabled: r73QuickPreviewFillEnabled,
+		strength: r73QuickPreviewFillStrength,
+		baseStrength: R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0],
+		strengthCurve: R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT.slice(),
+		effectiveStrength: r73QuickPreviewFillEffectiveStrength,
+		configAllowed: r73QuickPreviewFillConfigAllowed(),
+		quickPreviewActive: r73QuickPreviewFillQuickModeActive(),
+		r73QuickPreviewFillApplied: applied,
+		uniformMode: screenOutputUniforms && screenOutputUniforms.uR73QuickPreviewFillMode
+			? screenOutputUniforms.uR73QuickPreviewFillMode.value
+			: null,
+		uniformStrength: screenOutputUniforms && screenOutputUniforms.uR73QuickPreviewFillStrength
+			? screenOutputUniforms.uR73QuickPreviewFillStrength.value
+			: null,
+		terminalUniformMode: pathTracingUniforms && pathTracingUniforms.uR73QuickPreviewTerminalMode
+			? pathTracingUniforms.uR73QuickPreviewTerminalMode.value
+			: null,
+		terminalUniformStrength: pathTracingUniforms && pathTracingUniforms.uR73QuickPreviewTerminalStrength
+			? pathTracingUniforms.uR73QuickPreviewTerminalStrength.value
+			: null,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
+		currentPanelConfig: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0
+	};
+};
+
+function captureR73ScreenLumaData()
+{
+	if (!renderer || !renderer.domElement || !screenOutputScene || !orthoCamera)
+		return null;
+	var width = renderer.domElement.width;
+	var height = renderer.domElement.height;
+	renderer.setRenderTarget(null);
+	renderer.render(screenOutputScene, orthoCamera);
+	var canvas = document.createElement('canvas');
+	canvas.width = width;
+	canvas.height = height;
+	var ctx = canvas.getContext('2d', { willReadFrequently: true });
+	ctx.drawImage(renderer.domElement, 0, 0, width, height);
+	var data = ctx.getImageData(0, 0, width, height).data;
+	var luma = new Float32Array(width * height);
+	for (var i = 0, p = 0; i < data.length; i += 4, p += 1)
+	{
+		var r = data[i] / 255;
+		var g = data[i + 1] / 255;
+		var b = data[i + 2] / 255;
+		luma[p] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	}
+	return { width: width, height: height, luma: luma };
+}
+
+function renderR73GikWallProbeSample(mode)
+{
+	if (!renderer || !pathTracingRenderTarget || !screenCopyRenderTarget || !pathTracingScene || !worldCamera || !screenCopyScene || !orthoCamera || !pathTracingUniforms || !pathTracingUniforms.uR73GikWallProbeMode)
+		return false;
+	renderer.setRenderTarget(pathTracingRenderTarget);
+	renderer.clear();
+	renderer.setRenderTarget(screenCopyRenderTarget);
+	renderer.clear();
+	if (borrowPathTracingRenderTarget && borrowScreenCopyRenderTarget)
+	{
+		renderer.setRenderTarget(borrowPathTracingRenderTarget);
+		renderer.clear();
+		renderer.setRenderTarget(borrowScreenCopyRenderTarget);
+		renderer.clear();
+	}
+	pathTracingUniforms.uR73GikWallProbeMode.value = mode;
+	if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial)
+		pathTracingMaterial.uniformsNeedUpdate = true;
+	sampleCounter = 1.0;
+	frameCounter = 2.0;
+	cameraIsMoving = false;
+	cameraRecentlyMoving = false;
+	needClearAccumulation = false;
+	cameraControlsObject.updateMatrixWorld(true);
+	worldCamera.updateMatrixWorld(true);
+	pathTracingUniforms.uCameraIsMoving.value = false;
+	pathTracingUniforms.uSampleCounter.value = sampleCounter;
+	pathTracingUniforms.uFrameCounter.value = frameCounter;
+	pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+	pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
+	pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+	pathTracingUniforms.uApertureSize.value = apertureSize;
+	if (screenOutputUniforms)
+	{
+		if (screenOutputUniforms.uCameraIsMoving) screenOutputUniforms.uCameraIsMoving.value = false;
+		if (screenOutputUniforms.uSampleCounter) screenOutputUniforms.uSampleCounter.value = sampleCounter;
+		if (screenOutputUniforms.uOneOverSampleCounter) screenOutputUniforms.uOneOverSampleCounter.value = 1.0;
+	}
+	renderer.setRenderTarget(pathTracingRenderTarget);
+	renderer.render(pathTracingScene, worldCamera);
+	renderer.setRenderTarget(screenCopyRenderTarget);
+	renderer.render(screenCopyScene, orthoCamera);
+	renderer.setRenderTarget(null);
+	return true;
+}
+
+function captureR73GikWallSurfaceMask(mode)
+{
+	var previousMode = pathTracingUniforms && pathTracingUniforms.uR73GikWallProbeMode
+		? pathTracingUniforms.uR73GikWallProbeMode.value
+		: 0;
+	if (!renderR73GikWallProbeSample(mode))
+		return null;
+	var mask = captureR73ScreenLumaData();
+	if (pathTracingUniforms && pathTracingUniforms.uR73GikWallProbeMode)
+		pathTracingUniforms.uR73GikWallProbeMode.value = previousMode;
+	if (typeof pathTracingMaterial !== 'undefined' && pathTracingMaterial)
+		pathTracingMaterial.uniformsNeedUpdate = true;
+	return mask;
+}
+
+function summarizeR73GikWallLuma(lumaData, maskData)
+{
+	if (!lumaData || !maskData || lumaData.width !== maskData.width || lumaData.height !== maskData.height)
+		return null;
+	var selected = [];
+	var sum = 0;
+	var maxValue = 0;
+	var threshold = 0.2;
+	for (var i = 0; i < maskData.luma.length; i += 1)
+	{
+		if (maskData.luma[i] <= threshold)
+			continue;
+		var value = lumaData.luma[i];
+		selected.push(value);
+		sum += value;
+		if (value > maxValue)
+			maxValue = value;
+	}
+	if (selected.length === 0)
+		return { pixels: 0, meanLuma: null, p50Luma: null, p90Luma: null, maxLuma: null };
+	selected.sort(function(a, b) { return a - b; });
+	var p50Index = Math.min(selected.length - 1, Math.floor(selected.length * 0.50));
+	var p90Index = Math.min(selected.length - 1, Math.floor(selected.length * 0.90));
+	return {
+		pixels: selected.length,
+		meanLuma: Number((sum / selected.length).toFixed(6)),
+		p50Luma: Number(selected[p50Index].toFixed(6)),
+		p90Luma: Number(selected[p90Index].toFixed(6)),
+		maxLuma: Number(maxValue.toFixed(6))
+	};
+}
+
+function r73SwitchToConfigQuickPreview(config)
+{
+	if (typeof applyPanelConfig === 'function')
+		applyPanelConfig(config);
+	var btnB = document.getElementById('btnGroupB');
+	if (btnB && !btnB.classList.contains('glow-white'))
+		btnB.click();
+	updateR73QuickPreviewFillUniforms();
+	if (typeof wakeRender === 'function')
+		wakeRender();
+}
+
+async function measureR73GikWallConfig(config, targetSamples, timeoutMs)
+{
+	r73SwitchToConfigQuickPreview(config);
+	var waitResult = typeof window.waitForCloudVisibilityProbeSamples === 'function'
+		? await window.waitForCloudVisibilityProbeSamples(targetSamples, timeoutMs, 100)
+		: { targetSamples: targetSamples, samples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0), timedOut: true, elapsedMs: 0 };
+	updateR73QuickPreviewFillUniforms();
+	var lumaData = captureR73ScreenLumaData();
+	var gikMask = captureR73GikWallSurfaceMask(1);
+	var wallMask = captureR73GikWallSurfaceMask(2);
+	var gikSummary = summarizeR73GikWallLuma(lumaData, gikMask);
+	var wallSummary = summarizeR73GikWallLuma(lumaData, wallMask);
+	return {
+		config: config,
+		targetSamples: targetSamples,
+		waitResult: waitResult,
+		gikSummary: gikSummary,
+		wallSummary: wallSummary,
+		surfaceLumaRatio: gikSummary && wallSummary && wallSummary.meanLuma > 0
+			? Number((gikSummary.meanLuma / wallSummary.meanLuma).toFixed(6))
+			: null
+	};
+}
+
+window.reportR73GikWallLumaComparisonAfterSamples = async function(targetSamples, timeoutMs)
+{
+	var target = Math.max(1, Math.trunc(Number(targetSamples) || 2));
+	var timeout = Math.max(1000, Math.trunc(Number(timeoutMs) || 120000));
+	var original = {
+		config: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0,
+		probeMode: pathTracingUniforms && pathTracingUniforms.uR73GikWallProbeMode ? pathTracingUniforms.uR73GikWallProbeMode.value : 0,
+		fillEnabled: r73QuickPreviewFillEnabled,
+		quickPreviewActive: r73QuickPreviewFillQuickModeActive()
+	};
+	try
+	{
+		window.setR73QuickPreviewFillEnabled(true);
+		var c3 = await measureR73GikWallConfig(3, target, timeout);
+		var c4 = await measureR73GikWallConfig(4, target, timeout);
+		var result = {
+			version: 'r7-3-quick-preview-fill-v3al',
+			scope: 'c3c4GikWallQuickPreviewLuma',
+			targetSamples: target,
+			c3: c3,
+			c4: c4,
+			c4OverC3GikMean: c3.gikSummary && c4.gikSummary && c3.gikSummary.meanLuma > 0
+				? Number((c4.gikSummary.meanLuma / c3.gikSummary.meanLuma).toFixed(6))
+				: null,
+			c4OverC3WallMean: c3.wallSummary && c4.wallSummary && c3.wallSummary.meanLuma > 0
+				? Number((c4.wallSummary.meanLuma / c3.wallSummary.meanLuma).toFixed(6))
+				: null,
+			recommendedGikLiftToMatchC3Ratio: c3.surfaceLumaRatio && c4.surfaceLumaRatio > 0
+				? Number((c3.surfaceLumaRatio / c4.surfaceLumaRatio).toFixed(6))
+				: null
+		};
+		console.table([
+			{ config: 'C3', samples: c3.waitResult.samples, gikMean: c3.gikSummary && c3.gikSummary.meanLuma, wallMean: c3.wallSummary && c3.wallSummary.meanLuma, gikWallRatio: c3.surfaceLumaRatio },
+			{ config: 'C4', samples: c4.waitResult.samples, gikMean: c4.gikSummary && c4.gikSummary.meanLuma, wallMean: c4.wallSummary && c4.wallSummary.meanLuma, gikWallRatio: c4.surfaceLumaRatio }
+		]);
+		return result;
+	}
+	finally
+	{
+		if (pathTracingUniforms && pathTracingUniforms.uR73GikWallProbeMode)
+			pathTracingUniforms.uR73GikWallProbeMode.value = original.probeMode;
+		r73QuickPreviewFillEnabled = original.fillEnabled;
+		if (typeof applyPanelConfig === 'function' && original.config > 0)
+			applyPanelConfig(original.config);
+		var btnB = document.getElementById('btnGroupB');
+		if (btnB && original.quickPreviewActive && !btnB.classList.contains('glow-white'))
+			btnB.click();
+		updateR73QuickPreviewFillUniforms();
+		if (typeof wakeRender === 'function')
+			wakeRender();
+	}
+};
+
+initR73QuickPreviewFillControls();
 
 function updateMovementPreviewUniforms(activeCameraMoving)
 {
@@ -1179,6 +1648,8 @@ function initTHREEjs()
 		uMovementProtectionLowSppPreviewStrength: { type: "f", value: 0.0 },
 		uMovementProtectionSpatialPreviewStrength: { type: "f", value: 0.0 },
 		uMovementProtectionWidePreviewStrength: { type: "f", value: 0.0 },
+		uR73QuickPreviewFillMode: { type: "f", value: 0.0 },
+		uR73QuickPreviewFillStrength: { type: "f", value: r73QuickPreviewFillEffectiveStrength },
 		// R2-UI: Bloom composite 強度，0 = 關閉
 		uBloomIntensity: { type: "f", value: 0.03 },
 		// R2-UI: Bloom debug，1.0 = 直接顯示 bloom target（verify pipeline）
@@ -1205,7 +1676,7 @@ function initTHREEjs()
 		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
 	};
 
-	fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r6-3-movement-protection-v22d', function (shaderText)
+fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-quick-preview-fill-v3al', function (shaderText)
 	{
 
 		screenOutputFragmentShader = shaderText;
@@ -1692,7 +2163,8 @@ function animate()
 
 	// now update uniforms that are common to all scenes
 	var wasCameraRecentlyMoving = cameraRecentlyMoving;
-	var samplingPausedForFrame = samplingPaused && !cameraIsMoving;
+	var samplingStepOnceActive = samplingStepOnceRequested && samplingPaused && !cameraIsMoving;
+	var samplingPausedForFrame = samplingPaused && !samplingStepOnceActive && !cameraIsMoving;
 	if (!cameraIsMoving)
 	{
 		if (!samplingPausedForFrame)
@@ -1710,6 +2182,8 @@ function animate()
 
 	if (cameraIsMoving)
 	{
+		if (samplingStepHistory.length > 0)
+			resetSamplingStepHistory();
 		frameCounter += 1.0;
 
 		if (!cameraRecentlyMoving)
@@ -1747,6 +2221,7 @@ function animate()
 	var accumulationWasClearedForThisFrame = false;
 	if (needClearAccumulation)
 	{
+		resetSamplingStepHistory();
 		renderer.setRenderTarget(pathTracingRenderTarget);
 		renderer.clear();
 		renderer.setRenderTarget(screenCopyRenderTarget);
@@ -1782,7 +2257,7 @@ function animate()
 
 	if (!renderingStopped)
 	{
-		if (firstFrameRecoveryEnabled)
+		if (firstFrameRecoveryEnabled && !samplingStepOnceActive)
 		{
 			var firstFrameRecoveryActiveTargetSamples = firstFrameRecoveryConfigTargetSamples(cameraIsMoving);
 			if (accumulationWasClearedForThisFrame)
@@ -1842,6 +2317,7 @@ function animate()
 			screenOutputUniforms.uCameraIsMoving.value = firstFrameRecoveryActiveRenderCameraMoving;
 			screenOutputUniforms.uSampleCounter.value = sampleCounter;
 			screenOutputUniforms.uOneOverSampleCounter.value = 1.0 / sampleCounter;
+			updateR73QuickPreviewFillUniforms();
 
 			// STEP 1A: R6 LGG-r16 J3 借光 pass（1/8 res、14 彈），只在 uBorrowStrength > 0 時跑
 			// 暫時切 uniforms（uMaxBounces=14、uIsBorrowPass=1、tPreviousTexture 換 borrow ping-pong、uResolution 切 1/8）
@@ -1914,6 +2390,15 @@ function animate()
 		screenOutputUniforms.uSampleCounter.value = sampleCounter;
 		screenOutputUniforms.uOneOverSampleCounter.value = 1.0 / sampleCounter;
 	}
+	if (samplingStepOnceActive)
+	{
+		if (!renderingStopped)
+			captureSamplingStepHistoryState();
+		samplingStepOnceRequested = false;
+		samplingPaused = true;
+		if (typeof window.updateSamplingControls === 'function')
+			window.updateSamplingControls();
+	}
 
 	// STEP 2.5 (R2-UI Bloom multi-scale pyramid)
 	// 只在 1) 非休眠、2) bloom 強度 > 0（或 debug on）、3) 所有 bloom material 載入完成 時執行
@@ -1973,6 +2458,7 @@ function animate()
 	if (!renderingStopped || postProcessChanged)
 	{
 		updateMovementProtectionUniforms(cameraIsMoving);
+		updateR73QuickPreviewFillUniforms();
 		renderer.setRenderTarget(null);
 		renderer.render(screenOutputScene, orthoCamera);
 		if (!cameraIsMoving)

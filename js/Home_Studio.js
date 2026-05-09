@@ -31,6 +31,9 @@ const C_DARK_VENT = [0.0, 0.0, 0.0];
 // R3-6.5: Dynamic light pool 常數
 const ACTIVE_LIGHT_POOL_MAX = 11;
 const ACTIVE_LIGHT_LUT_SENTINEL = -1;
+const R7_2_LIGHT_IMPORTANCE_VERSION = 'r7-2-light-importance-sampling-v1-r7-2d-step-history';
+const R7_3_QUICK_PREVIEW_FILL_VERSION = 'r7-3-quick-preview-fill-v3al';
+let r72LightImportanceSamplingEnabled = false;
 
 // === Scene Box Data (single source of truth) ===
 const sceneBoxes = [];
@@ -1430,6 +1433,121 @@ function classifyActiveLightIndex(lightIndex) {
     return 'empty';
 }
 
+function lightImportanceWeightForIndex(lightIndex) {
+    if (!r72LightImportanceSamplingEnabled) return 1;
+    if (lightIndex === 0) return 1;
+    if (lightIndex >= 1 && lightIndex <= 4) return Math.max(1e-6, trackLumens);
+    if (lightIndex >= 5 && lightIndex <= 6) return Math.max(1e-6, trackWideLumens);
+    if (lightIndex >= 7 && lightIndex <= 10) return Math.max(1e-6, CLOUD_ROD_LUMENS[lightIndex - 7]);
+    return 1;
+}
+
+function writeActiveLightSamplingPdfAndCdf(activeCount, activeLightIndex) {
+    if (!pathTracingUniforms || !pathTracingUniforms.uActiveLightPickPdf || !pathTracingUniforms.uActiveLightPickCdf) return;
+    const pdf = pathTracingUniforms.uActiveLightPickPdf.value;
+    const cdf = pathTracingUniforms.uActiveLightPickCdf.value;
+    pdf.fill(0);
+    cdf.fill(0);
+    if (activeCount <= 0) return;
+
+    const weights = [];
+    let weightSum = 0;
+    for (let i = 0; i < activeCount; i++) {
+        const weight = lightImportanceWeightForIndex(activeLightIndex[i]);
+        weights.push(weight);
+        weightSum += weight;
+    }
+    if (!Number.isFinite(weightSum) || weightSum <= 0) {
+        weightSum = activeCount;
+        for (let i = 0; i < activeCount; i++) weights[i] = 1;
+    }
+
+    let running = 0;
+    for (let i = 0; i < activeCount; i++) {
+        const p = weights[i] / weightSum;
+        pdf[i] = p;
+        running += p;
+        cdf[i] = (i === activeCount - 1) ? 1 : running;
+    }
+}
+
+window.setR72LightImportanceSamplingEnabled = function(enabled) {
+    r72LightImportanceSamplingEnabled = !!enabled;
+    if (pathTracingUniforms && pathTracingUniforms.uR72LightImportanceSamplingMode) {
+        pathTracingUniforms.uR72LightImportanceSamplingMode.value = r72LightImportanceSamplingEnabled ? 1.0 : 0.0;
+    }
+    rebuildActiveLightLUT('r7-2-toggle');
+    wakeRender();
+    return window.reportR72LightImportanceSamplingConfig();
+};
+
+window.reportR72LightImportanceSamplingConfig = function() {
+    const activeCount = pathTracingUniforms && pathTracingUniforms.uActiveLightCount
+        ? pathTracingUniforms.uActiveLightCount.value
+        : 0;
+    const activeIndices = pathTracingUniforms && pathTracingUniforms.uActiveLightIndex
+        ? Array.from(pathTracingUniforms.uActiveLightIndex.value).slice(0, activeCount)
+        : [];
+    const pickPdf = pathTracingUniforms && pathTracingUniforms.uActiveLightPickPdf
+        ? Array.from(pathTracingUniforms.uActiveLightPickPdf.value).slice(0, activeCount)
+        : [];
+    const pickCdf = pathTracingUniforms && pathTracingUniforms.uActiveLightPickCdf
+        ? Array.from(pathTracingUniforms.uActiveLightPickCdf.value).slice(0, activeCount)
+        : [];
+    return {
+        version: R7_2_LIGHT_IMPORTANCE_VERSION,
+        enabled: r72LightImportanceSamplingEnabled,
+        uniformMode: pathTracingUniforms && pathTracingUniforms.uR72LightImportanceSamplingMode
+            ? pathTracingUniforms.uR72LightImportanceSamplingMode.value
+            : null,
+        strategy: r72LightImportanceSamplingEnabled ? 'nominalFluxWeightedActiveLights' : 'uniformActiveLights',
+        currentPanelConfig,
+        activeLightCount: activeCount,
+        activeLightIndex: activeIndices,
+        activeLightPickPdf: pickPdf,
+        activeLightPickCdf: pickCdf,
+        lightClassBreakdown: activeIndices.reduce((acc, idx) => {
+            const key = classifyActiveLightIndex(idx);
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, { ceiling: 0, track: 0, wide: 0, cloud: 0, empty: 0 }),
+        c3CloudRodPdf: activeIndices.map((idx, slot) => idx >= 7 && idx <= 10 ? { lightIndex: idx, pdf: pickPdf[slot] } : null).filter(Boolean),
+        c4TrackWidePdf: activeIndices.map((idx, slot) => idx >= 1 && idx <= 6 ? { lightIndex: idx, pdf: pickPdf[slot] } : null).filter(Boolean),
+        renderPathMutation: r72LightImportanceSamplingEnabled,
+        expectedValidation: ['C3 low SPP A/B', 'C4 low SPP A/B', 'C1/C2 regression', '1024 spp brightness guard']
+    };
+};
+
+window.reportR72QuickPreviewIsolationConfig = function() {
+    const btnB = document.getElementById('btnGroupB');
+    return {
+        version: R7_2_LIGHT_IMPORTANCE_VERSION,
+        isolation: 'r7-2b-c3-quick-preview-borrow-zero',
+        currentPanelConfig,
+        quickPreviewActive: !!(btnB && btnB.classList.contains('glow-white')),
+        r72QuickPreviewIsolationBorrowStrength: getSliderValue('slider-borrow-strength-b'),
+        uniformBorrowStrength: pathTracingUniforms && pathTracingUniforms.uBorrowStrength
+            ? pathTracingUniforms.uBorrowStrength.value
+            : null,
+        lightImportance: window.reportR72LightImportanceSamplingConfig()
+    };
+};
+
+window.setR72QuickPreviewIsolation = function(enabled) {
+    const btnConfig3 = document.getElementById('btnConfig3');
+    const btnGroupB = document.getElementById('btnGroupB');
+    if (btnConfig3 && !btnConfig3.checked) btnConfig3.click();
+    else if (currentPanelConfig !== 3) applyPanelConfig(3);
+    if (btnGroupB) btnGroupB.click();
+    setSliderValue('slider-borrow-strength-b', 0.0);
+    if (pathTracingUniforms && pathTracingUniforms.uBorrowStrength) {
+        pathTracingUniforms.uBorrowStrength.value = 0.0;
+    }
+    window.setR72LightImportanceSamplingEnabled(enabled !== false);
+    wakeRender();
+    return window.reportR72QuickPreviewIsolationConfig();
+};
+
 function ratio(numerator, denominator) {
     return denominator > 0 ? Number((numerator / denominator).toFixed(6)) : 0;
 }
@@ -1491,6 +1609,9 @@ window.reportCloudSamplingBudgetDiagnostic = function () {
         currentPanelConfig,
         activeLightCount: activeCount,
         activeLightIndex: activeIndices,
+        activeLightPickPdf: pathTracingUniforms.uActiveLightPickPdf ? Array.from(pathTracingUniforms.uActiveLightPickPdf.value).slice(0, activeCount) : [],
+        activeLightPickCdf: pathTracingUniforms.uActiveLightPickCdf ? Array.from(pathTracingUniforms.uActiveLightPickCdf.value).slice(0, activeCount) : [],
+        r72LightImportanceSampling: window.reportR72LightImportanceSamplingConfig ? window.reportR72LightImportanceSamplingConfig() : null,
         activeLightBreakdown: counts,
         cloudLightCount: counts.cloud,
         cloudPickRatio: ratio(counts.cloud, activeCount),
@@ -4808,7 +4929,12 @@ function buildSnapshotBar() {
 function updateSamplingControls() {
     const samplingToggle = document.getElementById('btn-toggle-sampling');
     if (!samplingToggle || typeof window.reportSamplingPaused !== 'function') return;
-    samplingToggle.textContent = window.reportSamplingPaused().paused ? '繼續採樣' : '暫停採樣';
+    const stepButton = document.getElementById('btn-step-sampling');
+    const stepBackButton = document.getElementById('btn-step-back-sampling');
+    const report = window.reportSamplingPaused();
+    samplingToggle.textContent = report.paused ? '繼續採樣' : '暫停採樣';
+    if (stepButton) stepButton.disabled = !report.paused || report.stepOncePending;
+    if (stepBackButton) stepBackButton.disabled = !report.paused || report.stepOncePending || report.stepHistoryDepth <= 0;
 }
 
 window.updateSamplingControls = updateSamplingControls;
@@ -4915,6 +5041,18 @@ function downloadAllSnapshots() {
         window.setSamplingPaused(!window.reportSamplingPaused().paused);
         updateSamplingControls();
     };
+    const stepButton = document.getElementById('btn-step-sampling');
+    if (stepButton) stepButton.onclick = function () {
+        if (typeof window.requestSamplingStepOnce !== 'function') return;
+        window.requestSamplingStepOnce();
+        updateSamplingControls();
+    };
+    const stepBackButton = document.getElementById('btn-step-back-sampling');
+    if (stepBackButton) stepBackButton.onclick = function () {
+        if (typeof window.requestSamplingStepBack !== 'function') return;
+        window.requestSamplingStepBack();
+        updateSamplingControls();
+    };
     updateSnapshotControls();
 })();
 
@@ -5014,6 +5152,7 @@ function switchCamera(preset) {
     worldCamera.fov = 55;
     fovScale = worldCamera.fov * 0.5 * (Math.PI / 180.0);
     pathTracingUniforms.uVLen.value = Math.tan(fovScale);
+    pathTracingUniforms.uULen.value = pathTracingUniforms.uVLen.value * worldCamera.aspect;
 
     isPaused = true;
     cameraIsMoving = true;
@@ -5023,7 +5162,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-1-blue-noise-sampling-v6-no-go';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5274,6 +5413,9 @@ function initSceneData() {
     pathTracingUniforms.uBorrowStrength = { value: 0.0 };
     // R6 LGG-r16 J3：1=當前 frame 是借光 pass、shader 跳過借光採樣避免遞迴；主 pass 為 0
     pathTracingUniforms.uIsBorrowPass = { value: 0.0 };
+    pathTracingUniforms.uR73QuickPreviewTerminalMode = { value: 0.0 };
+    pathTracingUniforms.uR73QuickPreviewTerminalStrength = { value: 0.0 };
+    pathTracingUniforms.uR73GikWallProbeMode = { value: 0 };
 
     // R3-0 / R3-7：NEE 直接光補償（shader 10 處 `mask *= weight * uLegacyGain`）。
     // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。
@@ -5349,6 +5491,11 @@ function initSceneData() {
     pathTracingUniforms.uActiveLightCount = { value: 1 };
     pathTracingUniforms.uActiveLightIndex = { value: new Int32Array(ACTIVE_LIGHT_POOL_MAX).fill(ACTIVE_LIGHT_LUT_SENTINEL), type: 'iv' };
     pathTracingUniforms.uActiveLightIndex.value[0] = 0; // CONFIG 1 ceiling 獨佔
+    pathTracingUniforms.uActiveLightPickPdf = { value: new Float32Array(ACTIVE_LIGHT_POOL_MAX) };
+    pathTracingUniforms.uActiveLightPickCdf = { value: new Float32Array(ACTIVE_LIGHT_POOL_MAX) };
+    pathTracingUniforms.uActiveLightPickPdf.value[0] = 1.0;
+    pathTracingUniforms.uActiveLightPickCdf.value[0] = 1.0;
+    pathTracingUniforms.uR72LightImportanceSamplingMode = { value: r72LightImportanceSamplingEnabled ? 1.0 : 0.0 };
 
     pathTracingUniforms.uR3ProbeSentinel = { value: 1.0 }; // R3-6.5 S2.5 DCE debug-only sentinel（正常恆為 1.0；手動改 -200 觸發 DCE guard 活體驗證）
     pathTracingUniforms.uCloudVisibilityProbeMode = { value: 0 };
@@ -5546,7 +5693,11 @@ function rebuildActiveLightLUT(source) {
         if (cloudOn) { lut[count++] = 7; lut[count++] = 8; lut[count++] = 9; lut[count++] = 10; }
     }
 
+    writeActiveLightSamplingPdfAndCdf(count, lut);
     pathTracingUniforms.uActiveLightCount.value = count;
+    if (pathTracingUniforms.uR72LightImportanceSamplingMode) {
+        pathTracingUniforms.uR72LightImportanceSamplingMode.value = r72LightImportanceSamplingEnabled ? 1.0 : 0.0;
+    }
 
     if (typeof invalidateMovementProtectionStableFrame === 'function') {
         invalidateMovementProtectionStableFrame('rebuildActiveLightLUT');
@@ -5555,8 +5706,13 @@ function rebuildActiveLightLUT(source) {
     cameraIsMoving = true;
     cameraSwitchFrames = 3;
 
-
-    console.log('[R3-6.5] active pool rebuild', { count, LUT: Array.from(lut), source });
+    console.log('[R3-6.5] active pool rebuild', {
+        count,
+        LUT: Array.from(lut),
+        pickPdf: pathTracingUniforms.uActiveLightPickPdf ? Array.from(pathTracingUniforms.uActiveLightPickPdf.value).slice(0, count) : [],
+        r72LightImportanceSamplingEnabled,
+        source
+    });
 }
 
 function syncWideEmissions() {
@@ -6648,7 +6804,7 @@ function initUI() {
     }
 
     // Pointer-lock guard for snapshot bar and actions（bug fix：chip 點選會觸發 pointer lock）
-    ['snapshot-bar', 'snapshot-actions'].forEach(function(id) {
+    ['snapshot-bar', 'snapshot-actions', 'r73-quick-preview-fill-controls'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);

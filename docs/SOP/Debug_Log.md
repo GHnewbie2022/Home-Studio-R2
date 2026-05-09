@@ -1,5 +1,35 @@
 # Debug Log
 
+> 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
+>
+> 目前 R7-3 接手重點：R7-3 quick preview terminal v3al 已把 C4 曲線回到原本狀態，C4 保留丟可見 1SPP；先讀 `docs/SOP/R7：採樣演算法升級.md` 與本檔 `R7-3-quick-preview-terminal-v3` 章節。
+
+---
+
+## Cloud / GIK 名詞鎖定
+
+```
+Cloud GIK：
+  指 R2-16 的吊頂 6 片白色 GIK 吸音板本體。
+  它是幾何與材質表面，不是光源。
+
+Cloud 燈條 / Cloud rod：
+  指 R2-17 / R3-3 的 4 支 CLOUD_LIGHT 細長發光體。
+  它們貼在 Cloud GIK 面向天花板的頂面邊緣，是 C3 Cloud-only 的光源。
+
+Cloud 漫射光 / Cloud direct NEE：
+  指 Cloud 燈條造成的採樣與光照貢獻。
+  不得把它寫成 Cloud GIK 本體。
+
+gikPanel：
+  probe / shader 分類名，對應 hitType == ACOUSTIC_PANEL。
+  這個分類可能包含牆面 GIK 與 Cloud GIK；若只指吊頂 6 片，必須寫 Cloud GIK。
+
+R6-3 髒點語境：
+  使用者肉眼指出 C3 最髒的可見區域是地板、Cloud GIK、以及部分轉角陰影處。
+  舊段落寫 floor / GIK 時，依當時 helper 定義代表 floor + gikPanel 可見接收面；不得解讀成 Cloud 燈條。
+```
+
 ---
 
 ## ⚠ 必讀：通用 Debug 紀律（所有 R 階段進入前必先閱讀）
@@ -3246,7 +3276,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
 ```text
  1. 觸發原因
       使用者看圖指出：
-        髒點看起來地板與 GIK 板最多。
+        髒點看起來地板、Cloud GIK、以及部分轉角陰影處最多。
 
       v12 已確認 C3 Cloud direct NEE contribution 全部落在 bounced-surface。
       因此先做 floor + GIK priority probe，再把剩餘 otherSurface 拆成 ceiling / wall / object。
@@ -3280,7 +3310,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         dominantBouncedDirectNeeReceiverClass = otherSurface
 
       判讀：
-        使用者肉眼看到地板 / GIK 板附近髒。
+        使用者肉眼看到地板 / Cloud GIK / 轉角陰影附近髒。
         但 energy contribution 主體落在 otherSurface。
         需要把 otherSurface 再拆細。
 
@@ -3326,7 +3356,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         recommendedNextStep = testCeilingBouncedNeeCleanupCandidate
 
  4. 白話判讀
-      看圖最髒的位置像是在地板與 GIK 板。
+      看圖最髒的位置像是在地板、Cloud GIK、以及部分轉角陰影處。
       量測顯示製造 Cloud bounced direct NEE 亮尾端的主要接收面是 ceiling，其次是 wall。
 
       目前比例：
@@ -3335,19 +3365,19 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         floor + GIK 約 0.54%
 
       這代表：
-        畫面髒點會出現在地板 / GIK 板附近，
+        畫面髒點會出現在地板 / Cloud GIK / 轉角陰影附近，
         但高亮 contribution 的主要來源是天花板與牆面接收 Cloud 後的 bounced NEE。
 
  4b. 使用者修正與判讀降級
       使用者指出：
         反彈光總 contribution 最大來自天花板，其次是牆壁，這符合直覺。
-        這和「地板 / GIK 可見螢火蟲很多」是不同問題。
+        這和「地板 / Cloud GIK / 轉角陰影可見螢火蟲很多」是不同問題。
 
       因此 v14 判讀降級為：
         A. receiver-class probe 證明分類讀值路徑有接對。
         B. classifiedVsBouncedContributionRatio = 1 主要是儀器檢查。
         C. ceiling / wall 佔比最大主要確認常識與分類沒有明顯錯位。
-        D. v14 沒有回答地板 / GIK 可見 firefly 密度。
+        D. v14 沒有回答地板 / Cloud GIK / 轉角陰影可見 firefly 密度。
 
       後續規則：
         如果 probe 只是確認 uniform、cache-bust、readback、分類加總或分類是否錯位，
@@ -3417,8 +3447,8 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
 
       判讀：
         以每個可見像素的異常高亮密度看，天花板最高，牆面第二。
-        GIK 板密度第三，但 maxToP50Ratio 最高。
-        白話說：GIK 板平常偏暗，亮點一冒出來就特別刺眼，所以肉眼會覺得它很髒。
+        gikPanel 密度第三，但 maxToP50Ratio 最高。
+        白話說：gikPanel 可見面平常偏暗，亮點一冒出來就特別刺眼，所以肉眼會覺得它很髒。
         地板也有亮點，但每個可見像素的異常高亮密度最低。
 
       限制：
@@ -3432,7 +3462,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         reportCloudDarkVisibleSurfaceHotspotSourceProbeAfterSamples()
 
       目的：
-        只看肉眼髒的暗表面 floor / GIK。
+        只看肉眼髒的暗表面 floor / gikPanel。
         拆它們的亮點是由哪一類反彈來源製造。
 
       實頁條件：
@@ -3477,7 +3507,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
 
       判讀：
         天花板可見表面本身不一定異常。
-        但天花板作為反彈來源時，確實會在 GIK / 地板暗表面製造尖峰亮點。
+        但天花板作為反彈來源時，確實會在 gikPanel / floor 暗表面製造尖峰亮點。
         牆面是第二來源。
         因此修法不應壓天花板本身，應壓「暗可見表面上，由天花板 / 牆面來源造成的尖峰」。
 
@@ -3525,7 +3555,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       判讀：
         這個候選沒有減少亮點顆數。
         它降低的是亮點尖銳程度。
-        目前數據顯示對 floor / GIK 的 p99 與 max 有明顯壓制。
+        目前數據顯示對 floor / gikPanel 的 p99 與 max 有明顯壓制。
         目前數據顯示可見 ceiling / wall / object 未被影響。
 
       低 SPP 圖面驗證：
@@ -3557,12 +3587,12 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         亮樣本覆蓋率。
 
       要回答的問題：
-        GIK / 地板在低 SPP 時，有多少像素已經抽到該有亮度？
-        同一片 GIK / 地板上，有多少像素還沒抽到該有亮度？
+        gikPanel / floor 在低 SPP 時，有多少像素已經抽到該有亮度？
+        同一片 gikPanel / floor 上，有多少像素還沒抽到該有亮度？
         問題主要是亮點太尖，還是暗點太多、亮度補得太慢？
 
       下一個最高 ROI：
-        A. 找出同一片 GIK / 地板上，哪些像素已經抽到正常亮光。
+        A. 找出同一片 gikPanel / floor 上，哪些像素已經抽到正常亮光。
         B. 用附近相似像素的資訊，補給還沒抽到亮度的暗像素。
         C. 用法線、材質、距離守門，避免跨邊界把牆光抹到物件上。
         D. 只在低 SPP 開強一點，SPP 變高後慢慢退場。
@@ -3578,7 +3608,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         reportCloudBrightSampleCoverageProbeAfterSamples()
 
       目的：
-        量 floor / GIK 低 SPP 時，已抽到正常 Cloud NEE 亮度的可見樣本比例。
+        量 floor / gikPanel 低 SPP 時，已抽到正常 Cloud NEE 亮度的可見樣本比例。
         同時量還在等亮度補齊的比例。
 
       實頁條件：
@@ -3619,12 +3649,12 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
           coverageVerdict = coverageInsufficient
 
       交叉檢查：
-        C1 預設頁面跑同一 helper 時，floor / GIK 皆沒有 Cloud NEE 事件。
+        C1 預設頁面跑同一 helper 時，floor / gikPanel 皆沒有 Cloud NEE 事件。
         切回 C3 後，p50 / p99 / max 對上 v15 visible-surface hotspot probe 的既有數字。
         因此 v17 helper 沒有重算亮度分布，它新增的是可見樣本覆蓋率分母與覆蓋率判讀。
 
       判讀：
-        floor / GIK 可見樣本很多，但已拿到一般亮度的比例很低。
+        floor / gikPanel 可見樣本很多，但已拿到一般亮度的比例很低。
         合計只有約 8.8% 可見樣本拿到同片表面一般 Cloud NEE 亮度。
         約 91.2% 可見樣本仍在等亮度補齊。
         這支持低 SPP 髒感主要來自正常亮樣本覆蓋不足。
@@ -3633,7 +3663,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       下一步：
         設計 guarded same-surface dark-fill candidate。
         候選必須預設關閉，先用 A/B toggle 驗證。
-        作用範圍先限制 floor / GIK。
+        作用範圍先限制 floor / gikPanel。
         借樣條件需守住同片表面、相似法線、相似材質、近距離。
         低 SPP 作用較強，SPP 增加後退場。
 
@@ -3643,13 +3673,13 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
         reportCloudSameSurfaceDarkFillCandidateAfterSamples()
 
       目的：
-        針對 floor / GIK 上已經有 Cloud NEE 事件、但亮度仍低於該表面一般亮度的樣本，
+        針對 floor / gikPanel 上已經有 Cloud NEE 事件、但亮度仍低於該表面一般亮度的樣本，
         把它往該表面一般亮度補一點。
         候選預設關閉。
         只在低 SPP 早期作用，SPP 增加後退場。
 
       守門：
-        visible surface 只限 floor / GIK。
+        visible surface 只限 floor / gikPanel。
         只作用 diffuse bounce 後的 Cloud NEE contribution。
         使用 sampleCounter fade：
           strength = 1.0
@@ -3684,7 +3714,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
           candidateMaxToP50Ratio = 3822.527385
 
       判讀：
-        v18a 有把 floor / GIK 的一般亮度覆蓋率往上推。
+        v18a 有把 floor / gikPanel 的一般亮度覆蓋率往上推。
         幅度偏保守，平均多約 2.9 個百分點。
         暗等待比例約下降 3.2%。
         maxToP50Ratio 也下降，表示亮尾端相對一般亮度沒有那麼誇張。
@@ -3854,7 +3884,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       revised_interpretation:
         - 使用者判斷正確，1 SPP 是最該先解的痛點。
         - 第一張主畫面的黑點集中在 lower_floor、right_gik、深色物件區。
-        - floor / GIK 約九成可見像素在 1 SPP 還沒達到一般亮度。
+        - floor / gikPanel 約九成可見像素在 1 SPP 還沒達到一般亮度。
         - same-surface dark-fill 只改已經抽到 Cloud contribution 的樣本，無法補第一張沒有抽到有效亮度的像素。
       next_step:
         - 停止沿 v18b 補暗候選微調。
@@ -4876,4 +4906,668 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
   validation:
     - docs/tests/r7-1-blue-noise-sampling.test.js 新增 no-go closeout 合約。
     - cache token 升為 r7-1-blue-noise-sampling-v6-no-go。
+
+- id: R7-2-light-importance-sampling-v1
+  date: 2026-05-07
+  type: sampling_experiment
+  context:
+    - R7-1 新增 blue-noise seed mix 已由使用者判定 NO-GO。
+    - R7-2 依交接從 R3-6 / R3-6.5 Many-Light Sampling 與 MIS 合約開始。
+    - 本輪先做小實驗，不做 ReSTIR，不重寫整套採樣架構。
+  implementation:
+    - 新增 r72LightImportanceSamplingEnabled，預設 false。
+    - 新增 setR72LightImportanceSamplingEnabled(true / false)。
+    - 新增 reportR72LightImportanceSamplingConfig()。
+    - rebuildActiveLightLUT() 會同步寫入 uActiveLightPickPdf 與 uActiveLightPickCdf。
+    - shader 新增 sampleActiveLightSlot(randomValue)，開啟 R7-2 時依 CDF 挑 active light slot。
+    - shader 新增 activeLightPickPdfByIndex(lightIndex)，讓反向 MIS 使用同一份 light pick PDF。
+    - 直接 NEE 的 selectPdf 改為 uActiveLightPickPdf[slot]。
+    - Cloud / ceiling 反向 MIS 改為查 activeLightPickPdfByIndex(...)。
+  weighting:
+    - 預設關閉時仍是 1 / activeLightCount。
+    - Cloud 權重 = 1600 lm/m × rod 長度。
+    - Track 權重 = trackLumens。
+    - Wide 權重 = trackWideLumens。
+    - Ceiling 權重 = 1，避免單燈配置被特殊放大。
+  expected_pdf:
+    - C3 Cloud-only 長 rod PDF 約 0.286266，短 rod PDF 約 0.213734。
+    - C4 Track + Wide 每盞 Track PDF = 2000 / 13000。
+    - C4 Track + Wide 每盞 Wide PDF = 2500 / 13000。
+  cache_bust:
+    - InitCommon: js/InitCommon.js?v=r7-2-light-importance-sampling-v1-r7-2b
+    - Home_Studio: js/Home_Studio.js?v=r7-2-light-importance-sampling-v1-r7-2b
+    - Shader: Home_Studio_Fragment.glsl?v=r7-2-light-importance-sampling-v1-r7-2b
+  validation:
+    - docs/tests/r7-2-light-importance-sampling.test.js 先紅，缺 R7-2 版本與 PDF/CDF 合約。
+    - 實作後同一測試轉綠。
+    - 全部 docs/tests/*.test.js 通過。
+    - node --check js/InitCommon.js 通過。
+    - node --check js/Home_Studio.js 通過。
+    - node --check js/PathTracingCommon.js 通過。
+    - git diff --check 通過。
+  browser_smoke:
+    - 本機 server 使用 http://localhost:9002/Home_Studio.html。
+    - curl 讀到 InitCommon / Home_Studio 皆為 r7-2-light-importance-sampling-v1-r7-2b。
+    - headless Brave 讀到 js/Home_Studio.js?v=r7-2-light-importance-sampling-v1-r7-2b，並跑到 active pool rebuild console log。
+    - headless SwiftShader 後段出現 WebGL context lost；這是測試環境限制，正常瀏覽器肉眼驗收仍是本輪主要判斷。
+  user_report:
+    - 使用者回報趨近真實 1 SPP 改善很多，約等於先前 2 倍 SPP。
+    - 使用者回報快速預覽改善較少，懷疑是否沒有套用。
+    - 快速預覽 reportR72LightImportanceSamplingConfig() 回傳 enabled=true、uniformMode=1、currentPanelConfig=3。
+    - 快速預覽 activeLightCount=4、activeLightIndex=[7, 8, 9, 10]。
+    - 快速預覽 activeLightPickPdf=[0.28626692295074463, 0.28626692295074463, 0.21373307704925537, 0.21373307704925537]。
+    - 快速預覽 activeLightPickCdf=[0.28626692295074463, 0.5725338459014893, 0.7862669229507446, 1]。
+  interpretation:
+    - 快速預覽確認有套用 R7-2 light importance sampling。
+    - 快速預覽視覺改善較少，初步判讀是快速預覽自己的 0.5 解析度、4 彈、暗角借光與 LGG / ACES / 曝光參數遮蔽了部分改善。
+    - 下一步若要追快速預覽，先做 R7-2B isolation：快速預覽維持 C3，依序把暗角借光、LGG、解析度、後製拉回中性，比對 R7-2 on/off。
+  r7_2b_isolation:
+    - 使用者指定先做快速預覽維持 C3，只把暗角借光拉到 0，再比 R7-2 on/off。
+    - 新增 setR72QuickPreviewIsolation(true / false)。
+    - 新增 reportR72QuickPreviewIsolationConfig()。
+    - setR72QuickPreviewIsolation(true) 會切 C3、切快速預覽、把 slider-borrow-strength-b 與 uBorrowStrength 設為 0，並開啟 R7-2。
+    - setR72QuickPreviewIsolation(false) 維持相同隔離條件並關閉 R7-2。
+    - docs/tests/r7-2-light-importance-sampling.test.js 已新增 R7-2B helper 合約。
+  r7_2b_user_report:
+    - 使用者回報暗角借光設為 0 後，快速預覽仍不像趨近真實乾淨。
+    - 判讀：暗角借光不是主要遮蔽源。
+    - 使用者後續測到兩邊解析度同樣設為 1 時，快速預覽仍有更多黑點，畫面因此看起來更暗。
+    - 判讀：解析度也不是主要遮蔽源。
+    - 使用者再測快速預覽彈跳次數 4 vs 14，確認黑點主因是彈跳次數。
+    - 快速預覽彈跳拉到 14 後會乾淨許多，但速度會變慢，這正是快速預覽原本設定 4 彈的取捨。
+    - 判讀：快速預覽較黑、黑點較多的主因是 4 彈太早截斷間接光路。
+    - R7-2 已改善直接抽燈，但無法補回 4 彈被截斷的深層反彈光。
+    - 快速預覽維持 4 彈是速度取捨，不視為 R7-2 失效。
+  r7_2_roi_update:
+    - 使用者判斷 R7-2 雖大幅改善趨近真實低 SPP，但對原始主痛點有點沒意義。
+    - 原始主痛點是快速預覽要能即時移動；快速預覽因 4 彈速度限制仍會在 1 SPP 偏黑。
+    - 趨近真實本來主要用於看高 SPP 成品，低 SPP 變乾淨的價值較間接。
+    - 後續不要把「趨近真實 1 SPP 變乾淨」誤當成「快速移動預覽已解」。
+    - 下一步若繼續追主痛點，方向應轉向快速預覽專用的短路徑補亮 / 預覽照明，而不是繼續提高快速預覽彈跳數。
+  next_verification:
+    - 使用者開 http://localhost:9002/Home_Studio.html。
+    - Console 先跑 reportR72LightImportanceSamplingConfig() 確認 enabled=false。
+    - C3 切到 Cloud-only 後跑 setR72LightImportanceSamplingEnabled(true)，看低 SPP Cloud 顆粒是否比較平均。
+    - C4 切到 Track + Wide 後跑 setR72LightImportanceSamplingEnabled(true)，看低 SPP 大顆亮點是否減少。
+    - 若肉眼改善明確，再做 1 / 2 / 4 / 8 / 16 SPP 快照對照與 1024 SPP 穩定性檢查。
+
+- id: R7-snapshot-step-history-buttons
+  date: 2026-05-07
+  type: validation_tooling
+  context:
+    - 使用者詢問快照系統能否新增「下一個採樣」按鈕，後續指定「上一個採樣」要能退回到按下暫停那次。
+    - 目標是暫停後按了 N 次下一個採樣，就能按 N 次上一個採樣，支援快速預覽低 SPP 對照。
+  implementation:
+    - Home_Studio.html 新增 btn-step-sampling「下一個採樣」。
+    - Home_Studio.html 新增 btn-step-back-sampling「上一個採樣」。
+    - InitCommon 新增 samplingStepOnceRequested 狀態。
+    - InitCommon 新增 samplingStepHistory 暫停期歷史。
+    - 新增 requestSamplingStepOnce() console helper。
+    - 新增 requestSamplingStepBack() console helper。
+    - reportSamplingPaused() 追加 stepOncePending 與 stepHistoryDepth。
+    - 暫停時按一次「下一個採樣」只放行一個 still-frame sample。
+    - 暫停當下保存目前 pathTracing / screenCopy render target 與 sampleCounter / frameCounter。
+    - 每次單步採樣完成後追加一份 render target 歷史。
+    - 按「上一個採樣」時丟掉目前歷史，還原前一份 render target 與 sampleCounter / frameCounter。
+    - 重新繼續採樣、相機移動或累積清空時釋放暫停期歷史。
+    - 單步採樣期間停用 first-frame recovery burst，避免一次跳多個 SPP。
+    - 單步完成後維持 samplingPaused=true，按鈕重新可按。
+  cache_bust:
+    - InitCommon: js/InitCommon.js?v=r7-2-light-importance-sampling-v1-r7-2d-step-history
+    - Home_Studio: js/Home_Studio.js?v=r7-2-light-importance-sampling-v1-r7-2d-step-history
+    - Shader: Home_Studio_Fragment.glsl?v=r7-2-light-importance-sampling-v1-r7-2d-step-history
+  validation:
+    - docs/tests/r6-3-max-samples.test.js 新增下一個採樣、上一個採樣與暫停期採樣歷史合約。
+    - node docs/tests/r6-3-max-samples.test.js 通過。
+    - node --check js/Home_Studio.js 通過。
+    - node --check js/InitCommon.js 通過。
+
+- id: R7-3-quick-preview-terminal-v3
+  date: 2026-05-07
+  type: sampling_experiment
+  context:
+    - 使用者要求開始做 R7-3。
+    - R7-2 已驗收，趨近真實低 SPP 改善明顯，但快速預覽仍因 4 彈截斷出現較多黑點。
+    - 本輪 R7-3 先針對快速預覽低 SPP 做低成本補洞，不先做 WebGPU 搬遷。
+  implementation:
+    - 新增 R7_3_QUICK_PREVIEW_FILL_VERSION = r7-3-quick-preview-fill-v3k。
+    - 新增 r73QuickPreviewFillEnabled，預設 false。
+    - 新增 r73QuickPreviewFillStrength，v3c 後預設 1.00。
+    - 新增 setR73QuickPreviewFillEnabled(true / false, strength?)。
+    - 新增 reportR73QuickPreviewFillConfig()。
+    - R7-3 只在 quick preview B 模式與 C3/C4 配置套用。
+    - ScreenOutput_Fragment.glsl 新增 uR73QuickPreviewFillMode 與 uR73QuickPreviewFillStrength。
+    - ScreenOutput 端用既有 37 點鄰域估算局部 HDR 亮度。
+    - v1b 只補中心像素明顯低於鄰域的暗點，並用 nextToAnEdgePixel 避開幾何邊界。
+    - 使用者回報 F/T 仍然幾乎無差，只有一些亮點從實心變成空心，整體仍然很髒。
+    - v2 改成雙向低 SPP 清理：用 r73QuickPreviewHighLimit 壓亮點、r73QuickPreviewLowLift 補黑洞，並把非邊緣區往 37 點局部估算混合。
+    - 使用者回報 v2 沒用，跟 v1b 一樣。
+    - 判讀：ScreenOutput 顯示端補洞路線沒有足夠資訊處理 4 彈截斷，R7-3 需轉到 path shader terminal。
+    - v3 新增 uR73QuickPreviewTerminalMode 與 uR73QuickPreviewTerminalStrength。
+    - v3 在 reachedMaxBounces 且非 borrow pass 時注入 mask * r73QuickPreviewTerminalColor * strength * lowSppFade。
+    - v3 的 setR73QuickPreviewFillEnabled() 改為 wakeRender()，因為 terminal preview 需要重新累積 path sample。
+    - 補洞強度在 4~24 SPP 之間漸退，避免高 SPP 長期改變正式收斂觀感。
+  bug_report:
+    - 使用者回報 setR73QuickPreviewFillEnabled(false / true) 畫面完全一樣。
+  root_cause:
+    - JS helper、uniform 與 ScreenOutput cache token 都已接上。
+    - ScreenOutput 的 r73QuickPreviewDarkMask 使用了 smoothstep(r73QuickPreviewFillLuma * 0.72, r73QuickPreviewFillLuma * 0.35, centerLuma)。
+    - GLSL smoothstep 要求 edge0 小於 edge1；反向 edge 屬未定義行為。
+    - 專案其他 smoothstep 寫法皆為低邊界到高邊界。
+    - 因此暗點 mask 可能等同 0，導致 T/F 看起來完全一樣。
+  fix:
+    - 新增 r73QuickPreviewDarkLow = fillLuma * 0.35。
+    - 新增 r73QuickPreviewDarkHigh = max(fillLuma * 0.72, darkLow + 0.0001)。
+    - 改用 1.0 - smoothstep(darkLow, darkHigh, centerLuma) 取得暗點 mask。
+    - cache token 升到 r7-3-quick-preview-fill-v3k，避免瀏覽器沿用舊 shader。
+  v2_fix:
+    - 新增 r73QuickPreviewHighLimit，讓過亮尖點往局部平均壓回。
+    - 新增 r73QuickPreviewLowLift，讓黑洞點往局部平均補上。
+    - 新增 r73QuickPreviewDenoisedHdr = mix(clamped, fillHdr, 0.62)，讓快速預覽低 SPP 有可見的清理幅度。
+    - 移除 max-only fill candidate，避免保留亮點造成空心感。
+  v3_fix:
+    - 新增 path shader terminal preview uniform。
+    - setR73QuickPreviewFillEnabled() 同步更新 ScreenOutput 與 path shader terminal uniform。
+    - helper 改用 wakeRender()，確保 F/T 會重新算新的 1SPP，而不是只重跑後製。
+    - terminal preview 色值先取中性暖灰 vec3(0.075, 0.066, 0.054)，再依 nl.y 做弱方向調整。
+    - terminal preview 只乘 mask 與低 SPP fade，避免碰到 probe 模式與 borrow pass 遞迴。
+  v3b_compile_fix:
+    - 使用者回報 Fragment shader is not compiled。
+    - WebGL log 指向 r73QuickPreviewTerminalStrength undeclared identifier。
+    - 根因是 shader uniform 宣告為 uR73QuickPreviewTerminalStrength，但累加行誤用 bare r73QuickPreviewTerminalStrength。
+    - 修正累加行為 uR73QuickPreviewTerminalStrength。
+    - cache token 升到 r7-3-quick-preview-fill-v3b。
+    - docs/tests/r7-3-quick-preview-fill.test.js 新增 guard，禁止 bare strength identifier。
+  user_validation:
+    - 使用者於 v3b 開關測試回報有改善、黑點變少。
+    - 截圖顯示 setR73QuickPreviewFillEnabled(true, 1.0) 後快速預覽 C3 1SPP 黑點密度下降。
+    - 判讀：R7-3 v3b terminal preview 方向有效，v1b / v2 ScreenOutput 後製補洞維持 NO-GO。
+    - 待調校：terminal color、strength default、黑色吸音板 / 喇叭 / 腳架保護、C4 快速預覽。
+  v3c_strength_sweep:
+    - 使用者要求測 1.0 以上 strength。
+    - normalizeR73QuickPreviewFillStrength() 上限從 1.0 放寬到 1.5，避免 1.15 / 1.3 被悄悄夾回 1.0。
+    - docs/tests/r7-3-quick-preview-fill.test.js 先紅，確認舊上限會擋住 1.0 以上掃描。
+    - r73QuickPreviewFillStrength 預設從 0.70 改為 1.00。
+    - C3 快速預覽 strength 掃描：0 / 0.6 / 0.75 / 0.9 / 1.0 / 1.15 / 1.3 / 1.5。
+    - PNG 截圖量測 wall darkFrac：0.069 → 0.013 → 0.010 → 0.008 → 0.007 → 0.006 → 0.004 → 0.003。
+    - PNG 截圖量測 object mean：0.199 → 0.235 → 0.244 → 0.252 → 0.258 → 0.265 → 0.272 → 0.282。
+    - 判讀：0.6 已大幅降黑點；1.0 到 1.15 平衡較好；1.3 以上繼續減黑點但黑物件抬亮更明顯。
+    - 決策：v3c 預設採 1.00，1.15 / 1.3 / 1.5 保留手動驗收。
+  v3d_left_bottom_ui:
+    - 使用者指出 setR73QuickPreviewFillEnabled(true, 2) / 3 仍回報 strength 1.5，要求改成左下 UI 滑桿。
+    - Home_Studio.html 新增 r73-quick-preview-fill-controls，位置在 snapshot-actions 前，畫面上位於「快照：關」上方。
+    - UI 包含 chk-r73-quick-preview-fill、range-r73-quick-preview-fill-strength、value-r73-quick-preview-fill-strength。
+    - CSS 新增固定左下樣式，bottom: 64px，slider 範圍 0~3，step 0.05。
+    - normalizeR73QuickPreviewFillStrength() 上限從 1.5 放寬到 3.0。
+    - 新增 updateR73QuickPreviewFillControls() 與 initR73QuickPreviewFillControls()。
+    - setR73QuickPreviewFillEnabled() 會同步 UI，console 與 UI 共用同一套 enabled / strength 狀態。
+    - Hide UI 與 pointer-lock guard 納入 r73-quick-preview-fill-controls。
+    - CSS cache token 升到 fixed-1440p-r7-3-ui-v1。
+  v3e_spp_strength_curve:
+    - 使用者觀察 1SPP 可到 2.0，但 2SPP 應降到 1.5，3SPP 降到 1.25，4SPP 降到 1.125，後續慢慢靠近 1.0。
+    - 使用者指定先做補光曲線，黑色吸音板與喇叭保護留到下一步。
+    - 左下 slider 數值改作 1SPP 峰值。
+    - 新增 r73QuickPreviewFillEffectiveStrength。
+    - 新增 computeR73QuickPreviewFillEffectiveStrength(baseStrength, samples)。
+    - 曲線公式：effective = 1.0 + (baseStrength - 1.0) / 2^(SPP - 1)。
+    - baseStrength = 2.0 時，1SPP / 2SPP / 3SPP / 4SPP 分別為 2.0 / 1.5 / 1.25 / 1.125。
+    - ScreenOutput 與 path shader terminal uniform 改吃 effectiveStrength。
+    - reportR73QuickPreviewFillConfig() 新增 baseStrength 與 effectiveStrength。
+    - UI 右側數字顯示目前 effectiveStrength，slider 位置保留 baseStrength。
+  v3f_editable_spp_curve:
+    - 使用者指定新曲線：1SPP 3.50、2SPP 2.00、3SPP 1.50、4SPP 1.25，後面慢慢靠近 1.00。
+    - 使用者要求更多 UI 欄位，方便直接找甜蜜點。
+    - 左下 R7-3 UI 從單一 slider 改成 4 個數字欄位。
+    - 4 個欄位分別控制 1 / 2 / 3 / 4 SPP 補光倍率。
+    - 5SPP 起從第 4 格數值往 1.00 漸退。
+    - normalizeR73QuickPreviewFillCurveValue() 上限放寬到 6.0，避免 3.50 被夾回 3.0。
+    - 新增 setR73QuickPreviewFillCurve([spp1, spp2, spp3, spp4])。
+    - setR73QuickPreviewFillEnabled(true, strength) 保留舊用法，會用 strength 產生相容曲線。
+    - reportR73QuickPreviewFillConfig() 新增 strengthCurve。
+  v3g_field_transient_fix:
+    - 使用者回報 1SPP 跟 2SPP 的數值好像會互相影響。
+    - 系統化追查結果：欄位 state 本身沒有互相覆寫，改 1SPP 時 2SPP curve 不變，改 2SPP 時 1SPP curve 不變。
+    - 根因是 number input 清空準備重打時會送出空字串，而舊 normalizeR73QuickPreviewFillCurveValue() 使用 Number(value)。
+    - Number('') 會得到 0，所以欄位暫時空白時，該格曲線值會被寫成 0，再被下一次 UI sync 顯示出來，看起來像欄位互相拉扯。
+    - normalizeR73QuickPreviewFillCurveValue(value, fallbackValue) 改成空字串、null、undefined、暫時不合法值保留原本欄位數值。
+    - 有效數字仍照 0~6 範圍套用。
+    - docs/tests/r7-3-quick-preview-fill.test.js 新增 blank / invalid transient guard，先紅後綠。
+  v3h_field_no_reset_fix:
+    - 使用者回報改 1SPP 以外的數字時會一直觸發重置，導致 Samples 回到 1，當下正在打的數字看起來被 1SPP 吃掉。
+    - 根因：updateR73QuickPreviewFillCurveFromControls() 每次 input 都呼叫 wakeRender()。
+    - wakeRender() 設定 sceneParamsChanged，animate() 隨後把 cameraIsMoving 設為 true，sampleCounter 因此回到 1。
+    - 修正：UI 欄位 input 只更新曲線 state / uniform，並設 postProcessChanged = true 刷新顯示，不再呼叫 wakeRender()。
+    - R7-3 開關仍保留 wakeRender()，因為開關改的是 render path。
+    - docs/tests/r7-3-quick-preview-fill.test.js 新增 guard，禁止 updateR73QuickPreviewFillCurveFromControls() 呼叫 wakeRender()。
+  v3i_paused_low_spp_rebuild:
+    - 使用者回報 v3h 下 1SPP 與 2SPP 仍看起來綁定，且 3 / 4 / 5 SPP 調數值沒有可見效果。
+    - 根因：R7-3 terminal fill 是 path shader 採樣時寫入累積 buffer 的光，不是純後製；已經算進 pathTracingRenderTarget / screenCopyRenderTarget 的舊採樣不會因後續改 uniform 自動更新。
+    - 2SPP 畫面本質上是 1SPP + 2SPP 的平均，所以 1SPP 與 2SPP 在 2SPP 畫面內會自然混合。
+    - 新增 rebuildR73QuickPreviewFillAccumulationForCurrentSamples()。
+    - 暫停且 current Samples <= 24 時，欄位改值會清掉低 SPP 累積 buffer，依新曲線從 1 重算到目前 Samples。
+    - 重建後 sampleCounter 會回到原本的 Samples，不停在 1。
+    - 重建過程同步 captureSamplingStepHistoryState()，刷新「上一個採樣」歷史。
+    - current Samples > 24 時不做同步重建，避免高 SPP 打字卡住；新曲線套用到之後的新採樣。
+    - docs/tests/r7-3-quick-preview-fill.test.js 新增 guard，要求欄位改值能重播 1 到 current Samples。
+  v3j_fixed_curve_display_rollback:
+    - 使用者決定不要再用可輸入欄位調 1~4SPP，改成由使用者回報、Codex 修改固定曲線。
+    - 根因整理：R7-3 terminal fill 在 path shader 採樣時寫進累積結果，可輸入欄位會牽動暫停採樣、單步歷史與低 SPP 重建，互動成本太高。
+    - 拆除 1~4SPP number input。
+    - 拆除 setR73QuickPreviewFillCurve()。
+    - 拆除 updateR73QuickPreviewFillCurveFromControls()。
+    - 拆除 rebuildR73QuickPreviewFillAccumulationForCurrentSamples()。
+    - 左下 R7-3 UI 保留 checkbox，右側只顯示目前 Samples 與倍率。
+    - 固定曲線改為 1SPP=5.00、2SPP=1.50、3SPP=1.50、4SPP=1.25。
+    - 5SPP 起從 1.25 每次減半靠近 1.00。
+    - docs/tests/r7-3-quick-preview-fill.test.js 改成 display-only 合約。
+  v3k_fixed_curve_tune:
+    - 使用者指定 S1 改到 5.00，S2 改到 1.50。
+    - S3 / S4 先維持 1.50 / 1.25。
+    - 固定曲線改為 1SPP=5.00、2SPP=1.50、3SPP=1.50、4SPP=1.25。
+    - 5SPP 起仍從 1.25 每次減半靠近 1.00。
+    - cache token 升到 r7-3-quick-preview-fill-v3k。
+    - 最新使用者回報：S2 仍像被 S1 的數字影響，沒有吃到 S2 自己的 1.50。
+    - 最新使用者觀察：調整後 S2 仍比 S1 更亮。
+    - 下一步先查 R7-3 v3k 的 effectiveStrength、sampleCounter、累積平均與單步採樣路徑，再決定修正。
+  v3l_fixed_curve_uniform_timing:
+    - systematic debugging 追查 runtime render order。
+    - CDP 探針包住 renderer.render()，記錄每次 pathTracingScene render 前的 sampleCounter 與 uR73QuickPreviewTerminalStrength。
+    - v3k 實測：first-frame recovery 連續 render S1~S4 時，S1 / S2 / S3 / S4 全部以 terminalStrength=5.00 進 path shader。
+    - 根因：updateR73QuickPreviewFillUniforms() 位於 STEP 3 screen output 前；first-frame recovery loop 內 path shader 已先完成 S1~S4 render。
+    - 最小假設測試：探針在 path render 前臨時套固定曲線後，事件立即變成 S1=5.00、S2=1.50、S3=1.50、S4=1.25。
+    - 修正：在 first-frame recovery loop 內，sampleCounter 寫入 pathTracingUniforms / screenOutputUniforms 後，path shader render 前呼叫 updateR73QuickPreviewFillUniforms()。
+    - 修正後 CDP 驗證：path shader render 前 terminalStrength 為 S1=5.00、S2=1.50、S3=1.50、S4=1.25。
+    - docs/tests/r7-3-quick-preview-fill.test.js 新增 first-frame recovery ordering guard，先紅後綠。
+    - cache token 升到 r7-3-quick-preview-fill-v3l。
+  v3m_s1_strength_tune:
+    - 使用者回報 v3l 看起來正常，但 S1 5.00 太亮。
+    - 使用者指定 S1 改成 4.00。
+    - 固定曲線改為 1SPP=4.00、2SPP=1.50、3SPP=1.50、4SPP=1.25。
+    - 5SPP 起仍從 1.25 每次減半靠近 1.00。
+    - cache token 升到 r7-3-quick-preview-fill-v3m。
+  v3n_s1_strength_tune:
+    - 使用者回報 S1 4.00 還是有點亮。
+    - 使用者指定 S1 改成 3.00。
+    - 固定曲線改為 1SPP=3.00、2SPP=1.50、3SPP=1.50、4SPP=1.25。
+    - 5SPP 起仍從 1.25 每次減半靠近 1.00。
+    - cache token 升到 r7-3-quick-preview-fill-v3n。
+  v3o_s1_s2_strength_tune:
+    - 使用者指定 S1 改成 3.20，S2 改成 1.70。
+    - 固定曲線改為 1SPP=3.20、2SPP=1.70、3SPP=1.50、4SPP=1.25。
+    - 5SPP 起仍從 1.25 每次減半靠近 1.00。
+    - cache token 升到 r7-3-quick-preview-fill-v3o。
+  v3p_fixed_curve_c3_only_closeout:
+    - 使用者判斷 R7-3 曲線固定後，左下 R7-3 UI 可以拔除。
+    - r73QuickPreviewFillEnabled 預設改為 true。
+    - r73QuickPreviewFillConfigAllowed() 改為只允許 currentPanelConfig === 3。
+    - C4 不套用 R7-3 terminal fill。
+    - Home_Studio.html 移除 r73-quick-preview-fill-controls。
+    - css/default.css 移除 R7-3 左下 UI 樣式。
+    - js/Home_Studio.js 移除 Hide UI 與 pointer-lock guard 中的 R7-3 UI 節點。
+    - cache token 升到 r7-3-quick-preview-fill-v3p。
+  v3q_minimal_validation_toggle:
+    - 使用者指出若要驗高 SPP 是否退乾淨，需要把 UI 開關做回來。
+    - Home_Studio.html 恢復 r73-quick-preview-fill-controls，但只放 chk-r73-quick-preview-fill。
+    - 不恢復 1~4SPP 數字輸入，不恢復曲線調整。
+    - r73QuickPreviewFillEnabled 預設仍是 true。
+    - checkbox 只呼叫 setR73QuickPreviewFillEnabled(true / false)，用於同場景 A/B。
+    - Hide UI 與 pointer-lock guard 重新納入 r73-quick-preview-fill-controls。
+    - cache token 升到 r7-3-quick-preview-fill-v3q。
+  v3q_high_spp_validation:
+    - 使用者測試 1000SPP，R7-3 ON / OFF 看起來完全一樣。
+    - 判定：lowSppFade 高 SPP 守門通過。
+    - 結論：R7-3 目前只影響快速預覽低 SPP，不影響正式高 SPP 畫面。
+    - 黑色物件保護先列觀察項；使用者目前沒有覺得深色物體被明顯抬亮。
+  v3r_c4_same_curve_trial:
+    - 使用者提出 C4 快速預覽也可以套用同一條 R7-3 固定曲線，並丟掉可見 1SPP 試試。
+    - r73QuickPreviewFillConfigAllowed() 從 C3-only 改成 C3 / C4。
+    - firstFrameRecoveryConfigTargetSamples(activeCameraMoving) 從 C3 moving 回傳 2，改成 C3 / C4 moving 回傳 2。
+    - reportFirstFrameRecoveryConfig() 新增 c3c4DropVisibleFirstSpp。
+    - cache token 升到 r7-3-quick-preview-fill-v3r。
+    - 這是 C4 試驗點，仍待使用者肉眼確認 C4 牆面黑點與深色物件狀態。
+  v3s_c3_c4_gik_wall_luma_probe:
+    - 使用者指出要同時查 C3 / C4 的 GIK，知道兩者差異後再推算補償量。
+    - 新增 reportR73GikWallLumaComparisonAfterSamples(targetSamples, timeoutMs)。
+    - 新增 uR73GikWallProbeMode，0=正常 render，1=第一可見 GIK mask，2=第一可見 wall mask。
+    - probe 路徑只在 uR73GikWallProbeMode > 0 時提早輸出 mask，正常 render 不走此分支。
+    - cache token 升到 r7-3-quick-preview-fill-v3s。
+    - headless Brave + CDP 量測網址：
+      http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3s
+    - 指令：
+      node /private/tmp/r73_gik_wall_cdp.mjs 9224 'http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3s' 2,4,8
+    - 量測結果：
+      2SPP C3 GIK mean 0.284261 / wall mean 0.499247 / ratio 0.569379 / GIK p50 0.162919
+      2SPP C4 GIK mean 0.312601 / wall mean 0.502301 / ratio 0.622338 / GIK p50 0.208311
+      4SPP C3 GIK mean 0.406287 / wall mean 0.531972 / ratio 0.763738 / GIK p50 0.361755
+      4SPP C4 GIK mean 0.366533 / wall mean 0.493960 / ratio 0.742030 / GIK p50 0.280917
+      8SPP C3 GIK mean 0.448712 / wall mean 0.547565 / ratio 0.819468 / GIK p50 0.572969
+      8SPP C4 GIK mean 0.383546 / wall mean 0.489824 / ratio 0.783028 / GIK p50 0.313009
+    - 判讀：
+      C4 GIK mean ratio 只比 C3 低約 3%~5%，單純照 mean 補會補不夠。
+      C4 GIK p50 明顯低於 C3，但 p90 已經接近或高於 wall。
+      使用者看到的 C4 GIK 前暗後亮，比較像暗半邊 coverage / median 問題。
+      下一刀應做 C4 GIK dark-only lift，約 1.5x 起跳並加高亮 cap，避免亮尾端被一起抬高。
+  v3t_c4_gik_dark_only_lift:
+    - 使用者要求試做 C4 GIK 補償。
+    - 新增 r73QuickPreviewC4GikDarkLiftActive：
+      C4 light setup = uCloudLightEnabled < 0.5 && uTrackLightEnabled > 0.5 && uWideTrackLightEnabled > 0.5。
+      visible surface = cloudVisibleSurfaceIsGik(firstVisibleHitType)。
+    - 補償只在 R7-3 terminal preview 已啟用時作用。
+    - 第一刀：
+      r73QuickPreviewC4GikLiftStrength = 0.55。
+      量測結果：2SPP p50 有上升，4/8SPP 偏保守，p90 幾乎不動。
+    - 第二刀：
+      dark gate 改用 r73QuickPreviewC4GikPreTerminalLuma。
+      r73QuickPreviewC4GikLiftStrength = 1.45。
+      亮區 cap 維持 r73QuickPreviewC4GikHighlightCap = 1.0 - smoothstep(0.58, 0.78, post-terminal luma)。
+    - 第二刀量測網址：
+      http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3t-b
+    - 第二刀指令：
+      node /private/tmp/r73_gik_wall_cdp.mjs 9224 'http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3t-b' 2,4,8
+    - 第二刀量測結果：
+      2SPP C4 GIK mean 0.364889 / wall mean 0.503563 / ratio 0.724614 / GIK p50 0.294853 / GIK p90 0.786013
+      4SPP C4 GIK mean 0.396890 / wall mean 0.496928 / ratio 0.798687 / GIK p50 0.308820 / GIK p90 0.781860
+      8SPP C4 GIK mean 0.408802 / wall mean 0.491611 / ratio 0.831556 / GIK p50 0.329313 / GIK p90 0.778720
+    - 與 v3s baseline 比較：
+      2SPP C4 GIK p50 0.208311 → 0.294853，p90 0.786013 → 0.786013。
+      4SPP C4 GIK p50 0.280917 → 0.308820，p90 0.779554 → 0.781860。
+      8SPP C4 GIK p50 0.313009 → 0.329313，p90 0.778505 → 0.778720。
+    - 判讀：
+      v3t 第二刀補到暗半邊，但 4/8SPP 仍是溫和補償。
+      p90 幾乎沒升，表示亮尾端 cap 有效。
+      這版可交給使用者肉眼驗 C4 GIK 前暗後亮是否改善。
+  v3u_c4_wall_down_gik_up:
+    - 使用者肉眼回報：
+      C4 前面的牆壁還要再暗一點。
+      C4 前面的 GIK 還要再亮一點。
+    - 實作：
+      C4 wall terminal fill scale = 0.88。
+      C4 GIK dark lift strength = 2.10。
+      dark gate 與 highlight cap 維持 v3t 第二刀。
+    - 量測網址：
+      http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3u
+    - 指令：
+      node /private/tmp/r73_gik_wall_cdp.mjs 9224 'http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3u' 2,4,8
+    - 量測結果：
+      2SPP C4 wall mean 0.493185 / wall p50 0.456120 / GIK mean 0.377292 / GIK p50 0.317548 / GIK p90 0.785179
+      4SPP C4 wall mean 0.487552 / wall p50 0.456104 / GIK mean 0.411644 / GIK p50 0.326776 / GIK p90 0.779339
+      8SPP C4 wall mean 0.485300 / wall p50 0.456403 / GIK mean 0.416935 / GIK p50 0.336585 / GIK p90 0.778169
+    - 與 v3t 第二刀比較：
+      2SPP C4 wall p50 0.469033 → 0.456120；GIK p50 0.294853 → 0.317548；GIK p90 0.786013 → 0.785179。
+      4SPP C4 wall p50 0.464550 → 0.456104；GIK p50 0.308820 → 0.326776；GIK p90 0.781860 → 0.779339。
+      8SPP C4 wall p50 0.463979 → 0.456403；GIK p50 0.329313 → 0.336585；GIK p90 0.778720 → 0.778169。
+    - 判讀：
+      wall 已小幅變暗。
+      GIK 暗半邊繼續補亮。
+      GIK p90 沒上升，亮區 cap 仍有效。
+  v3v_c4_wall_down_gik_up_more:
+    - 使用者肉眼回報：
+      不夠，繼續。
+      C4 前面的牆壁還要再暗一點。
+      C4 前面的 GIK 還要再亮一點。
+    - 實作：
+      C4 wall terminal fill scale = 0.78。
+      C4 GIK dark lift strength = 3.20。
+      dark gate 與 highlight cap 維持 v3u。
+    - 量測網址：
+      http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3v
+    - 指令：
+      node /private/tmp/r73_gik_wall_cdp.mjs 9224 'http://localhost:9002/Home_Studio.html?probe=r73-gik-wall-v3v' 2,4,8
+    - 量測結果：
+      2SPP C4 wall mean 0.484312 / wall p50 0.444937 / GIK mean 0.398118 / GIK p50 0.350573 / GIK p90 0.782925
+      4SPP C4 wall mean 0.481285 / wall p50 0.448340 / GIK mean 0.427466 / GIK p50 0.349739 / GIK p90 0.779071
+      8SPP C4 wall mean 0.479835 / wall p50 0.449976 / GIK mean 0.430488 / GIK p50 0.353058 / GIK p90 0.778169
+    - 與 v3u 比較：
+      2SPP C4 wall p50 0.456120 → 0.444937；GIK p50 0.317548 → 0.350573；GIK p90 0.785179 → 0.782925。
+      4SPP C4 wall p50 0.456104 → 0.448340；GIK p50 0.326776 → 0.349739；GIK p90 0.779339 → 0.779071。
+      8SPP C4 wall p50 0.456403 → 0.449976；GIK p50 0.336585 → 0.353058；GIK p90 0.778169 → 0.778169。
+    - 判讀：
+      wall 比 v3u 再暗一階。
+      GIK 暗半邊比 v3u 再亮一階。
+      GIK p90 未明顯上升，亮區 cap 仍有效。
+  v3ah_c4_front_2_16_wall_down_gik_up:
+    - 使用者肉眼回報：
+      v3af 牆面 2/3 亮度斷層，GIK 前段全段太亮。
+    - 修正量測範圍：
+      使用者指出「前面」是 2~16SPP 全段，不是只看 2/4/8。
+      先量 v3ah 前一版 2~16，確認 4SPP 是最明顯異常點。
+      這次先拆掉多層 sample-specific gate，避免繼續製造可見斷層。
+    - 實作：
+      C4 wall terminal fill scale = 0.58。
+      C4 GIK dark lift strength = 3.60。
+      C4 GIK low-luma lift strength = 0.25。
+      移除 first-visible 4SPP gate、terminal 4SPP gate、final front GIK boost。
+      final-output wall 改為平滑 front gate：1.0 - smoothstep(2.0, 8.0, uSampleCounter)，scale = 0.78。
+      final-output 只保留小幅 4SPP 修正：wall scale = 0.78、GIK scale = 1.20。
+    - 量測網址：
+      http://localhost:9002/Home_Studio.html?probe=r73-c4-gik-wall-v3ah-2-6-accurate
+    - 指令：
+      node /private/tmp/r73_c4_gik_wall_2_16_cdp.mjs 9223 'http://localhost:9002/Home_Studio.html?probe=r73-c4-gik-wall-v3ah-2-6-accurate' 2,3,4,5,6
+    - 量測結果：
+      2SPP C4 wall p50 0.360413 / GIK p50 0.397914
+      3SPP C4 wall p50 0.358647 / GIK p50 0.404641
+      4SPP C4 wall p50 0.477526 / GIK p50 0.340156
+      5SPP C4 wall p50 0.373484 / GIK p50 0.406241
+      6SPP C4 wall p50 0.378554 / GIK p50 0.406607
+    - 判讀：
+      2/3/5/6SPP 的 GIK 已從前一版過亮退回約 0.40。
+      牆面 2/3/5/6SPP 也回到相近亮度。
+      4SPP 仍是獨立異常點，單次 final 修正只能小幅影響累積平均。
+  v3ai_c4_wall_only_fast_decay:
+    - 使用者回報：
+      v3ah 量測結果形狀錯誤。
+      牆面 2~6SPP 應該呈現前段大、快速下降、後段趨緩；v3ah 卻出現 4SPP 凸起。
+      使用者要求先把 GIK 拔掉，先搞定牆面。
+    - 根因判讀：
+      v3ah 的 C4 牆面同時受 terminal fill、post-luma bright gate、final front gate、final 4SPP gate 影響。
+      final front gate 把 2/3SPP 壓得比 4SPP 重，post-luma gate 依亮度切換，牆面曲線被多個 gate 疊成局部凸點。
+      GIK dark lift 與 low-luma lift 讓牆面調參訊號混濁，因此 v3ai 先移出 C4 GIK 專用調整。
+    - 實作：
+      移除 C4 GIK dark lift。
+      移除 C4 GIK low-luma lift。
+      移除 C4 wall post-luma bright gate。
+      移除 final 4SPP 特例修正。
+      移除 final front gate。
+      保留 C4 wall terminal fill scale = 0.58。
+      C4 wall terminal fade 改成單一 sample 曲線：fastFade = 1.0 / (1.0 + 0.72 * max(0.0, uSampleCounter - 2.0))。
+    - 待驗：
+      C4 牆面先量 2~16SPP。
+      目標是曲線形狀先正確，再回頭處理 GIK。
+  v3aj_c4_wall_front_boost_after_fresh_measure:
+    - fresh-page 量測判讀：
+      舊 2~16 量測腳本每輪抓 mask 後會改到 render 狀態，造成下一輪 target / actual sample 混在一起。
+      v3ai 用 fresh-page 重測後，4SPP 凸點消失。
+      v3ai fresh-page p50 仍太平：2SPP 0.423379、4SPP 0.421376、16SPP 0.419992。
+    - 實作：
+      C4 wall terminal fill scale：0.58 → 1.10。
+      C4 wall terminal fade：1.0 / (1.0 + 0.72 * frontSample) → 1.0 / (1.0 + 1.60 * frontSample)。
+    - 目的：
+      提高 2SPP 端。
+      讓 3~16SPP 更快退回趨緩。
+      GIK 專用調整維持移除狀態。
+    - 待驗：
+      用 fresh-page 腳本先量 2~6SPP，確認 2SPP 是否明顯高於後段。
+    - fresh-page 2~16 量測：
+      指令 1：
+        rtk node /private/tmp/r73_c4_wall_fresh_cdp.mjs 9223 'http://localhost:9002/Home_Studio.html?probe=r73-c4-wall-v3aj-fresh-2-6' 2,3,4,5,6
+      指令 2：
+        rtk node /private/tmp/r73_c4_wall_fresh_cdp.mjs 9223 'http://localhost:9002/Home_Studio.html?probe=r73-c4-wall-v3aj-fresh-7-16' 7,8,9,10,11,12,13,14,15,16
+      結果按 actualSamples 解讀：
+        2SPP wall p50 0.482470
+        4SPP wall p50 0.452765
+        5SPP wall p50 0.447978
+        6SPP wall p50 0.444623
+        7SPP wall p50 0.441504
+        9SPP wall p50 0.437629
+        10SPP wall p50 0.435894
+        12SPP wall p50 0.433362
+        14SPP wall p50 0.430588
+        16SPP wall p50 0.429251
+        17SPP wall p50 0.428350
+    - 判讀：
+      牆面 p50 已呈現前段高、快速下降、後段趨緩。
+      wait helper 偶爾會跳過 target sample，因此量測判讀要看 actualSamples。
+  v3ak_c4_rollback_to_original:
+    - 使用者回報：
+      C4 quick preview 調參方向仍無法收下來，使用者要求 C4 變回原本狀態。
+    - 實作：
+      r73QuickPreviewFillConfigAllowed() 從 C3 / C4 改回 C3-only。
+      firstFrameRecoveryConfigTargetSamples(activeCameraMoving) 的丟可見 1SPP 分支從 C3 / C4 改回 C3-only。
+      path shader 移除 C4 wall-only terminal scale 與 sample fade 曲線。
+      C4 GIK / wall 專用調整維持移除。
+    - 判讀：
+      C4 不再套用 R7-3 terminal fill。
+      C4 暫時被改成不丟可見 1SPP，後續 v3al 修正。
+      C3 固定曲線與最小 ON/OFF 驗證開關保留。
+  v3al_c4_keep_drop_1spp_without_curve:
+    - 使用者補充：
+      C4 要丟 1SPP，只是不要套曲線。
+    - 實作：
+      r73QuickPreviewFillConfigAllowed() 維持 C3-only。
+      firstFrameRecoveryConfigTargetSamples(activeCameraMoving) 恢復 C3 / C4 active moving 回傳 2。
+      C4 path shader 仍無 R7-3 terminal fill 曲線。
+    - 判讀：
+      C4 第一個可見畫格直接到 2SPP。
+      C4 不套 R7-3 terminal fill。
+  closeout:
+    - R7-3 的 C3 固定曲線已收尾；C4 quick preview 曲線已退回原本狀態。
+    - 功能面保留：C3、預設 ON、固定曲線、最小 ON/OFF 驗證開關、C3 / C4 丟掉可見 1SPP。
+    - 驗收面保留：低 SPP 牆面黑點改善、1000SPP ON/OFF 完全一樣。
+  cache_bust:
+    - InitCommon: js/InitCommon.js?v=r7-3-quick-preview-fill-v3al
+    - Home_Studio: js/Home_Studio.js?v=r7-3-quick-preview-fill-v3al
+    - Shader: Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al
+    - ScreenOutput: ScreenOutput_Fragment.glsl?v=r7-3-quick-preview-fill-v3al
+  validation:
+    - docs/tests/r7-3-quick-preview-fill.test.js 先紅，缺 R7-3 cache token、console helper、uniform 與 shader 合約。
+    - 使用者回報 T/F 無差後，新增 ordered smoothstep 合約，先紅在暗點 mask 邊界。
+    - 使用者回報 v1b 仍無有效視覺差後，新增 v2 雙向清理合約，先紅在 cache token。
+    - 使用者回報 v2 仍無效後，新增 v3 terminal 合約，先紅在 cache token。
+    - 使用者回報 v3 compile error 後，新增 bare strength identifier guard。
+    - 使用者回報 v3k S2 仍像被 S1 影響後，新增 first-frame recovery ordering guard。
+    - 使用者指定 v3m S1=4.00 後，更新 R7-3 fixed-curve 合約。
+    - 使用者指定 v3n S1=3.00 後，更新 R7-3 fixed-curve 合約。
+    - 使用者指定 v3o S1=3.20 / S2=1.70 後，更新 R7-3 fixed-curve 合約。
+    - 使用者指定 v3p 拔 UI / 預設 ON / C3-only 後，更新 R7-3 fixed-curve 合約。
+    - 使用者指定 v3q 恢復最小 ON/OFF 驗證開關後，更新 R7-3 UI 合約。
+    - 使用者指定 v3r C4 同曲線與丟可見 1SPP 後，更新 R7-3 C4 合約。
+    - 使用者指定同時量 C3 / C4 GIK 後，新增 R7-3 GIK vs wall probe 合約。
+    - 實作後同一測試轉綠。
+    - node docs/tests/r7-2-light-importance-sampling.test.js 通過。
+    - node --check js/InitCommon.js 通過。
+    - node --check js/Home_Studio.js 通過。
+  next_verification:
+    - 使用者開 http://localhost:9002/Home_Studio.html。
+    - 切 C3，切快速預覽。
+    - Console 跑 reportR73QuickPreviewFillConfig()，確認 enabled=true / configAllowed=true / r73QuickPreviewFillApplied=true。
+    - 切 C4，確認 configAllowed=true / r73QuickPreviewFillApplied=true。
+    - 用左下 R7-3 開關做 ON/OFF，比對高 SPP 是否退乾淨。
+    - 2026-05-08 使用者已回報 1000SPP ON/OFF 完全一樣。
+    - 驗收重點是牆面黑點是否減少，黑色吸音板與喇叭是否沒有明顯發灰。
+```
+
+## R7-3｜滾輪縮放後切視角造成左右拉伸
+
+```yaml
+- id: R7-3-camera-preset-fov-ulens-reset
+  date: 2026-05-08
+  type: camera_projection_bug
+  user_report:
+    - 使用者發現用滾輪放大後，再按視角 1 / 2 / 3，畫面會被左右拉伸。
+    - 截圖中 FOV 顯示已回到 55，但畫面水平比例明顯異常。
+  root_cause:
+    - 滾輪縮放在 InitCommon.js 會同時更新 worldCamera.fov、uVLen 與 uULen。
+    - switchCamera() 重設 worldCamera.fov = 55 後，只更新 pathTracingUniforms.uVLen。
+    - pathTracingUniforms.uULen 仍沿用滾輪縮放後的舊水平 ray length。
+    - 本 path tracer 使用 shader uniform 的 uVLen / uULen 控制投影比例，不靠 three.js projection matrix。
+  fix:
+    - switchCamera() 重設 uVLen 後，補上：
+      pathTracingUniforms.uULen.value = pathTracingUniforms.uVLen.value * worldCamera.aspect;
+  validation:
+    - 新增 docs/tests/camera-preset-fov-reset.test.js。
+    - 測試先紅，確認 switchCamera() 缺少 uULen reset。
+    - 修正後同一測試轉綠。
+  rule:
+    - 任何會直接改 worldCamera.fov 的路徑，都要同步更新 uVLen 與 uULen。
+```
+
+## R7-3｜C4 快速預覽保留丟 1SPP
+
+```yaml
+- id: R7-3-c4-rollback-original
+  date: 2026-05-09
+  type: rollback
+  user_request:
+    - 使用者判定 C4 quick preview 調參方向收不下來，要求 C4 變回原本狀態。
+  implementation:
+    - R7-3 terminal fill 套用範圍改回 C3-only。
+    - C4 保留第一個可見畫格直接到 2SPP。
+    - path shader 移除 C4 wall-only terminal 曲線。
+    - C4 GIK / wall 專用調整維持移除。
+  current_state:
+    - C3 固定曲線保留。
+    - C4 回到沒有 R7-3 quick preview terminal fill 的狀態。
+    - C4 保留丟可見 1SPP。
+```
+
+## R7-3｜C3/C4 快速預覽丟掉可見 1SPP 實驗
+
+```yaml
+- id: R7-3-c3-c4-drop-visible-first-spp
+  date: 2026-05-08
+  type: quick_preview_experiment
+  user_request:
+    - 使用者詢問 C3 的 1SPP 若丟掉，直接從 2SPP 開始會怎樣。
+    - 使用者後續提出 C4 快速預覽也可以照同樣方式試試。
+  implementation:
+    - firstFrameRecoveryConfigTargetSamples(activeCameraMoving) 新增 C3 / C4 moving/cleared 專用分支。
+    - currentPanelConfig === 3 或 4，且 activeCameraMoving 時回傳 2。
+    - C1/C2 維持既有目標。
+    - reportFirstFrameRecoveryConfig() 新增 c3c4DropVisibleFirstSpp。
+  interpretation:
+    - 這是「第一個可見畫格直接到 S2」。
+    - S1 仍作為累積中的第一筆樣本存在，避免破壞 progressive average。
+    - 使用者肉眼要看的重點是 C3 / C4 快速預覽是否少掉第一眼黑點閃爍，以及手感是否仍可接受。
+  user_validation:
+    - 使用者回報這招不錯，因為 1SPP 是最髒的。
+    - 2SPP 與 3SPP 比較接近，只丟掉 1SPP 的手感還好。
+    - 使用者補充目前 FPS 本來就不高，因此第一眼直接到 2SPP 的等待感可接受。
+    - 判定：C3 丟掉可見 1SPP 可暫時保留；C4 尚待肉眼驗收。
+  validation:
+    - 新增 docs/tests/r7-3-c3-drop-first-spp.test.js。
+```
+
+## R7-Bake-Probe｜高 SPP 表面光照輸出優先序
+
+```yaml
+- id: R7-Bake-Probe-priority-before-restir-path-guiding
+  date: 2026-05-09
+  type: roadmap_update
+  context:
+    - 使用者討論是否能把趨近真實高 SPP 的結果烘焙給快速預覽使用。
+    - 釐清後結論是：多張螢幕截圖只適合固定視角快取；高 SPP 表面光照輸出才適合做 lightmap / bake。
+    - 使用者進一步確認光照分量可在 HDR 線性空間相加，因此 Cloud / 軌道 / 廣角可先分燈 bake，再由快速預覽讀取或疊加。
+  decision:
+    - 新增 R7-Bake-Probe / R7-3.5。
+    - 排在 R7-4 ReSTIR 與 R7-5 path guiding 前。
+    - R7-4 / R7-5 維持暫緩，只有 bake probe 失敗或無法達到快速預覽主痛點時再評估。
+  rationale:
+    - R7-4 ReSTIR 與 R7-5 path guiding 都是論文級即時計算重構，工程量大。
+    - bake probe 是低成本資訊實驗，可先回答快速預覽能否直接引用趨近真實高 SPP 的光照答案。
+    - 若 bake probe 成立，快速預覽主痛點可改由 lightmap 解決，不必先重寫採樣架構。
+  first_probe_scope:
+    - 只做小表面，不做全房間。
+    - 候選表面是地板局部、Cloud GIK 可見面、或轉角陰影處。
+    - 只開 Cloud 燈條。
+    - atlas 先用 64x64 或 128x128。
+    - spp 先測 64 / 256 / 1024。
+  must_not_confuse_terms:
+    - Cloud GIK 是吊頂 6 片白色 GIK 吸音板本體。
+    - Cloud 燈條 / Cloud rod 是 4 支 CLOUD_LIGHT 光源。
+    - bake probe 的接收面候選是地板、Cloud GIK 可見面、轉角陰影處；不是 Cloud 燈條。
+  next_questions:
+    - 趨近真實模式能否輸出表面 texel 光照，而不是螢幕像素。
+    - 小 atlas 貼回快速預覽後，是否降低 C3 地板 / Cloud GIK / 轉角陰影處的黑點與髒感。
+    - 每 texel / sample 成本是否可接受。
+    - Cloud、軌道、廣角分燈 bake 是否能在 tone mapping 前線性相加。
 ```
