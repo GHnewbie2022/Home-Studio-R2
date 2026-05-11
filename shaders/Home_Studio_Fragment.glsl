@@ -38,6 +38,15 @@ uniform float uIsBorrowPass;      // R6 LGG-r16 J3：1=當前 frame 是借光 pa
 uniform float uR73QuickPreviewTerminalMode;
 uniform float uR73QuickPreviewTerminalStrength;
 uniform int uR73GikWallProbeMode;
+uniform int uR738C1BakeCaptureMode;
+uniform int uR738C1BakePatchId;
+uniform float uR738C1BakePatchResolution;
+uniform float uR738C1BakeDiffuseOnlyMode;
+uniform sampler2D tR738C1BakeAtlasTexture;
+uniform float uR738C1BakePastePreviewMode;
+uniform float uR738C1BakePastePreviewReady;
+uniform float uR738C1BakePastePreviewStrength;
+uniform vec4 uR738C1BakePatchWorldBounds;
 
 // R2-13 X-ray 透視剝離
 uniform vec3 uCamPos;
@@ -323,6 +332,55 @@ bool cloudVisibleSurfaceIsObject(int visibleHitType, float visibleObjectID, vec3
 		!cloudVisibleSurfaceIsGik(visibleHitType) &&
 		!cloudVisibleSurfaceIsCeiling(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
 		!cloudVisibleSurfaceIsWall(visibleHitType, visibleObjectID, visibleNormal);
+}
+vec4 r738C1SurfaceClassColor(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	if (cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition)) return vec4(1.0, 0.0, 0.0, 1.0);
+	if (cloudVisibleSurfaceIsGik(visibleHitType)) return vec4(0.0, 1.0, 0.0, 1.0);
+	if (cloudVisibleSurfaceIsCeiling(visibleHitType, visibleObjectID, visibleNormal, visiblePosition)) return vec4(0.0, 0.0, 1.0, 1.0);
+	if (cloudVisibleSurfaceIsWall(visibleHitType, visibleObjectID, visibleNormal)) return vec4(1.0, 1.0, 0.0, 1.0);
+	if (cloudVisibleSurfaceIsObject(visibleHitType, visibleObjectID, visibleNormal, visiblePosition)) return vec4(1.0, 0.0, 1.0, 1.0);
+	return vec4(0.0, 0.0, 0.0, 1.0);
+}
+bool r738C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out vec3 normal, out int hitType, out float objectID)
+{
+	vec2 uv = clamp(texelUv, vec2(0.0), vec2(1.0));
+	if (patchId == 0)
+	{
+		float x = mix(-1.0, 1.0, uv.x);
+		float z = mix(-1.0, 1.0, uv.y);
+		position = vec3(x, 0.01, z);
+		normal = vec3(0.0, 1.0, 0.0);
+		hitType = 1;
+		objectID = 0.0;
+		return true;
+	}
+	position = vec3(0.0);
+	normal = vec3(0.0, 1.0, 0.0);
+	hitType = 0;
+	objectID = 0.0;
+	return false;
+}
+bool r738C1BakePastePreviewUv(vec3 visiblePosition, out vec2 atlasUv)
+{
+	float xMin = uR738C1BakePatchWorldBounds.x;
+	float xMax = uR738C1BakePatchWorldBounds.y;
+	float zMin = uR738C1BakePatchWorldBounds.z;
+	float zMax = uR738C1BakePatchWorldBounds.w;
+	if (visiblePosition.x < xMin || visiblePosition.x > xMax || visiblePosition.z < zMin || visiblePosition.z > zMax)
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	atlasUv = vec2(
+		(visiblePosition.x - xMin) / max(0.00001, xMax - xMin),
+		(visiblePosition.z - zMin) / max(0.00001, zMax - zMin)
+	);
+	return true;
+}
+vec3 r738C1BakePastePreviewSample(vec2 atlasUv)
+{
+	return max(texture(tR738C1BakeAtlasTexture, clamp(atlasUv, vec2(0.0), vec2(1.0))).rgb, vec3(0.0));
 }
 bool cloudVisibleSurfaceProbeModeMatches(int mode, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
@@ -1665,6 +1723,11 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			firstVisibleObjectID = hitObjectID;
 			firstVisibleNormal = nl;
 			firstVisiblePosition = x;
+			if (uR738C1BakeCaptureMode == 1)
+			{
+				accumCol += r738C1SurfaceClassColor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition).rgb;
+				break;
+			}
 			if (uR73GikWallProbeMode > 0)
 			{
 				bool r73ProbeMatch =
@@ -2592,7 +2655,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			// R2-18 fix17：地板磁磚 dielectric Fresnel 分支（hitObjectID=1 結構組 + 頂面 + bmax.y≈0）
 			// Schlick F0=0.04，rand()<F 走鏡面（roughness² blur），否則走下方漫射
 			bool isFloor = (hitObjectID < 1.5 && hitNormal.y > 0.5 && hitBoxMax.y < 0.1);
-			if (isFloor) {
+			bool r738DiffuseOnlyActive = (uR738C1BakeCaptureMode == 2 && uR738C1BakeDiffuseOnlyMode > 0.5);
+			if (isFloor && !r738DiffuseOnlyActive && uFloorRoughness < 0.999) {
 				float cosI = max(0.0, dot(-rayDirection, nl));
 				float F = 0.04 + 0.96 * pow(1.0 - cosI, 5.0);
 				if (rand() < F) {
@@ -2711,6 +2775,19 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			float r73QuickPreviewSkyFacing = clamp(nl.y * 0.5 + 0.5, 0.0, 1.0);
 			r73QuickPreviewTerminalColor *= mix(0.72, 1.18, r73QuickPreviewSkyFacing);
 			accumCol += mask * r73QuickPreviewTerminalColor * uR73QuickPreviewTerminalStrength * r73QuickPreviewSampleFade;
+		}
+	}
+
+	if (uR738C1BakeCaptureMode == 0 &&
+		uR738C1BakePastePreviewMode > 0.5 &&
+		uR738C1BakePastePreviewReady > 0.5 &&
+		cloudVisibleSurfaceIsFloor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+	{
+		vec2 r738BakedPatchUv = vec2(0.0);
+		if (r738C1BakePastePreviewUv(firstVisiblePosition, r738BakedPatchUv))
+		{
+			vec3 r738BakedPatchColor = r738C1BakePastePreviewSample(r738BakedPatchUv);
+			accumCol = mix(accumCol, r738BakedPatchColor, clamp(uR738C1BakePastePreviewStrength, 0.0, 1.0));
 		}
 	}
 

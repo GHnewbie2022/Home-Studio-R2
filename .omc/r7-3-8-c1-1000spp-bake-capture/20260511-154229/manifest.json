@@ -1,0 +1,20 @@
+{
+  "version": "r7-3-8-c1-1000spp-bake-capture",
+  "config": 1,
+  "createdAt": "2026-05-11T07:42:29.411Z",
+  "branch": "codex/r7-3-8-c1-1000spp-bake-capture",
+  "commit": "WORKTREE_DIRTY",
+  "smokeTest": false,
+  "targetAtlasResolution": 512,
+  "requestedSamples": 1000,
+  "diffuseOnly": true,
+  "upscaled": false,
+  "packageDir": ".omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229",
+  "artifacts": {
+    "rawHdrSummary": "raw-hdr-summary.json",
+    "surfaceClassSummary": "surface-class-summary.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "texelMetadataPatch0": "texel-metadata-patch-000-f32.bin",
+    "validationReport": "validation-report.json"
+  }
+}

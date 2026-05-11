@@ -1,0 +1,82 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+
+const initCommon = fs.readFileSync('js/InitCommon.js', 'utf8');
+const html = fs.readFileSync('Home_Studio.html', 'utf8');
+const homeStudio = fs.readFileSync('js/Home_Studio.js', 'utf8');
+const shader = fs.readFileSync('shaders/Home_Studio_Fragment.glsl', 'utf8');
+const runner = fs.readFileSync('docs/tools/r7-3-8-c1-bake-capture-runner.mjs', 'utf8');
+const pointer = JSON.parse(fs.readFileSync('docs/data/r7-3-8-c1-bake-accepted-package.json', 'utf8'));
+
+assert.equal(pointer.version, 'r7-3-8-c1-1000spp-bake-capture');
+assert.equal(pointer.packageStatus, 'accepted');
+assert.equal(pointer.packageDir, '.omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229');
+assert.equal(pointer.targetAtlasResolution, 512);
+assert.equal(pointer.samplesPerTexel, 1000);
+assert.equal(pointer.upscaled, false);
+assert.equal(pointer.diffuseOnly, true);
+assert.equal(pointer.artifacts.atlasPatch0, 'atlas-patch-000-rgba-f32.bin');
+assert.equal(pointer.artifacts.validationReport, 'validation-report.json');
+assert.equal(pointer.artifactHashes.atlasPatch0Sha256, '2b94ad197cffa35066de6cf2d6f167309574d6d3023ea252db6909f05bd1a873');
+
+assert.match(homeStudio, /uR738C1BakePastePreviewMode/);
+assert.match(homeStudio, /uR738C1BakePastePreviewReady/);
+assert.match(homeStudio, /uR738C1BakeDiffuseOnlyMode/);
+assert.match(homeStudio, /uR738C1BakePatchWorldBounds/);
+assert.match(homeStudio, /tR738C1BakeAtlasTexture/);
+assert.match(homeStudio, /uFloorRoughness = \{ value: 1\.0 \}/);
+assert.match(homeStudio, /createS\('slider-floor-roughness', '地板粗糙度', 0\.0, 1\.0, 0\.05, 1\.0/);
+assert.match(homeStudio, /window\.reportFloorRoughness/);
+assert.match(homeStudio, /window\.setFloorRoughness/);
+
+assert.match(shader, /uniform sampler2D tR738C1BakeAtlasTexture;/);
+assert.match(shader, /uniform float uR738C1BakePastePreviewMode;/);
+assert.match(shader, /uniform float uR738C1BakeDiffuseOnlyMode;/);
+assert.match(shader, /r738C1BakePastePreviewUv/);
+assert.match(shader, /r738C1BakePastePreviewSample/);
+assert.match(shader, /uR738C1BakeDiffuseOnlyMode > 0\.5/);
+assert.match(shader, /cloudVisibleSurfaceIsFloor\(firstVisibleHitType/);
+assert.match(shader, /accumCol = mix\(accumCol, r738BakedPatchColor/);
+assert.match(shader, /uFloorRoughness < 0\.999/);
+assert.match(html, /id="slider-floor-roughness"/);
+
+assert.match(initCommon, /R738_C1_BAKE_ACCEPTED_PACKAGE_URL/);
+assert.match(initCommon, /loadR738C1BakePastePreviewPackage/);
+assert.match(initCommon, /updateR738C1BakePastePreviewUniforms/);
+assert.match(initCommon, /diffuseOnly:\s*true/);
+assert.match(initCommon, /function scheduleHomeStudioAnimationFrame/);
+assert.match(initCommon, /homeStudioAnimationSleeping/);
+assert.match(initCommon, /window\.reportHomeStudioHibernationLoopState/);
+assert.match(initCommon, /framePending:\s*!!homeStudioAnimationFrameId/);
+assert.match(initCommon, /function homeStudioKeyboardInputCanAffectRender/);
+assert.doesNotMatch(initCommon, /function onKeyDown[\s\S]{0,180}wakeRender\(\)/);
+assert.match(initCommon, /window\.setR738C1BakePastePreviewEnabled/);
+assert.match(initCommon, /window\.reportR738C1BakePastePreviewConfig/);
+assert.match(initCommon, /diffuseOnly:\s*r738C1BakePastePreviewPackage/);
+assert.match(initCommon, /window\.waitForR738C1BakePastePreviewReady/);
+assert.doesNotMatch(initCommon, /appendChild\([^)]*R738/i);
+
+assert.match(runner, /--preview-test/);
+assert.match(runner, /--hibernation-test/);
+assert.match(runner, /--keyboard-idle-test/);
+assert.match(runner, /--snapshot-ui-test/);
+assert.match(runner, /--floor-roughness-test/);
+assert.match(runner, /reportR738C1BakePastePreviewConfig/);
+assert.match(runner, /reportHomeStudioHibernationLoopState/);
+assert.match(runner, /reportFloorRoughness/);
+assert.match(runner, /KeyboardEvent\('keydown'/);
+assert.match(runner, /idleKeyReport\.currentSamples === beforeReport\.currentSamples/);
+assert.match(runner, /btn-step-sampling/);
+assert.match(runner, /afterStepReport\.currentSamples === beforeStepReport\.currentSamples \+ 1/);
+assert.match(runner, /20260511-154229/);
+assert.match(runner, /previewReport\.diffuseOnly === true/);
+assert.match(runner, /hibernationReport\.sleeping/);
+assert.match(runner, /hibernationReport\.framePending === false/);
+assert.match(runner, /cameraInfoText/);
+assert.match(runner, /Samples: 1000/);
+assert.match(runner, /preview-screenshot.png/);
+assert.match(initCommon, /!renderingStopped[\s\S]{0,180}bloomBrightpassMaterial/);
+assert.match(homeStudio, /scheduleHomeStudioAnimationFrame/);
+assert.doesNotMatch(homeStudio, /keydown', function \(e\) \{ keys\[e\.code\] = true; wakeRender\(\); \}/);
+
+console.log('R7-3.8 C1 bake paste-preview contract passed');

@@ -3294,7 +3294,20 @@ void main( void )
 		     (camRight * pixelPos.x * uULen * 100.0) + (camUp * pixelPos.y * uVLen * 100.0);
 					     
 	rayDirection = finalRayDir;
-	
+
+	if (uR738C1BakeCaptureMode == 2)
+	{
+		vec2 r738BakeUv = (gl_FragCoord.xy + vec2(0.5)) / uResolution;
+		vec3 r738BakePoint = vec3(0.0);
+		vec3 r738BakeNormal = vec3(0.0, 1.0, 0.0);
+		int r738BakeHitType = 0;
+		float r738BakeObjectID = 0.0;
+		if (r738C1BakeSurfacePoint(uR738C1BakePatchId, r738BakeUv, r738BakePoint, r738BakeNormal, r738BakeHitType, r738BakeObjectID))
+		{
+			rayOrigin = r738BakePoint + r738BakeNormal * (uEPS_intersect * 8.0);
+			rayDirection = -r738BakeNormal;
+		}
+	}
 
 	SetupScene();
 

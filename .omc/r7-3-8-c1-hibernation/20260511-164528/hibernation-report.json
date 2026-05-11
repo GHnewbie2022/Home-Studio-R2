@@ -1,0 +1,17 @@
+{
+  "status": "pass",
+  "report": {
+    "version": "r7-3-8-c1-floor-roughness-fix1",
+    "sleeping": true,
+    "framePending": false,
+    "samplingPaused": false,
+    "cameraIsMoving": false,
+    "postProcessChanged": false,
+    "sceneParamsChanged": false,
+    "samplingStepOnceRequested": false,
+    "currentSamples": 1000,
+    "maxSamples": 1000,
+    "renderLimitReached": true,
+    "cameraInfoText": "FPS: 0 / FOV: 55 / Samples: 1000 / 耗時: 00m34s (休眠)"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "version": "r7-3-8-c1-1000spp-bake-capture",
+  "packageStatus": "accepted",
+  "packageDir": ".omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229",
+  "targetAtlasResolution": 512,
+  "samplesPerTexel": 1000,
+  "upscaled": false,
+  "diffuseOnly": true,
+  "surfaceName": "floor_center_c1_reference",
+  "surfaceClass": "floor",
+  "worldBounds": {
+    "xMin": -1.0,
+    "xMax": 1.0,
+    "zMin": -1.0,
+    "zMax": 1.0,
+    "y": 0.01
+  },
+  "artifacts": {
+    "manifest": "manifest.json",
+    "rawHdrSummary": "raw-hdr-summary.json",
+    "surfaceClassSummary": "surface-class-summary.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "texelMetadataPatch0": "texel-metadata-patch-000-f32.bin",
+    "validationReport": "validation-report.json"
+  },
+  "artifactByteLengths": {
+    "atlasPatch0": 4194304,
+    "texelMetadataPatch0": 12582912
+  },
+  "artifactHashes": {
+    "atlasPatch0Sha256": "2b94ad197cffa35066de6cf2d6f167309574d6d3023ea252db6909f05bd1a873",
+    "texelMetadataPatch0Sha256": "58fdde7f0927257c78a113628aafa338e61b6055b35733cbc23b8923c97e8ded"
+  },
+  "validation": {
+    "status": "pass",
+    "reprojectionDiagnosticOnly": true
+  }
+}

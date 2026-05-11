@@ -1,0 +1,24 @@
+{
+  "status": "pass",
+  "report": {
+    "version": "r7-3-8-c1-bake-paste-preview",
+    "enabled": true,
+    "ready": true,
+    "applied": true,
+    "error": null,
+    "currentPanelConfig": 1,
+    "configAllowed": true,
+    "packageDir": ".omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229",
+    "targetAtlasResolution": 512,
+    "samplesPerTexel": 1000,
+    "upscaled": false,
+    "diffuseOnly": true,
+    "uniformMode": 1,
+    "uniformReady": 1,
+    "strength": 1,
+    "currentSamples": 41
+  },
+  "artifacts": {
+    "screenshot": "preview-screenshot.png"
+  }
+}

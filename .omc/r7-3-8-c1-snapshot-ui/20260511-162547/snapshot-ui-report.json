@@ -1,0 +1,33 @@
+{
+  "status": "pass",
+  "report": {
+    "snapshotToggleText": "快照：開",
+    "manualEnabled": true,
+    "beforeStepReport": {
+      "paused": true,
+      "stepOncePending": false,
+      "stepHistoryDepth": 0,
+      "currentSamples": 20
+    },
+    "afterStepReport": {
+      "paused": true,
+      "stepOncePending": false,
+      "stepHistoryDepth": 1,
+      "currentSamples": 21
+    },
+    "afterBackReport": {
+      "paused": true,
+      "stepOncePending": false,
+      "stepHistoryDepth": 0,
+      "currentSamples": 20
+    },
+    "afterResumeReport": {
+      "paused": false,
+      "stepOncePending": false,
+      "stepHistoryDepth": 0,
+      "currentSamples": 23
+    },
+    "stepButtonText": "下一個採樣",
+    "samplingToggleText": "暫停採樣"
+  }
+}

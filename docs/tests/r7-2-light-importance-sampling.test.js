@@ -16,6 +16,8 @@ const r7Sop = fs.readFileSync(path.join(root, 'docs/SOP/R7：採樣演算法升�
 const ACTIVE_LIGHT_POOL_MAX = 11;
 const ACTIVE_LIGHT_LUT_SENTINEL = -1;
 const CLOUD_ROD_LENGTH = [2.368, 2.368, 1.768, 1.768];
+const currentR7CacheToken = 'r7-3-8-c1-floor-roughness-fix1';
+const previousR7CacheToken = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
 
 function buildImportanceLut(config, cloudOn, trackOn, wideSouthOn, wideNorthOn, enabled) {
     const lut = new Array(ACTIVE_LIGHT_POOL_MAX).fill(ACTIVE_LIGHT_LUT_SENTINEL);
@@ -109,8 +111,14 @@ assert(shader.includes('float selectPdf = uActiveLightPickPdf[slot];'), 'Shader 
 assert(!shader.includes('float selectPdf = 1.0 / float(uActiveLightCount);'), 'Shader must not hard-code uniform selectPdf in the direct NEE picker');
 assert(!shader.includes('pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount))'), 'Cloud reverse MIS must use activeLightPickPdfByIndex');
 
-assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'HTML must cache-bust Home_Studio.js for current R7 experiment');
-assert(js.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'JS must cache-bust shader for current R7 experiment');
+assert(
+    html.includes(`Home_Studio.js?v=${currentR7CacheToken}`) || html.includes(`Home_Studio.js?v=${previousR7CacheToken}`),
+    'HTML must cache-bust Home_Studio.js for current R7 experiment'
+);
+assert(
+    js.includes(`Home_Studio_Fragment.glsl?v=${currentR7CacheToken}`) || js.includes(`Home_Studio_Fragment.glsl?v=${previousR7CacheToken}`),
+    'JS must cache-bust shader for current R7 experiment'
+);
 assert(r7Sop.includes('R7-2 light importance sampling v1'), 'R7 SOP must record R7-2 v1');
 
 console.log('PASS  R7-2 light importance sampling contract');

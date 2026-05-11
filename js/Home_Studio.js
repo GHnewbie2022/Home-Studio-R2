@@ -33,6 +33,7 @@ const ACTIVE_LIGHT_POOL_MAX = 11;
 const ACTIVE_LIGHT_LUT_SENTINEL = -1;
 const R7_2_LIGHT_IMPORTANCE_VERSION = 'r7-2-light-importance-sampling-v1-r7-2d-step-history';
 const R7_3_QUICK_PREVIEW_FILL_VERSION = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
+const R7_3_8_C1_BAKE_CAPTURE_VERSION = 'r7-3-8-c1-floor-roughness-fix1';
 let r72LightImportanceSamplingEnabled = false;
 
 // === Scene Box Data (single source of truth) ===
@@ -5162,7 +5163,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-8-c1-floor-roughness-fix1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5400,8 +5401,8 @@ function initSceneData() {
     pathTracingUniforms.uFixtureRoughness = { value: 0.5 };
     pathTracingUniforms.uFixtureMetalness = { value: 0.2 };
 
-    // R2-18 fix17：地板霧面磁磚（dielectric Fresnel F0=0.04 + roughness blur）；fix18 預設 0.1 肉眼校準
-    pathTracingUniforms.uFloorRoughness = { value: 0.1 };
+    // R2-18 fix17 / R7-3.8：地板粗糙度；1.0 = 最粗糙並關閉地板 Fresnel 反射分支
+    pathTracingUniforms.uFloorRoughness = { value: 1.0 };
 
     // R2-18 fix19 / R3-7：間接光補償（erichlof 框架 diffuseCount==1 單掛旗 → 2-diffuse-bounce 截斷）
     // 本係數補償第 3 次以後永遠不再累加的間接反彈能量；非臨時值。提 max_bounces 4→8 肉眼無差（R3-7 驗）。
@@ -5416,6 +5417,23 @@ function initSceneData() {
     pathTracingUniforms.uR73QuickPreviewTerminalMode = { value: 0.0 };
     pathTracingUniforms.uR73QuickPreviewTerminalStrength = { value: 0.0 };
     pathTracingUniforms.uR73GikWallProbeMode = { value: 0 };
+    pathTracingUniforms.uR738C1BakeCaptureMode = { value: 0 };
+    pathTracingUniforms.uR738C1BakePatchId = { value: 0 };
+    pathTracingUniforms.uR738C1BakePatchResolution = { value: 512.0 };
+    pathTracingUniforms.uR738C1BakeDiffuseOnlyMode = { value: 0.0 };
+    var r738DefaultBakeAtlasTexture = new THREE.DataTexture(new Float32Array([0, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
+    r738DefaultBakeAtlasTexture.minFilter = THREE.NearestFilter;
+    r738DefaultBakeAtlasTexture.magFilter = THREE.NearestFilter;
+    r738DefaultBakeAtlasTexture.wrapS = THREE.ClampToEdgeWrapping;
+    r738DefaultBakeAtlasTexture.wrapT = THREE.ClampToEdgeWrapping;
+    r738DefaultBakeAtlasTexture.flipY = false;
+    r738DefaultBakeAtlasTexture.generateMipmaps = false;
+    r738DefaultBakeAtlasTexture.needsUpdate = true;
+    pathTracingUniforms.tR738C1BakeAtlasTexture = { value: r738DefaultBakeAtlasTexture };
+    pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
+    pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
+    pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
+    pathTracingUniforms.uR738C1BakePatchWorldBounds = { value: new THREE.Vector4(-1.0, 1.0, -1.0, 1.0) };
 
     // R3-0 / R3-7：NEE 直接光補償（shader 10 處 `mask *= weight * uLegacyGain`）。
     // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。
@@ -5773,12 +5791,16 @@ function setCheckboxChecked(checkboxId, checked) {
 // 使用 sceneParamsChanged 讓 animate() 開頭清除 cameraIsMoving 後仍能重新觸發 restart
 function wakeRender() {
     sceneParamsChanged = true;
+    if (typeof scheduleHomeStudioAnimationFrame === 'function')
+        scheduleHomeStudioAnimationFrame();
 }
 
 // R6 Route X：後製專用喚醒——不重置 path tracer 累積，只觸發一次 STEP 3 讓滑桿生效
 // 用途：陰影補光三條滑桿（強度/軟膝/純白比例）等純後製操作
 function wakePostProcess() {
     postProcessChanged = true;
+    if (typeof scheduleHomeStudioAnimationFrame === 'function')
+        scheduleHomeStudioAnimationFrame();
 }
 
 // ---------------- R4-4 甜蜜點 UI recompute 輔助 ----------------
@@ -6010,6 +6032,28 @@ function initUI() {
         }
         wakeRender();
         return v;
+    });
+
+    function applyFloorRoughness(value)
+    {
+        var v = Math.max(0.0, Math.min(1.0, Number(value)));
+        if (!Number.isFinite(v)) v = 1.0;
+        if (pathTracingUniforms && pathTracingUniforms.uFloorRoughness)
+            pathTracingUniforms.uFloorRoughness.value = v;
+        setSliderValue('slider-floor-roughness', v);
+        wakeRender();
+        return v;
+    }
+    window.setFloorRoughness = applyFloorRoughness;
+    window.reportFloorRoughness = function()
+    {
+        return {
+            value: pathTracingUniforms && pathTracingUniforms.uFloorRoughness ? pathTracingUniforms.uFloorRoughness.value : null,
+            pureDiffuseAtOne: true
+        };
+    };
+    createS('slider-floor-roughness', '地板粗糙度', 0.0, 1.0, 0.05, 1.0, function(v) {
+        return applyFloorRoughness(v);
     });
 
     createS('slider-mult-a', '間接光補償', 0.1, 5.0, 0.1, 1.0, function(v) {

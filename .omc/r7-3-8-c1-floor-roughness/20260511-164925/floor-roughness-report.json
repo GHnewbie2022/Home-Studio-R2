@@ -1,0 +1,21 @@
+{
+  "status": "pass",
+  "report": {
+    "initialReport": {
+      "value": 1,
+      "pureDiffuseAtOne": true
+    },
+    "initialRangeValue": 1,
+    "initialNumberValue": 1,
+    "changedReport": {
+      "value": 0.25,
+      "pureDiffuseAtOne": true
+    },
+    "changedRangeValue": 0.25,
+    "changedNumberValue": 0.25,
+    "finalReport": {
+      "value": 1,
+      "pureDiffuseAtOne": true
+    }
+  }
+}

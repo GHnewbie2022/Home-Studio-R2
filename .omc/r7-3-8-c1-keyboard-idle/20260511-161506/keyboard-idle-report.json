@@ -1,0 +1,31 @@
+{
+  "status": "pass",
+  "report": {
+    "beforeReport": {
+      "version": "r7-3-8-c1-diffuse-paste-fix1",
+      "sleeping": true,
+      "framePending": false,
+      "samplingPaused": false,
+      "cameraIsMoving": false,
+      "postProcessChanged": false,
+      "sceneParamsChanged": false,
+      "samplingStepOnceRequested": false,
+      "currentSamples": 1000,
+      "maxSamples": 1000,
+      "renderLimitReached": true
+    },
+    "idleKeyReport": {
+      "version": "r7-3-8-c1-diffuse-paste-fix1",
+      "sleeping": true,
+      "framePending": false,
+      "samplingPaused": false,
+      "cameraIsMoving": false,
+      "postProcessChanged": false,
+      "sceneParamsChanged": false,
+      "samplingStepOnceRequested": false,
+      "currentSamples": 1000,
+      "maxSamples": 1000,
+      "renderLimitReached": true
+    }
+  }
+}

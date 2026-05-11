@@ -5646,3 +5646,246 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - node --check js/Home_Studio.js
     - git diff --check
 ```
+
+## R7-3.8｜C1 1000SPP bake capture package created
+
+```yaml
+- id: R7-3.8-c1-1000spp-bake-capture-package
+  date: 2026-05-11
+  type: bake_capture
+  branch: codex/r7-3-8-c1-1000spp-bake-capture
+  implementation:
+    - Added docs/data/r7-3-8-c1-bake-surface-spec.json.
+    - Added docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js.
+    - Added docs/tools/r7-3-8-c1-bake-capture-runner.mjs.
+    - Added R7-3.8 capture uniforms and shader modes.
+    - Added programmatic C1 raw HDR, surface class, direct atlas, metadata, and artifact helpers.
+    - Updated Home_Studio.html cache tokens for R7-3.8.
+  runner_command:
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --samples=1000 --atlas-resolution=512 --timeout-ms=240000 --http-port=9002 --cdp-port=9227 --angle=metal
+  output_package:
+    - .omc/r7-3-8-c1-1000spp-bake-capture/20260511-144346/
+  validation:
+    - status: pass
+    - rawHdr.actualSamples: 1000
+    - atlasSummary.actualSamples: 1000
+    - targetAtlasResolution: 512
+    - upscaled: false
+    - rawHdrSummary.nonFinitePixels: 0
+    - atlasSummary.nonFiniteTexels: 0
+    - atlasFloatCount: 1048576
+    - metadataFloatCount: 3145728
+    - validTexelRatio: 1.0
+  raw_hdr_summary:
+    - width: 1280
+    - height: 720
+    - finitePixels: 921600
+    - meanLuma: 0.3166307061528088
+    - p50Luma: 0.2589794499267578
+    - p90Luma: 0.38835658078613283
+    - p99Luma: 0.4810397467529297
+    - maxLuma: 29.685250424609375
+  surface_class_summary:
+    - floor: 96170
+    - gik: 39755
+    - ceiling: 141226
+    - wall: 484263
+    - object: 160186
+    - background: 0
+  diagnostic_note:
+    - reprojectionStatus: fail
+    - medianRelativeLumaError: 0.42171542661733125
+    - p90RelativeLumaError: 0.481856186862716
+    - interpretation: This is recorded as diagnostic only. Camera-view floor radiance and normal-direction atlas radiance can differ on rough/specular floor material.
+  environment_note:
+    - ANGLE Metal completed the formal package.
+    - SwiftShader smoke works, but formal 1000SPP / 512 exceeded practical CDP runtime.
+```
+
+## R7-3.8｜C1 bake floor patch paste-preview implemented
+
+```yaml
+- id: R7-3.8-c1-bake-floor-patch-paste-preview
+  date: 2026-05-11
+  type: bake_preview
+  branch: codex/r7-3-8-c1-1000spp-bake-capture
+  purpose:
+    - Use the accepted floor-center 512x512 / 1000SPP atlas as a live paste-back preview.
+    - Let the user visually check whether the clean patch appears at low SPP and becomes less noticeable as the live path tracer converges.
+  accepted_package_pointer:
+    - docs/data/r7-3-8-c1-bake-accepted-package.json
+  accepted_package:
+    - .omc/r7-3-8-c1-1000spp-bake-capture/20260511-144346/
+  implementation:
+    - Added docs/tests/r7-3-8-c1-bake-paste-preview.test.js.
+    - Added docs/data/r7-3-8-c1-bake-accepted-package.json.
+    - Added path-tracing uniforms for tR738C1BakeAtlasTexture and C1 paste preview mode.
+    - Added JS loader for the accepted package pointer and atlas-patch-000-rgba-f32.bin.
+    - Added shader paste-back for first-visible C1 floor pixels inside the floor-center patch bounds.
+    - Extended docs/tools/r7-3-8-c1-bake-capture-runner.mjs with --preview-test.
+  validation:
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --preview-test --timeout-ms=90000 --http-port=9002 --cdp-port=9228 --angle=metal
+  preview_output:
+    - .omc/r7-3-8-c1-bake-paste-preview/20260511-151127/
+  preview_report:
+    - status: pass
+    - ready: true
+    - applied: true
+    - currentPanelConfig: 1
+    - packageDir: .omc/r7-3-8-c1-1000spp-bake-capture/20260511-144346
+    - targetAtlasResolution: 512
+    - samplesPerTexel: 1000
+    - upscaled: false
+    - currentSamples: 43
+  user_validation_expectation:
+    - Open C1.
+    - The floor-center patch should be visibly cleaner than nearby live-rendered floor at low SPP.
+    - As SPP rises, surrounding live pixels should gradually approach the clean patch.
+  limitation:
+    - This is a first paste-preview for one floor-center patch, not a full-room baked renderer.
+    - Reflection and view-dependent material handling remain later bake-stage topics.
+```
+
+## R7-3.8｜C1 bake paste-preview diffuse-only recapture + hibernation loop fix
+
+```yaml
+- id: R7-3.8-c1-bake-diffuse-paste-fix1
+  date: 2026-05-11
+  type: bake_preview_fix
+  branch: codex/r7-3-8-c1-1000spp-bake-capture
+  user_report:
+    - The pasted floor patch showed a strong ceiling-lamp reflection.
+    - At 1000SPP, surrounding live-rendered areas still had visible noise.
+    - After hibernation, FPS became 0 while the GPU indicator still showed loading.
+    - Snapshot bar controls stopped working after the hibernation-loop change.
+    - User observed the live info line stopped at Samples: 999 instead of 1000.
+    - User suspected the dirty surrounding floor might be related to floor reflection, and asked for floor roughness UI defaulting to 1.
+  root_cause:
+    - The first atlas package captured floor material through the normal radiance path, so floor Fresnel/specular energy was baked into the pasted light patch.
+    - The accepted package was truly 1000SPP, but the pasted patch and the live 1000SPP PT view are not a fair same-estimator comparison.
+    - The pasted patch is a direct surface-texel, diffuse-only atlas value. The surrounding pixels are camera-view path tracing through the full material/display path.
+    - Bloom was already skipped during hibernation, but requestAnimationFrame was still being scheduled every frame after render stop.
+    - The first hibernation wake fix made all keydown events call wakeRender(), so arbitrary keys restarted accumulation.
+    - Snapshot bar sampling buttons changed paused / step state while the render loop was sleeping, but they did not schedule a new animation frame.
+    - cameraInfo was updated before the common animation code incremented sampleCounter. At the final frame it displayed 999, then sampleCounter incremented to 1000 and renderingStopped skipped the 1000th path render.
+    - The normal floor shader still had a Fresnel branch when uFloorRoughness was 1.0. Direction became diffuse-like, but the branch still existed.
+  implementation:
+    - Added uR738C1BakeDiffuseOnlyMode.
+    - Direct surface-texel atlas capture now runs floor capture in diffuse-only mode.
+    - Normal render keeps floor specular behavior unchanged.
+    - Accepted package pointer now targets the diffuse-only package.
+    - Added window.reportHomeStudioHibernationLoopState().
+    - Replaced the unconditional animation-loop reschedule with scheduleHomeStudioAnimationFrame().
+    - Hibernation now stops frame scheduling and wakes on input / parameter changes.
+    - Extended docs/tools/r7-3-8-c1-bake-capture-runner.mjs with --hibernation-test.
+    - Keydown now schedules a frame only for render-affecting keys instead of calling wakeRender().
+    - Extended docs/tools/r7-3-8-c1-bake-capture-runner.mjs with --keyboard-idle-test.
+    - setSamplingPaused(), requestSamplingStepOnce(), and requestSamplingStepBack() now schedule a frame after updating controls.
+    - Extended docs/tools/r7-3-8-c1-bake-capture-runner.mjs with --snapshot-ui-test.
+    - MAX_SAMPLES hibernation now uses renderLimitWasAlreadyReached, so the 1000th sample renders before sleep.
+    - Added slider-floor-roughness under ray settings.
+    - uFloorRoughness now defaults to 1.0.
+    - Floor Fresnel branch is skipped when uFloorRoughness >= 0.999, making roughness 1 a pure diffuse floor for this experiment.
+    - Added window.setFloorRoughness() and window.reportFloorRoughness().
+    - Extended docs/tools/r7-3-8-c1-bake-capture-runner.mjs with --floor-roughness-test.
+  accepted_package:
+    - .omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229/
+  accepted_package_pointer:
+    - docs/data/r7-3-8-c1-bake-accepted-package.json
+  atlas_luma_comparison:
+    - old_package: 20260511-144346
+    - old_p99: 1.1269
+    - old_max: 3.5206
+    - diffuse_only_package: 20260511-154229
+    - diffuse_only_p99: 0.5978
+    - diffuse_only_max: 0.6226
+    - interpretation: The high-luma reflection spike was removed from the floor patch atlas.
+  package_validation:
+    - status: pass
+    - targetAtlasResolution: 512
+    - samplesPerTexel: 1000
+    - upscaled: false
+    - diffuseOnly: true
+    - atlasPatch0Sha256: 2b94ad197cffa35066de6cf2d6f167309574d6d3023ea252db6909f05bd1a873
+    - texelMetadataPatch0Sha256: 58fdde7f0927257c78a113628aafa338e61b6055b35733cbc23b8923c97e8ded
+  preview_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --preview-test --timeout-ms=90000 --http-port=9002 --cdp-port=9231 --angle=metal
+    - output: .omc/r7-3-8-c1-bake-paste-preview/20260511-155844/
+    - status: pass
+    - ready: true
+    - applied: true
+    - packageDir: .omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229
+    - diffuseOnly: true
+  hibernation_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --hibernation-test --timeout-ms=60000 --http-port=9002 --cdp-port=9232 --angle=metal
+    - output: .omc/r7-3-8-c1-hibernation/20260511-155946/
+    - status: pass
+    - sleeping: true
+    - framePending: false
+    - samples: 1000/1000
+  keyboard_idle_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --keyboard-idle-test --timeout-ms=60000 --http-port=9002 --cdp-port=9233 --angle=metal
+    - output: .omc/r7-3-8-c1-keyboard-idle/20260511-161506/
+    - status: pass
+    - beforeSamples: 1000/1000
+    - afterSamples: 1000/1000
+    - sleeping: true
+    - framePending: false
+  max_sample_ui_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --hibernation-test --timeout-ms=60000 --http-port=9002 --cdp-port=9235 --angle=metal
+    - output: .omc/r7-3-8-c1-hibernation/20260511-164528/
+    - status: pass
+    - samples: 1000/1000
+    - cameraInfo: FPS: 0 / FOV: 55 / Samples: 1000 / 耗時: 00m34s (休眠)
+  snapshot_ui_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --snapshot-ui-test --timeout-ms=60000 --http-port=9002 --cdp-port=9234 --angle=metal
+    - output: .omc/r7-3-8-c1-snapshot-ui/20260511-162547/
+    - status: pass
+    - snapshotToggle: 快照：開
+    - manualEnabled: true
+    - stepSamples: 20->21
+    - backSamples: 20
+    - resumeSamples: 23
+  floor_roughness_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --floor-roughness-test --timeout-ms=60000 --http-port=9002 --cdp-port=9237 --angle=metal
+    - output: .omc/r7-3-8-c1-floor-roughness/20260511-164925/
+    - status: pass
+    - initial: 1
+    - changed: 0.25
+    - restored: 1
+  user_visual_validation_after_floor_roughness:
+    - User confirmed the earlier mismatch was caused by floor roughness / reflection behavior.
+    - With floor roughness defaulting to 1, the floor-center baked patch boundary was already hard to see around 350SPP.
+    - At 1000SPP the patch was visually invisible.
+    - Interpretation: diffuse baked-lighting architecture is successful for the floor-center patch.
+    - Follow-up: reflection needs a separate bake/render path.
+  updated_interpretation:
+    - The 1000SPP bake data is valid as a floor-center direct surface-texel diffuse atlas.
+    - The paste preview now proves atlas loading, placement, replacement path, and diffuse lighting continuity for the floor-center patch.
+    - The floor roughness fix isolated the diffuse bake from floor reflection.
+    - Next work should preserve the accepted diffuse bake path and add a separate reflection strategy.
+  validation_commands:
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-quick-preview-fill.test.js
+    - node docs/tests/r7-2-light-importance-sampling.test.js
+    - node docs/tests/r6-3-max-samples.test.js
+    - node docs/tests/r3-3-cloud-radiance.test.js
+    - node docs/tests/r3-5b-cloud-area-nee.test.js
+    - node docs/tests/fps-root-cause-probe.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check js/PathTracingCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --keyboard-idle-test --timeout-ms=60000 --http-port=9002 --cdp-port=9233 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --snapshot-ui-test --timeout-ms=60000 --http-port=9002 --cdp-port=9234 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --hibernation-test --timeout-ms=60000 --http-port=9002 --cdp-port=9235 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --floor-roughness-test --timeout-ms=60000 --http-port=9002 --cdp-port=9237 --angle=metal
+    - git diff --check
+```

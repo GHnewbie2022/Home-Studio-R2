@@ -29,6 +29,26 @@ const milestones = milestonesMatch[1].trim()
     : [];
 const overLimit = milestones.filter((value) => value > maxSamples);
 
+function extractFunctionBody(source, signature) {
+    const start = source.indexOf(signature);
+    assert(start >= 0, `${signature} missing`);
+    const open = source.indexOf('{', start);
+    assert(open >= 0, `${signature} body missing`);
+    let depth = 0;
+    for (let i = open; i < source.length; i += 1) {
+        if (source[i] === '{') depth += 1;
+        if (source[i] === '}') {
+            depth -= 1;
+            if (depth === 0) return source.slice(open + 1, i);
+        }
+    }
+    assert.fail(`${signature} body not closed`);
+}
+
+const setSamplingPausedBody = extractFunctionBody(initCommon, 'window.setSamplingPaused = function(paused)');
+const requestSamplingStepOnceBody = extractFunctionBody(initCommon, 'window.requestSamplingStepOnce = function()');
+const requestSamplingStepBackBody = extractFunctionBody(initCommon, 'window.requestSamplingStepBack = function()');
+
 assert.deepStrictEqual(milestones, [], 'SNAPSHOT_MILESTONES should be empty while hand-feel testing is active');
 assert.deepStrictEqual(overLimit, [], 'SNAPSHOT_MILESTONES should not include unreachable values above MAX_SAMPLES');
 assert(src.includes('function setSnapshotCaptureEnabled(enabled)'), 'Snapshot capture must have a runtime toggle');
@@ -68,6 +88,11 @@ assert(initCommon.includes('var samplingPausedForFrame = samplingPaused && !samp
 assert(initCommon.includes('if (firstFrameRecoveryEnabled && !samplingStepOnceActive)'), 'Sampling step-once must suppress first-frame burst so the button advances only one SPP');
 assert(initCommon.includes('samplingStepOnceRequested = false;'), 'Sampling step-once request must clear itself after the render loop observes it');
 assert(initCommon.includes('var renderingStopped = samplingPausedForFrame ||'), 'Sampling pause must reuse the stopped-render path');
+assert(initCommon.includes('var renderLimitWasAlreadyReached = typeof MAX_SAMPLES !== \'undefined\' && sampleCounter >= MAX_SAMPLES && !cameraIsMoving;'), 'MAX_SAMPLES stop condition must use the already-rendered sample count before incrementing');
+assert(initCommon.includes('var renderingStopped = samplingPausedForFrame || renderLimitWasAlreadyReached;'), 'MAX_SAMPLES must render the 1000th sample before hibernating');
+assert(setSamplingPausedBody.includes('scheduleHomeStudioAnimationFrame();'), 'Sampling pause/resume must wake the stopped animation loop');
+assert(requestSamplingStepOnceBody.includes('scheduleHomeStudioAnimationFrame();'), 'Sampling next-sample must wake the stopped animation loop');
+assert(requestSamplingStepBackBody.includes('scheduleHomeStudioAnimationFrame();'), 'Sampling previous-sample must wake the stopped animation loop');
 assert(src.includes('function updateSamplingControls()'), 'Sampling pause button must keep its label in sync');
 assert(src.includes('window.setSamplingPaused(!window.reportSamplingPaused().paused)'), 'Sampling pause button must toggle the runtime state');
 assert(src.includes('btn-step-sampling'), 'Sampling next-sample button must be wired by Home_Studio');
