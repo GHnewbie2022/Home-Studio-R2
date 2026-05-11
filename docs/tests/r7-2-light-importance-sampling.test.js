@@ -16,8 +16,8 @@ const r7Sop = fs.readFileSync(path.join(root, 'docs/SOP/R7：採樣演算法升�
 const ACTIVE_LIGHT_POOL_MAX = 11;
 const ACTIVE_LIGHT_LUT_SENTINEL = -1;
 const CLOUD_ROD_LENGTH = [2.368, 2.368, 1.768, 1.768];
-const currentR7CacheToken = 'r7-3-8-c1-floor-roughness-fix1';
-const previousR7CacheToken = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
+const currentR7CacheToken = 'r7-3-9-c1-floor-roughness-ui-v8';
+const previousR7CacheToken = 'r7-3-8-c1-floor-roughness-fix1';
 
 function buildImportanceLut(config, cloudOn, trackOn, wideSouthOn, wideNorthOn, enabled) {
     const lut = new Array(ACTIVE_LIGHT_POOL_MAX).fill(ACTIVE_LIGHT_LUT_SENTINEL);

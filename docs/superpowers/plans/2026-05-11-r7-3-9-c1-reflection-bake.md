@@ -64,10 +64,17 @@ Branch checkpoint:
   codex/r7-3-8-c1-1000spp-bake-capture
 
 Protected commit:
-  4bf4297 feat: preserve R7-3.8 C1 diffuse bake success
+  superseded by the floor roughness UI recovery commit on 2026-05-11
 
 Protected tag:
   r7-3-8-c1-diffuse-bake-success-20260511
+
+Previous sprout success commit:
+  4bf4297 feat: preserve R7-3.8 C1 diffuse bake success
+
+Updated sprout success rule:
+  The tag now represents the accepted R7-3.8 diffuse bake plus the usable floor roughness UI above the snapshot controls.
+  The accepted diffuse package pointer remains unchanged.
 
 Current reflection branch:
   codex/r7-3-9-c1-reflection-bake
@@ -79,9 +86,11 @@ Accepted proof:
   Floor roughness = 1.0
   Around 350SPP: floor-center patch boundary is already hard to see.
   At 1000SPP: patch is visually invisible.
+  Floor roughness UI is usable above snapshot controls, with the right edge aligned to manual capture.
+  Number input fits 0.00 and does not squeeze the range control.
 ```
 
-R7-3.9 starts from this baseline. Do not overwrite `docs/data/r7-3-8-c1-bake-accepted-package.json`.
+R7-3.9 starts from this baseline. Do not overwrite `docs/data/r7-3-8-c1-bake-accepted-package.json` unless the user explicitly asks to replace the accepted diffuse package.
 
 ## Official Sources Read
 
@@ -439,7 +448,7 @@ branch:
   codex/r7-3-9-c1-reflection-bake
 
 history:
-  4bf4297 feat: preserve R7-3.8 C1 diffuse bake success
+  r7-3-8-c1-diffuse-bake-success-20260511 points to the latest accepted sprout success commit.
 ```
 
 Stop condition:
@@ -1390,7 +1399,8 @@ Branch:
   codex/r7-3-9-c1-reflection-bake
 
 Protected baseline:
-  4bf4297 feat: preserve R7-3.8 C1 diffuse bake success
+  r7-3-8-c1-diffuse-bake-success-20260511 points to the latest accepted sprout success commit.
+  previous commit: 4bf4297 feat: preserve R7-3.8 C1 diffuse bake success
   tag: r7-3-8-c1-diffuse-bake-success-20260511
 
 Required rule:

@@ -1,0 +1,33 @@
+{
+  "status": "pass",
+  "report": {
+    "initialReport": {
+      "value": 1,
+      "pureDiffuseAtOne": true
+    },
+    "initialRangeValue": 1,
+    "initialNumberValue": 1,
+    "changedReport": {
+      "value": 0.25,
+      "pureDiffuseAtOne": true
+    },
+    "changedRangeValue": 0.25,
+    "changedNumberValue": 0.25,
+    "layout": {
+      "rightEdgeDelta": 0.96875,
+      "roughnessWidth": 150,
+      "manualRight": 164.03125,
+      "roughnessRight": 165,
+      "rangeClientWidth": 132,
+      "numberClientWidth": 60,
+      "numberTextWidth": 19.462890625,
+      "numberValue": "0.65",
+      "numberFits": true,
+      "controlsColumn": "column"
+    },
+    "finalReport": {
+      "value": 1,
+      "pureDiffuseAtOne": true
+    }
+  }
+}

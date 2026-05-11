@@ -249,8 +249,13 @@ button.action-btn.glow-gradient-bo {
 	pointer-events: none; font-size: 11px; color: #aaa;
 }
 
+#snapshot-controls {
+	position: fixed; bottom: 28px; left: 15px; z-index: 25;
+	display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+	pointer-events: auto;
+}
 #snapshot-bar {
-	position: fixed; bottom: 60px; left: 15px; z-index: 25;
+	position: static;
 	display: flex; gap: 6px; align-items: flex-end; pointer-events: auto;
 	flex-wrap: wrap; max-width: 90vw;
 }
@@ -275,8 +280,33 @@ button.action-btn.glow-gradient-bo {
 	box-shadow: 0 4px 20px rgba(0,0,0,0.7);
 }
 #snapshot-actions {
-	position: fixed; bottom: 28px; left: 15px; z-index: 25; display: flex;
-	gap: 6px; pointer-events: auto;
+	position: static; display: flex;
+	gap: 6px; align-items: center; flex-wrap: wrap; pointer-events: auto;
+}
+.snapshot-action-roughness {
+	width: 150px; max-width: calc(100vw - 30px); box-sizing: border-box;
+	background: rgba(28,28,26,0.9); border: 1px solid rgba(255,255,255,0.1);
+	color: #ccc; padding: 4px 8px; border-radius: 4px; font-family: inherit;
+}
+.snapshot-action-roughness .control-row {
+	display: grid;
+	grid-template-columns: 1fr 52px;
+	grid-template-areas:
+		"label number"
+		"range range";
+	gap: 4px 8px;
+	margin-bottom: 0; min-width: 0;
+}
+.snapshot-action-roughness .label-group {
+	grid-area: label; width: auto;
+}
+.snapshot-action-roughness input[type=range] {
+	grid-area: range;
+	width: 100%;
+}
+.snapshot-action-roughness input[type=number] {
+	grid-area: number;
+	width: 52px;
 }
 .snapshot-action-btn {
 	background: rgba(28,28,26,0.9); border: 1px solid rgba(255,255,255,0.1);

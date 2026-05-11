@@ -598,6 +598,30 @@ async function main() {
           const changedReport = window.reportFloorRoughness();
           const changedRangeValue = range ? Number(range.value) : null;
           const changedNumberValue = number ? Number(number.value) : null;
+          window.setFloorRoughness(0.65);
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          const controls = document.getElementById('snapshot-controls');
+          const roughnessBox = document.getElementById('floor-roughness-actions');
+          const manualButton = document.getElementById('btn-manual-capture');
+          const roughRect = roughnessBox ? roughnessBox.getBoundingClientRect() : null;
+          const manualRect = manualButton ? manualButton.getBoundingClientRect() : null;
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          const numberStyle = number ? window.getComputedStyle(number) : null;
+          if (context && numberStyle) context.font = numberStyle.fontSize + ' ' + numberStyle.fontFamily;
+          const numberTextWidth = context && number ? context.measureText(number.value).width : null;
+          const layout = {
+            rightEdgeDelta: roughRect && manualRect ? Math.abs(roughRect.right - manualRect.right) : null,
+            roughnessWidth: roughRect ? roughRect.width : null,
+            manualRight: manualRect ? manualRect.right : null,
+            roughnessRight: roughRect ? roughRect.right : null,
+            rangeClientWidth: range ? range.clientWidth : null,
+            numberClientWidth: number ? number.clientWidth : null,
+            numberTextWidth,
+            numberValue: number ? number.value : null,
+            numberFits: number && numberTextWidth !== null ? number.clientWidth >= Math.ceil(numberTextWidth) + 10 : false,
+            controlsColumn: controls ? window.getComputedStyle(controls).flexDirection : null
+          };
           window.setFloorRoughness(1.0);
           await new Promise((resolve) => setTimeout(resolve, 50));
           return {
@@ -607,6 +631,7 @@ async function main() {
             changedReport,
             changedRangeValue,
             changedNumberValue,
+            layout,
             finalReport: window.reportFloorRoughness()
           };
         })();
@@ -623,6 +648,10 @@ async function main() {
           floorRoughnessReport.changedReport.value === 0.25 &&
           floorRoughnessReport.changedRangeValue === 0.25 &&
           floorRoughnessReport.changedNumberValue === 0.25 &&
+          floorRoughnessReport.layout.rightEdgeDelta <= 2 &&
+          floorRoughnessReport.layout.numberFits === true &&
+          floorRoughnessReport.layout.rangeClientWidth >= 120 &&
+          floorRoughnessReport.layout.controlsColumn === 'column' &&
           floorRoughnessReport.finalReport.value === 1.0 &&
           floorRoughnessReport.finalReport.pureDiffuseAtOne === true
           ? 'pass'
@@ -633,6 +662,8 @@ async function main() {
       console.log('R7-3.8 C1 floor roughness UI completed');
       console.log(`initial: ${floorRoughnessReport.initialReport.value}`);
       console.log(`changed: ${floorRoughnessReport.changedReport.value}`);
+      console.log(`rightEdgeDelta: ${floorRoughnessReport.layout.rightEdgeDelta}`);
+      console.log(`numberFits: ${floorRoughnessReport.layout.numberFits}`);
       console.log(`restored: ${floorRoughnessReport.finalReport.value}`);
       console.log(`status: ${floorRoughnessValidation.status}`);
       console.log(`report: ${path.relative(repoRoot, floorRoughnessDir)}`);

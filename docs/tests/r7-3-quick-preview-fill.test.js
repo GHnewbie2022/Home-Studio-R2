@@ -16,7 +16,7 @@ const screenOutput = fs.readFileSync(path.join(root, 'shaders/ScreenOutput_Fragm
 const css = fs.readFileSync(path.join(root, 'css/default.css'), 'utf8');
 
 const version = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
-const cacheToken = 'r7-3-8-c1-floor-roughness-fix1';
+const cacheToken = 'r7-3-9-c1-floor-roughness-ui-v8';
 
 function assertOrder(source, before, after, message) {
 	const beforeIndex = source.indexOf(before);

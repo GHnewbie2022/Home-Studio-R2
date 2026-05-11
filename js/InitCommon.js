@@ -2195,7 +2195,7 @@ window.reportHomeStudioHibernationLoopState = function()
 	var maxSamples = (typeof MAX_SAMPLES === 'number') ? MAX_SAMPLES : null;
 	var currentSamples = Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0);
 	return {
-		version: 'r7-3-8-c1-floor-roughness-fix1',
+		version: 'r7-3-9-c1-floor-roughness-ui-v8',
 		sleeping: !!homeStudioAnimationSleeping,
 		framePending: !!homeStudioAnimationFrameId,
 		samplingPaused: !!samplingPaused,
@@ -3034,7 +3034,7 @@ function initTHREEjs()
 		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
 	};
 
-fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-8-c1-floor-roughness-fix1', function (shaderText)
+fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-9-c1-floor-roughness-ui-v8', function (shaderText)
 	{
 
 		screenOutputFragmentShader = shaderText;

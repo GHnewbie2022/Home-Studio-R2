@@ -5987,3 +5987,58 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --floor-roughness-test --timeout-ms=60000 --http-port=9002 --cdp-port=9237 --angle=metal
     - git diff --check
 ```
+
+## R7-3.8｜C1 diffuse bake sprout baseline overwritten with usable floor roughness UI
+
+```yaml
+- id: R7-3.8-c1-diffuse-bake-sprout-ui-recovery
+  date: 2026-05-11
+  type: bake_preview_ui_recovery
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_decision:
+    - The usable floor roughness UI version replaces the previous sprout success baseline.
+    - The existing success tag r7-3-8-c1-diffuse-bake-success-20260511 should point to this recovered UI version.
+  previous_sprout_commit:
+    - 4bf4297 feat: preserve R7-3.8 C1 diffuse bake success
+  preserved_package:
+    - pointer: docs/data/r7-3-8-c1-bake-accepted-package.json
+    - package: .omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229/
+    - note: the accepted diffuse atlas package is unchanged.
+  implementation:
+    - Moved the floor roughness control above the snapshot buttons inside snapshot-controls.
+    - Kept snapshot-bar above snapshot-actions, so snapshot ON pushes the roughness UI upward instead of overlapping.
+    - Matched the roughness control right edge to the manual capture button right edge by measuring the live DOM.
+    - Made the roughness control compact and two-line: label and number on top, range input below.
+    - Reduced the number input column so it fits 0.00 plus native stepper space without stealing range width.
+    - Included snapshot-controls and floor-roughness-actions in UI hide / pointer guard handling.
+    - Added layout checks to the floor roughness runner instead of relying on guessed CSS widths.
+  floor_roughness_ui_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --floor-roughness-test --timeout-ms=60000 --http-port=9002 --cdp-port=9242 --angle=swiftshader
+    - output: .omc/r7-3-8-c1-floor-roughness/20260511-222721/
+    - status: pass
+    - rightEdgeDelta: 0.96875
+    - roughnessWidth: 150
+    - rangeClientWidth: 132
+    - numberClientWidth: 60
+    - numberValue: "0.65"
+    - numberFits: true
+    - controlsColumn: column
+  snapshot_ui_validation:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --snapshot-ui-test --timeout-ms=60000 --http-port=9002 --cdp-port=9243 --angle=swiftshader
+    - output: .omc/r7-3-8-c1-snapshot-ui/20260511-222815/
+    - status: pass
+    - snapshotToggle: 快照：開
+    - manualEnabled: true
+    - stepSamples: 1->2
+    - backSamples: 1
+    - resumeSamples: 4
+  validation_commands:
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node docs/tests/r7-3-quick-preview-fill.test.js
+    - node docs/tests/r7-2-light-importance-sampling.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+```
