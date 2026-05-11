@@ -51,6 +51,7 @@ uniform float uR739C1AccurateReflectionMode;
 uniform float uR739C1ReflectionReferenceMode;
 uniform float uR739C1ReflectionSurfaceMaskMode;
 uniform float uR739C1ReflectionReady;
+uniform float uR739C1ReflectionFloorRoughness;
 uniform sampler2D tR739C1ReflectionSurfaceCacheTexture;
 
 // R2-13 X-ray 透視剝離
@@ -404,20 +405,21 @@ vec3 r739C1ReflectionTargetColor(int targetId)
 	if (targetId == 4) return vec3(1.0, 0.0, 1.0);
 	return vec3(0.0);
 }
-bool r739C1AccurateReflectionReplacesTarget(int targetId)
+bool r739C1AccurateReflectionReplacesTarget(int targetId, vec3 visiblePosition)
 {
-	return targetId == 1;
+	if (targetId != 1) return false;
+	vec2 r739SproutUv;
+	return r738C1BakePastePreviewUv(visiblePosition, r739SproutUv);
 }
 bool r739C1ReflectionReferenceDisablesTarget(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
 	return (uR739C1ReflectionReferenceMode > 1.5 || (uR739C1AccurateReflectionMode > 0.5 && uR739C1ReflectionReady > 0.5)) &&
-		r739C1AccurateReflectionReplacesTarget(r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition));
+		r739C1AccurateReflectionReplacesTarget(r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition), visiblePosition);
 }
 vec3 r739SampleAccurateSurfaceReflection(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
 	int targetId = r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
-	if (!r739C1AccurateReflectionReplacesTarget(targetId)) return vec3(0.0);
-	if (targetId == 1 && uFloorRoughness >= 0.999) return vec3(0.0);
+	if (!r739C1AccurateReflectionReplacesTarget(targetId, visiblePosition)) return vec3(0.0);
 	vec2 reflectionUv = clamp(gl_FragCoord.xy / max(uResolution, vec2(1.0)), vec2(0.0), vec2(1.0));
 	return max(texture(tR739C1ReflectionSurfaceCacheTexture, reflectionUv).rgb, vec3(0.0));
 }

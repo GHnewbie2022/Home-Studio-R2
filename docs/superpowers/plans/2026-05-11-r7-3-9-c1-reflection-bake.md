@@ -2,13 +2,62 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build an accuracy-first reflection bake path for C1 that preserves the accepted R7-3.8 diffuse bake and captures correct reflections for the floor, iron door, speaker stands, and speaker cabinets.
+**Goal:** First obtain the central-sprout-only 0.1 reflection bake package for C1. Later expansion to iron door, speaker stands, and speaker cabinets stays blocked until the sprout package is correct.
 
-**Architecture:** Treat reflection as view-dependent radiance, not as a single room-center environment photo. First capture a C1 path-traced reflection reference layer as ground truth, then build surface-specific reflection caches for planar and object surfaces. Runtime uses the accepted diffuse atlas for matte light and adds reflection only from a matching surface/direction cache.
+**Architecture:** Treat reflection as view-dependent radiance, not as a single room-center environment photo. First capture a C1 path-traced reflection reference layer as ground truth, then build a central-sprout-only reflection cache aligned to the accepted R7-3.8 diffuse patch. Runtime uses the accepted diffuse atlas for matte light and adds baked 0.1 reflection only inside that same sprout patch.
 
 **Tech Stack:** HTML / JavaScript / WebGL2 / GLSL, existing Three.js renderer, existing path tracer, Codex-run CDP runner, `.omc` artifact packages, JSON specs, Float32 binary caches.
 
 ---
+
+## 2026-05-12 Supersession: Sprout-Only Package First
+
+```text
+This section overrides older floor_primary_c1 steps in this plan.
+
+Highest priority:
+  Obtain the central-sprout-only 0.1 reflection bake package.
+
+Required target:
+  sprout_reflection_c1
+
+Required bounds:
+  xMin: -1.0
+  xMax:  1.0
+  zMin: -1.0
+  zMax:  1.0
+  y:     0.01
+
+Required relationship to R7-3.8:
+  Reuse the same central sprout patch bounds as docs/data/r7-3-8-c1-bake-surface-spec.json.
+  Keep docs/data/r7-3-8-c1-bake-accepted-package.json as the diffuse source package.
+  The R7-3.9 reflection package must line up with the R7-3.8 diffuse patch.
+
+Invalid current package:
+  .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/
+
+Why invalid:
+  The package has corrected 0.1 reflection brightness.
+  The target is still floor_primary_c1.
+  floor_primary_c1 covers C1 visible floor beyond the sprout patch.
+  Metadata scan found masked pixels outside x=-1..1 and z=-1..1.
+
+Acceptance gate:
+  surfaceTargets contains sprout_reflection_c1.
+  surfaceTargets does not contain floor_primary_c1 for the first accepted sprout package.
+  outsideSproutPixels = 0.
+  insideSproutPixels > 0.
+  nonFiniteReflectionSamples = 0.
+  reflectionMaxLuma > 0.05.
+  sproutReplacementActive = true.
+  surroundingLiveFloorReplacementActive = false.
+
+Stop conditions:
+  Stop if the produced package still names floor_primary_c1 as the accepted target.
+  Stop if any target metadata pixel is outside x=-1..1 or z=-1..1.
+  Stop if runtime replacement is controlled only by roughness match.
+  Stop if roughness 1 removes baked reflection from the central sprout patch.
+```
 
 ## User Decision Override
 
@@ -18,12 +67,15 @@ Decision date:
 
 User requirement:
   Accuracy has priority over speed.
-  Reflection bake must be meaningful for floor, iron door, speaker stands, and speaker cabinets.
+  Reflection bake must first prove the central sprout patch.
+  The first accepted reflection package must be central-sprout-only at roughness 0.1.
+  Later packages may expand to iron door, speaker stands, and speaker cabinets.
 
 Consequence:
   A single cubemap probe is not acceptable as the R7-3.9 main path.
   Cubemap probe may only be used as a diagnostic comparison or fallback note.
-  The implementation target is surface-aware and direction-aware reflection data.
+  The immediate implementation target is sprout_reflection_c1.
+  The previous floor_primary_c1 target is a rejected first-package target.
 ```
 
 ## Accuracy Contract
@@ -34,8 +86,10 @@ Hard rule:
   If a fast method hides missing data with a plausible-looking approximation, the bake fails.
   If a target reflective surface is missing, the bake fails.
 
-Required reflective targets:
-  floor
+Required immediate reflective target:
+  sprout_reflection_c1, matching the accepted R7-3.8 diffuse sprout patch.
+
+Deferred reflective targets:
   iron door
   left speaker stand base / pillar / top
   right speaker stand base / pillar / top
@@ -52,6 +106,8 @@ Rejected runtime shortcut:
   A missing-direction fallback that silently returns live noise or zero and still marks the package accepted.
 
 Accepted failure behavior:
+  If any sprout_reflection_c1 target pixel is outside x=-1..1 or z=-1..1, reject the package.
+  If a package names floor_primary_c1 as the first accepted runtime target, reject the package.
   If a surface point or outgoing direction is missing from the reflection cache, report the missing target and reject the package.
   If speaker stand transforms are not respected, reject the package.
   If iron door reflection does not align with x = -1.96 and normal = [1, 0, 0], reject the package.
@@ -171,22 +227,22 @@ Class D: cubemap diagnostic only
 
 ## Required Target Surfaces
 
-The accepted floor-first reflection package must include this runtime replacement target:
+The accepted first reflection package must include this runtime replacement target:
 
 ```text
-floor_primary_c1:
+sprout_reflection_c1:
   source:
-    structural floor boxes
-  first bounds:
-    x = [-1.91, 1.91]
+    accepted R7-3.8 diffuse sprout patch
+  required bounds:
+    x = [-1.0, 1.0]
     y = 0.01
-    z = [-1.874, 3.056]
+    z = [-1.0, 1.0]
   material:
     dielectric floor
   accepted reflection roughness:
     0.1
   note:
-    This is the original floor reflection value before the R7-3.8 diffuse-only roughness override.
+    This is the original floor reflection value for the sprout reflection proof package.
 ```
 
 Deferred targets keep live reflection until their own accurate packages exist:
@@ -276,7 +332,8 @@ Final composition:
 finalColor = acceptedDiffuseLighting + accurateReflectionContribution;
 ```
 
-Reflection contribution must evaluate to `vec3(0.0)` for floor roughness `1.0`.
+For the central sprout patch, baked 0.1 reflection stays present for every UI floor roughness value.
+For the surrounding live floor, roughness `1.0` evaluates as total diffuse with no mirror-like reflection.
 
 ## Package Shape
 
@@ -292,7 +349,7 @@ Initial content:
 {
   "version": "r7-3-9-c1-accurate-reflection-bake",
   "config": 1,
-  "description": "Accuracy-first C1 reflection bake. Reflection data is surface-aware and direction-aware. Cubemap is diagnostic only.",
+  "description": "Accuracy-first C1 central sprout reflection bake. Reflection data is clipped to the accepted R7-3.8 sprout patch.",
   "diffuseCheckpoint": {
     "commit": "4bf4297",
     "tag": "r7-3-8-c1-diffuse-bake-success-20260511",
@@ -307,7 +364,9 @@ Initial content:
     "missingDirectionPolicy": "reject_package",
     "requireRotatedObjectTransforms": true,
     "requiredRuntimeTargets": [
-      "floor_primary_c1",
+      "sprout_reflection_c1"
+    ],
+    "deferredRuntimeTargets": [
       "iron_door_west",
       "speaker_stands_rotated_boxes",
       "speaker_cabinets_rotated_boxes"
@@ -328,10 +387,10 @@ Initial content:
   "surfaceTargets": [
     {
       "surfaceId": 0,
-      "name": "floor_primary_c1",
+      "name": "sprout_reflection_c1",
       "kind": "planar",
       "plane": { "axis": "y", "value": 0.01, "normal": [0, 1, 0] },
-      "bounds": { "xMin": -1.91, "xMax": 1.91, "zMin": -1.874, "zMax": 3.056 },
+      "bounds": { "xMin": -1.0, "xMax": 1.0, "zMin": -1.0, "zMax": 1.0 },
       "material": { "class": "dielectric_floor", "acceptedReflectionRoughness": 0.1, "roughnessValues": [0.1], "metalness": 0.0 },
       "firstImplementation": true
     },
@@ -380,7 +439,7 @@ Initial content:
   "diagnosticOnly": {
     "cubemapProbeAllowed": true,
     "cubemapRuntimeEnabled": false,
-    "reason": "A single probe origin cannot satisfy the accuracy requirement for floor, iron door, speaker stands, and speaker cabinets."
+    "reason": "A single probe origin cannot satisfy the accuracy requirement for the central sprout patch."
   }
 }
 ```
@@ -414,7 +473,10 @@ validation-report.json
   "policy": "accuracy_over_speed",
   "diffuseCheckpointTag": "r7-3-8-c1-diffuse-bake-success-20260511",
   "cameraReferenceSamples": 1000,
-  "surfaceTargets": ["floor_primary_c1", "iron_door_west", "speaker_stands_rotated_boxes", "speaker_cabinets_rotated_boxes"],
+  "floorRoughnessForReflection": 0.1,
+  "surfaceTargets": ["sprout_reflection_c1"],
+  "deferredSurfaceTargets": ["iron_door_west", "speaker_stands_rotated_boxes", "speaker_cabinets_rotated_boxes"],
+  "sproutBounds": { "xMin": -1.0, "xMax": 1.0, "zMin": -1.0, "zMax": 1.0, "y": 0.01 },
   "cubemapRuntimeEnabled": false
 }
 ```
@@ -533,17 +595,15 @@ assert.equal(spec.accuracyPolicy.requireRotatedObjectTransforms, true);
 
 const targetNames = spec.surfaceTargets.map((target) => target.name);
 assert.deepEqual(targetNames, [
-  'floor_primary_c1',
-  'iron_door_west',
-  'speaker_stands_rotated_boxes',
-  'speaker_cabinets_rotated_boxes'
+  'sprout_reflection_c1'
 ]);
 
 assert.equal(spec.surfaceTargets[0].kind, 'planar');
-assert.equal(spec.surfaceTargets[1].kind, 'planar');
-assert.equal(spec.surfaceTargets[2].kind, 'rotated-box-family');
-assert.equal(spec.surfaceTargets[3].kind, 'rotated-box-family');
 assert.deepEqual(spec.accuracyPolicy.requiredRuntimeTargets, targetNames);
+assert.equal(spec.surfaceTargets[0].bounds.xMin, -1.0);
+assert.equal(spec.surfaceTargets[0].bounds.xMax, 1.0);
+assert.equal(spec.surfaceTargets[0].bounds.zMin, -1.0);
+assert.equal(spec.surfaceTargets[0].bounds.zMax, 1.0);
 assert.equal(spec.directionCache.fallbackWhenDirectionMissing, 'reject_package_before_runtime');
 assert.equal(spec.diagnosticOnly.cubemapRuntimeEnabled, false);
 
@@ -703,7 +763,9 @@ referenceWidth = 1280
 referenceHeight = 720
 reflectionReferenceFloatCount = 3686400
 nonFinitePixels = 0
-targetMaskIncludesFloor = true
+targetMaskIncludesSprout = true
+outsideSproutPixels = 0
+insideSproutPixels > 0
 targetMaskExcludesIronDoorRuntimeReplacement = true
 targetMaskExcludesSpeakerStandsRuntimeReplacement = true
 targetMaskExcludesSpeakerCabinetsRuntimeReplacement = true
@@ -783,25 +845,29 @@ Validation requirements:
 
 ```text
 surfaceCacheStatus = pass
-includedTargets = floor_primary_c1, iron_door_west, speaker_stands_rotated_boxes, speaker_cabinets_rotated_boxes
+includedTargets = sprout_reflection_c1
 sampleCountPerIncludedTarget > 0
 nonFiniteReflectionSamples = 0
-roughnessOneFloorSamplesHaveZeroReflection = true
+outsideSproutPixels = 0
+roughnessOneSurroundingLiveFloorHasNoMirrorReflection = true
+centralSproutPatchKeepsBakedReflectionAtEveryUIRoughness = true
 ```
 
 Exit condition:
 
 ```text
-Every required target has reflection samples.
-Floor roughness 1.0 returns zero contribution.
+sprout_reflection_c1 has reflection samples.
+Surrounding live floor roughness 1.0 returns total diffuse.
+Central sprout patch still keeps baked diffuse plus baked 0.1 reflection.
 ```
 
 Stop condition:
 
 ```text
-Stop if iron door samples are missing.
-Stop if stand samples are missing.
-Stop if floor roughness 1.0 still has visible reflection energy.
+Stop if sprout_reflection_c1 samples are missing.
+Stop if any sprout target pixel is outside x=-1..1 or z=-1..1.
+Stop if surrounding live floor roughness 1.0 still has mirror-like reflection energy.
+Stop if central sprout patch loses baked reflection when UI roughness changes.
 ```
 
 ### SOP 6: Create Accepted Accurate Reflection Pointer
@@ -821,13 +887,11 @@ Required JSON shape:
   "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/YYYYMMDD-HHMMSS",
   "diffuseCheckpointTag": "r7-3-8-c1-diffuse-bake-success-20260511",
   "policy": "accuracy_over_speed",
+  "floorRoughnessForReflection": 0.1,
   "cubemapRuntimeEnabled": false,
-  "targetSurfaces": [
-    "floor_primary_c1",
-    "iron_door_west",
-    "speaker_stands_rotated_boxes",
-    "speaker_cabinets_rotated_boxes"
-  ],
+  "surfaceTargets": ["sprout_reflection_c1"],
+  "deferredSurfaceTargets": ["iron_door_west", "speaker_stands_rotated_boxes", "speaker_cabinets_rotated_boxes"],
+  "sproutBounds": { "xMin": -1.0, "xMax": 1.0, "zMin": -1.0, "zMax": 1.0, "y": 0.01 },
   "artifacts": {
     "reference": "c1-camera-reflection-reference-rgba-f32.bin",
     "mask": "c1-camera-reflection-mask-u8.bin",
@@ -899,7 +963,9 @@ Shader behavior:
 3.  Look up the closest matching reflection cache sample.
 4.  If there is no matching direction, report missingDirection and reject the package before acceptance.
 5.  Add reflection contribution after diffuse base.
-6.  Return zero reflection for floor roughness 1.0.
+6.  Clip accepted baked reflection to the central sprout patch.
+7.  Keep surrounding floor on live path tracing for every UI roughness value.
+8.  For surrounding live floor, roughness 1.0 returns total diffuse.
 ```
 
 Runner command:
@@ -1091,7 +1157,8 @@ Gate B: Reference gate
 Gate C: Surface cache gate
   each required surface has samples
   surface cache stores direction metadata
-  floor roughness 1.0 has zero reflection
+  central sprout patch keeps baked reflection at every UI roughness
+  surrounding live floor roughness 1.0 has no mirror-like reflection
 
 Gate D: Runtime gate
   C1 applied=true
@@ -1110,9 +1177,13 @@ If the plan starts using cubemap as runtime main path:
   Stop.
   Restore accuracy_over_speed policy.
 
-If floor roughness 1.0 shows reflection:
+If surrounding live floor roughness 1.0 shows mirror-like reflection:
   Stop.
   Check roughness guard and reportFloorRoughness().
+
+If central sprout patch roughness 1.0 loses baked reflection:
+  Stop.
+  Check central sprout patch clipping and bake composition.
 
 If iron door reflection position is wrong:
   Stop.
@@ -1251,8 +1322,10 @@ node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-capture 
 - [x] **Step 3: Validate package**
 
 Result:
-  Accepted package:
+  Superseded initial package:
     .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523/
+  Corrected-brightness large-floor package after sample double-division fix:
+    .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/
   Validation:
     status = pass
     actualSamples = 1000
@@ -1262,13 +1335,20 @@ Result:
     iron_door_west = 0
     speaker_stands_rotated_boxes = 0
     speaker_cabinets_rotated_boxes = 0
+  Status after 2026-05-12 sprout review:
+    invalid as accepted sprout package
+    target is floor_primary_c1
+    required next target is sprout_reflection_c1
+    required next proof is outsideSproutPixels = 0
 
 Expected:
 
 ```text
 actualSamples = 1000
 nonFinitePixels = 0
-targetMaskIncludesFloor = true
+targetMaskIncludesSprout = true
+outsideSproutPixels = 0
+insideSproutPixels > 0
 targetMaskExcludesIronDoorRuntimeReplacement = true
 targetMaskExcludesSpeakerStandsRuntimeReplacement = true
 targetMaskExcludesSpeakerCabinetsRuntimeReplacement = true
@@ -1376,9 +1456,12 @@ git push -u origin codex/r7-3-9-c1-reflection-bake
 Spec coverage:
   User accuracy requirement is explicit.
   Cubemap runtime path is disabled.
-  Floor, iron door, speaker stands, and speaker cabinets are listed.
+  sprout_reflection_c1 is the immediate accepted target.
+  Iron door, speaker stands, and speaker cabinets are deferred until sprout passes.
   C1 path-traced reference layer is required.
   Surface and direction cache is required.
+  R7-3.8 sprout bounds are required.
+  outsideSproutPixels = 0 is required.
 
 Placeholder scan:
   No placeholder markers.
@@ -1388,6 +1471,7 @@ Type consistency:
   Prefix is R739.
   Version is r7-3-9-c1-accurate-reflection-bake.
   Spec file is docs/data/r7-3-9-c1-accurate-reflection-surface-spec.json.
+  First accepted target name is sprout_reflection_c1.
 ```
 
 ## Execution Handoff
@@ -1405,9 +1489,27 @@ Protected baseline:
 
 Required rule:
   Accuracy has priority over speed.
-  Preserve the accepted R7-3.8 diffuse atlas and floor roughness 1.0 behavior.
+  The highest priority is to produce a central-sprout-only 0.1 reflection package.
+  Required target name is sprout_reflection_c1.
+  Required sprout bounds are x=-1..1, z=-1..1, y=0.01.
+  The first accepted sprout reflection package must not use floor_primary_c1 as its accepted target.
+  The current .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/ package is invalid as acceptance proof because it targets floor_primary_c1.
+  Preserve the accepted R7-3.8 diffuse atlas and surrounding live floor roughness 1.0 behavior.
   Capture reflection from the current path tracer as ground truth.
-  Bake reflection by surface and outgoing direction for floor, iron door, speaker stands, and speaker cabinets.
+  Bake reflection by surface and outgoing direction for sprout_reflection_c1 first.
+  Defer iron door, speaker stands, and speaker cabinets until sprout_reflection_c1 passes.
   Keep cubemap runtime disabled.
+  Runtime floor replacement must be clipped to the central sprout patch.
+  Central sprout patch always uses accepted baked diffuse plus accepted baked 0.1 reflection.
+  Surrounding floor always follows the UI floor roughness through live path tracing.
+  Surrounding roughness 0 means live mirror reflection.
+  Surrounding roughness 0.05 to 0.95 means live glossy reflection.
+  Surrounding roughness 1 means live total diffuse.
+  At roughness 0.1, 1SPP should show clean central sprout data and noisy surrounding live data.
+  At roughness 0.1, 1000SPP should make surrounding live data converge toward the central sprout patch.
+  Reflection cache build must use the screenCopy averaged readback directly; do not divide full - disabled by samples again.
+  Accepted floor reflection cache must not be near-black; contract test requires max luma above 0.05.
+  The decisive package validation is outsideSproutPixels = 0.
+  The decisive runtime validation is sproutReplacementActive = true and surroundingLiveFloorReplacementActive = false.
   Codex runner must capture, validate, and close test resources.
 ```

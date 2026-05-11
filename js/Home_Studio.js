@@ -33,7 +33,7 @@ const ACTIVE_LIGHT_POOL_MAX = 11;
 const ACTIVE_LIGHT_LUT_SENTINEL = -1;
 const R7_2_LIGHT_IMPORTANCE_VERSION = 'r7-2-light-importance-sampling-v1-r7-2d-step-history';
 const R7_3_QUICK_PREVIEW_FILL_VERSION = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
-const R7_3_8_C1_BAKE_CAPTURE_VERSION = 'r7-3-9-c1-floor-roughness-ui-v8';
+const R7_3_8_C1_BAKE_CAPTURE_VERSION = 'r7-3-9-c1-floor-reflection-roughness-v1';
 let r72LightImportanceSamplingEnabled = false;
 
 // === Scene Box Data (single source of truth) ===
@@ -5163,7 +5163,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-9-c1-floor-roughness-ui-v8';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-9-c1-floor-reflection-roughness-v1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5438,6 +5438,7 @@ function initSceneData() {
     pathTracingUniforms.uR739C1ReflectionReferenceMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionReady = { value: 0.0 };
+    pathTracingUniforms.uR739C1ReflectionFloorRoughness = { value: 0.1 };
     var r739DefaultReflectionSurfaceCacheTexture = new THREE.DataTexture(new Float32Array([0, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
     r739DefaultReflectionSurfaceCacheTexture.minFilter = THREE.NearestFilter;
     r739DefaultReflectionSurfaceCacheTexture.magFilter = THREE.NearestFilter;

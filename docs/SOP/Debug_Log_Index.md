@@ -316,7 +316,10 @@ R7 採樣升級：
   - R7-3.8 C1 floor-center paste preview 已把正式 atlas 貼回 C1 畫面；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-floor-patch-paste-preview`
   - R7-3.8 C1 diffuse-only paste fix 已移除 floor patch 內的 ceiling-lamp reflection spike，補休眠 framePending=false、keyboard idle、snapshot UI、1000SPP 顯示、floor roughness UI 驗證；後續使用者肉眼確認 350SPP 已難見界線、1000SPP 隱形，diffuse bake 架構通過 floor-center patch 驗收，反射另開處理線；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-diffuse-paste-fix1`
   - R7-3.8 C1 嫩芽成功版已覆蓋為「diffuse bake + 可用 floor roughness UI」版本；右緣對齊手動存圖，數字欄不壓住滑桿，成功 tag `r7-3-8-c1-diffuse-bake-success-20260511` 代表這個恢復版；讀 `Debug_Log.md` 的 `R7-3.8-c1-diffuse-bake-sprout-ui-recovery`
-  - R7-3.9 C1 accurate reflection bake 已新增 accuracy_over_speed surface spec、1000SPP C1 visible-direction floor reflection package、runtime loader、preview test；目前 accepted package 使用原始地板反射粗糙度 0.1 且只替換地板，鐵門、喇叭架、喇叭箱維持 live reflection；讀 `Debug_Log.md` 的 `R7-3.9-c1-accurate-reflection-bake`
+  - R7-3.9 C1 accurate reflection bake 目前最高優先是取得 `sprout_reflection_c1` 專用 0.1 reflection package；舊 `floor_primary_c1` package `.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 只當亮度修正參考與失敗證據，不能當 accepted sprout package；讀 `Debug_Log.md` 的 `R7-3.9-c1-sprout-only-reflection-package-priority`
+  - R7-3.9 C1 surrounding floor roughness 0.1 live reflection fix 已把 replacement gate 改成依 R7-3.8 嫩芽 bounds 裁切；周遭地板在 roughness 0.1 回到 live path tracing，preview helper 驗證 `surroundingLiveFloorReplacementActive=false`；讀 `Debug_Log.md` 的 `R7-3.9-c1-surrounding-floor-roughness-0-1-live-reflection-fix`
+  - R7-3.9 C1 floor reflection roughness gate fix 的後續正確認知：粗糙度相符不能當整片地板 replacement 條件；baked reflection 只能進中央嫩芽區，周遭 0 / 0.05~0.95 / 1 分別走 live mirror / live glossy / live diffuse；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-roughness-gate-fix`
+  - R7-3.9 C1 large-floor reflection cache double-division fix 已修正 0.1 cache 幾乎全黑的問題；產包端移除 samples 二次除法，`.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 仍是 `floor_primary_c1` 大地板 package，下一步要重產 `sprout_reflection_c1` 並驗 `outsideSproutPixels = 0`；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-cache-double-division-fix`
 ```
 
 ---

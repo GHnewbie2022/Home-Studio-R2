@@ -912,30 +912,53 @@ async function main() {
         return (async () => {
           await window.loadR739C1AccurateReflectionPackage();
           await new Promise((resolve) => setTimeout(resolve, 500));
-          return window.reportR739C1AccurateReflectionConfig();
+          const initial = window.reportR739C1AccurateReflectionConfig();
+          window.setFloorRoughness(0.1);
+          const roughnessMatched = window.reportR739C1AccurateReflectionConfig();
+          window.setFloorRoughness(0.0);
+          const mirrorRoughness = window.reportR739C1AccurateReflectionConfig();
+          window.setFloorRoughness(1.0);
+          const roughnessOne = window.reportR739C1AccurateReflectionConfig();
+          return { initial, roughnessMatched, mirrorRoughness, roughnessOne };
         })();
       })()`, {
         awaitPromise: true,
         timeoutMs: Math.min(args.timeoutMs, 60000) + 30000
       });
+      const initialReport = reflectionPreviewReport.initial;
+      const roughnessMatchedReport = reflectionPreviewReport.roughnessMatched;
+      const mirrorRoughnessReport = reflectionPreviewReport.mirrorRoughness;
+      const roughnessOneReport = reflectionPreviewReport.roughnessOne;
       const previewDir = path.join(repoRoot, '.omc', 'r7-3-9-c1-accurate-reflection-preview', timestampForPath());
       fs.mkdirSync(previewDir, { recursive: true });
-      const previewValidation = {
-        status: reflectionPreviewReport.ready &&
-          reflectionPreviewReport.applied &&
-          reflectionPreviewReport.currentPanelConfig === 1 &&
-          reflectionPreviewReport.policy === 'accuracy_over_speed' &&
-          reflectionPreviewReport.cubemapRuntimeEnabled === false
-          ? 'pass'
-          : 'fail',
-        report: reflectionPreviewReport
-      };
+	      const previewValidation = {
+	        status: initialReport.ready &&
+	          initialReport.applied &&
+	          initialReport.currentPanelConfig === 1 &&
+	          initialReport.policy === 'accuracy_over_speed' &&
+	          initialReport.cubemapRuntimeEnabled === false &&
+	          roughnessMatchedReport.sproutReplacementActive === true &&
+	          mirrorRoughnessReport.sproutReplacementActive === true &&
+	          roughnessOneReport.sproutReplacementActive === true &&
+	          roughnessMatchedReport.surroundingLiveFloorReplacementActive === false &&
+	          mirrorRoughnessReport.surroundingLiveFloorReplacementActive === false &&
+	          roughnessOneReport.surroundingLiveFloorReplacementActive === false
+	          ? 'pass'
+	          : 'fail',
+	        report: reflectionPreviewReport
+	      };
       fs.writeFileSync(path.join(previewDir, 'preview-report.json'), `${JSON.stringify(previewValidation, null, 2)}\n`);
       console.log('R7-3.9 C1 accurate reflection preview completed');
-      console.log(`ready: ${reflectionPreviewReport.ready}`);
-      console.log(`applied: ${reflectionPreviewReport.applied}`);
-      console.log(`package: ${reflectionPreviewReport.packageDir}`);
-      console.log(`status: ${previewValidation.status}`);
+	      console.log(`ready: ${initialReport.ready}`);
+	      console.log(`applied: ${initialReport.applied}`);
+	      console.log(`package: ${initialReport.packageDir}`);
+	      console.log(`roughnessMatchedSproutReplacement: ${roughnessMatchedReport.sproutReplacementActive}`);
+	      console.log(`mirrorRoughnessSproutReplacement: ${mirrorRoughnessReport.sproutReplacementActive}`);
+	      console.log(`roughnessOneSproutReplacement: ${roughnessOneReport.sproutReplacementActive}`);
+	      console.log(`roughnessMatchedSurroundingLiveFloorReplacement: ${roughnessMatchedReport.surroundingLiveFloorReplacementActive}`);
+	      console.log(`mirrorRoughnessSurroundingLiveFloorReplacement: ${mirrorRoughnessReport.surroundingLiveFloorReplacementActive}`);
+	      console.log(`roughnessOneSurroundingLiveFloorReplacement: ${roughnessOneReport.surroundingLiveFloorReplacementActive}`);
+	      console.log(`status: ${previewValidation.status}`);
       console.log(`report: ${path.relative(repoRoot, previewDir)}`);
       if (previewValidation.status !== 'pass') process.exitCode = 1;
       completed = true;

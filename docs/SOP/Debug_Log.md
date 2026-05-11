@@ -18,7 +18,9 @@ Branch:
 
 Purpose:
   Add a separate accuracy-first floor reflection bake path after the accepted R7-3.8 diffuse floor patch.
-  Current runtime replacement target is the C1-visible floor only.
+  Current highest priority is to obtain a central-sprout-only 0.1 reflection package.
+  The central sprout patch must use accepted baked diffuse plus accepted baked 0.1 reflection.
+  The surrounding floor must remain live path tracing for every UI floor roughness value.
   West iron door, rotated speaker stands, and speaker cabinets remain on live reflection until their own accurate packages exist.
   Runtime cubemap reflection is disabled for this line.
 
@@ -42,13 +44,13 @@ Implementation:
     --surface-cache
     --accurate-reflection-preview-test
 
-Accepted reflection package:
-  .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523/
+Superseded large-floor reflection package:
+  .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/
 
-Accepted package pointer:
+Pointer requiring replacement with a sprout-only package:
   docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json
 
-Package validation:
+Large-floor package validation:
   status: pass
   actualSamples: 1000
   referenceWidth: 1280
@@ -66,32 +68,52 @@ Target counts:
   background: 825430
 
 Artifact hashes:
-  referenceSha256: 1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86
+  referenceSha256: 4c4d6de490db322c48eda7ea4e15a3a82d0ca2a2525309e2c57b3c7303d5c229
   maskSha256: ad0d59e4b12906612fc4e75b31bf771f69c05ddc33310e37514516216c55e129
   objectIdsSha256: 2591a1e83a819c891434e5bbe9067126a6917efc66cb73c8151de53f1c731fe7
-  surfaceCacheSha256: 1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86
+  surfaceCacheSha256: 4c4d6de490db322c48eda7ea4e15a3a82d0ca2a2525309e2c57b3c7303d5c229
   directionMetadataSha256: b3f741cc7fa4043021f57d60886b434d5e2f212ce8f557a62a3d7880f7f863b6
   texelMetadataSha256: 5b1a516040e5f4a39fb258b36a9d622a617c54fa27e52bb147ed883833c8dbab
 
 Preview validation:
-  command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9002 --cdp-port=9241 --angle=metal
-  output: .omc/r7-3-9-c1-accurate-reflection-preview/20260511-190846/
+  command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9003 --cdp-port=9246 --angle=swiftshader
+  output: .omc/r7-3-9-c1-accurate-reflection-preview/20260512-000006/
   status: pass
   ready: true
   applied: true
-  package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523
-  note: passed after adding automatic package load on normal page initialization.
+  package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900
+  note: passed after removing the extra sample division from reflection cache build.
+  caution: the preview runner name and roughness-match flag are too broad; future validation must report central sprout patch replacement separately from surrounding live floor behavior.
+
+Sprout-only package gate:
+  requiredTargetName: sprout_reflection_c1
+  requiredBounds: x=-1..1, z=-1..1, y=0.01
+  requiredRoughness: 0.1
+  sourceDiffusePackage: docs/data/r7-3-8-c1-bake-accepted-package.json
+  outsideSproutPixels: must be 0
+  surfaceTargets: must contain sprout_reflection_c1
+  surfaceTargets: must not contain floor_primary_c1 for the first accepted sprout package
 
 Debug note:
   First capture attempt generated a black output because the global R7-3.9 target helper referenced the local rotated-object loop variable objectCount.
   The fix uses stable object IDs for speaker cabinets and stands.
   Smoke recapture after the fix restored normal raw HDR values and surface classes.
   The first accepted R7-3.9 package incorrectly used floorRoughness 0.25 and replaced iron door / speaker stand / speaker cabinet reflections.
-  It was replaced with floorRoughness 0.1 and floor-only runtime replacement.
+  It was replaced with floorRoughness 0.1 and a central-sprout-patch-only proof target.
+  User review later rejected any whole-floor replacement rule, including the roughness 0.1 match rule.
+  A later metadata check showed that .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/ still uses floor_primary_c1 and includes pixels outside the sprout bounds.
+  Therefore the current package is a corrected-brightness large-floor cache, not the required sprout-only package.
 
 Current scope:
-  This package is the C1 camera visible-direction reflection cache and proof path.
-  It is accurate for the captured C1 reference view, original floor reflection roughness 0.1, and floor target mask.
+  No accepted sprout-only reflection package exists yet.
+  The next package must target sprout_reflection_c1 with the same bounds as the R7-3.8 diffuse sprout patch.
+  The 20260511-235900 package remains useful as a brightness fix reference and failure evidence.
+  The UI floor roughness still controls the surrounding live floor.
+  Roughness 0 on the surrounding floor means live mirror reflection.
+  Roughness 0.05 to 0.95 on the surrounding floor means live glossy reflection.
+  Roughness 1 on the surrounding floor means live total diffuse.
+  At roughness 0.1, 1SPP should show clean central sprout data and noisy surrounding live data.
+  At roughness 0.1, 1000SPP should make surrounding live data converge toward the central sprout patch.
   The package records surface position and normal metadata for the next expansion.
   Iron door, speaker stands, and speaker cabinets remain live path-traced reflections in this branch.
   Full walkable multi-view reflection still needs additional surface-direction coverage before it can replace more runtime reflection cases.
@@ -106,6 +128,79 @@ Validation commands:
   node --check js/PathTracingCommon.js
   node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
   git diff --check
+```
+
+## 2026-05-12 R7-3.9 C1 Sprout-Only Reflection Package Priority
+
+```yaml
+- id: R7-3.9-c1-sprout-only-reflection-package-priority
+  date: 2026-05-12
+  type: sop_correction
+  branch: codex/r7-3-9-c1-reflection-bake
+  highest_priority:
+    - Obtain the central-sprout-only 0.1 reflection bake package.
+  corrected_target_contract:
+    - targetName: sprout_reflection_c1
+    - bounds: x=-1..1, z=-1..1, y=0.01
+    - roughness: 0.1
+    - sourceDiffusePackage: docs/data/r7-3-8-c1-bake-accepted-package.json
+  invalid_current_package:
+    - package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/
+    - reason: It is a corrected-brightness large-floor floor_primary_c1 package.
+    - observed_total_floor_primary_c1_pixels: 96170
+    - observed_pixels_outside_sprout_bounds: 36947
+  root_cause:
+    - The R7-3.9 SOP, surface spec, test, and shader gate treated floor_primary_c1 as the first runtime target.
+    - The R7-3.8 diffuse sprout patch bounds were not carried into the R7-3.9 reflection package contract.
+  required_next_validation:
+    - package manifest names sprout_reflection_c1.
+    - all target metadata positions are inside x=-1..1 and z=-1..1.
+    - outsideSproutPixels = 0.
+    - shader replacement checks the sprout bounds.
+    - preview report separates sproutReplacementActive from surroundingLiveFloorReplacementActive.
+```
+
+## 2026-05-12 R7-3.9 C1 surrounding floor roughness 0.1 live reflection restored
+
+```yaml
+- id: R7-3.9-c1-surrounding-floor-roughness-0-1-live-reflection-fix
+  date: 2026-05-12
+  type: reflection_bugfix
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_report:
+    - Outside the central sprout patch, floor roughness 0.1 does not reflect the ceiling lamp.
+  root_cause:
+    - r739C1AccurateReflectionReplacesTarget() used targetId == floor plus roughness match.
+    - At UI roughness 0.1, surrounding visible floor also matched the baked package roughness.
+    - The shader therefore disabled live reflection outside the sprout patch.
+  fix:
+    - r739C1AccurateReflectionReplacesTarget() now accepts visiblePosition.
+    - The replacement gate now calls r738C1BakePastePreviewUv(visiblePosition, ...) to clip to the R7-3.8 sprout bounds.
+    - The roughness-match gate no longer controls runtime replacement.
+    - The roughness 1 zero-reflection guard was removed from baked sprout reflection.
+    - reportR739C1AccurateReflectionConfig() now reports sproutReplacementActive and surroundingLiveFloorReplacementActive separately.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-quick-preview-fill.test.js
+    - node docs/tests/r7-2-light-importance-sampling.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9014 --cdp-port=9257 --angle=swiftshader
+  runner_result:
+    - roughnessMatchedSproutReplacement: true
+    - mirrorRoughnessSproutReplacement: true
+    - roughnessOneSproutReplacement: true
+    - roughnessMatchedSurroundingLiveFloorReplacement: false
+    - mirrorRoughnessSurroundingLiveFloorReplacement: false
+    - roughnessOneSurroundingLiveFloorReplacement: false
+    - status: pass
+    - report: .omc/r7-3-9-c1-accurate-reflection-preview/20260512-004512/
+  interpretation:
+    - Central sprout patch keeps baked reflection at every UI floor roughness.
+    - Surrounding floor stays live path tracing at roughness 0.1, so the ceiling lamp reflection can appear there.
 ```
 Cloud GIK：
   指 R2-16 的吊頂 6 片白色 GIK 吸音板本體。
@@ -6041,4 +6136,110 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - node --check js/InitCommon.js
     - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
     - git diff --check
+```
+
+## R7-3.9｜C1 floor mirror reflection restored when roughness differs from baked package
+
+```yaml
+- id: R7-3.9-c1-floor-reflection-roughness-gate-fix
+  date: 2026-05-11
+  type: reflection_bugfix
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_report:
+    - Speaker stand base reflects the ceiling lamp.
+    - Floor roughness 0 does not reflect the ceiling lamp.
+    - User concluded the floor reflection path is broken.
+  root_cause:
+    - The accepted R7-3.9 floor reflection package was captured with floorRoughnessForReflection = 0.1.
+    - Runtime enabled that package automatically for C1.
+    - The shader disabled the live floor Fresnel / mirror branch whenever the R7-3.9 package was ready.
+    - Therefore floor roughness 0 still used the 0.1 baked reflection cache and did not get the real live mirror path.
+  fix:
+    - Added uR739C1ReflectionFloorRoughness.
+    - Loaded the accepted package floorRoughnessForReflection into that uniform.
+    - Limited R7-3.9 floor replacement to abs(uFloorRoughness - uR739C1ReflectionFloorRoughness) <= 0.001.
+    - Extended reportR739C1AccurateReflectionConfig() with floorReplacementActive.
+    - Extended the accurate reflection preview runner to test roughness 0.1, 0, and 1.
+  corrected_understanding_after_user_review:
+    - A roughness match is not enough to replace the whole floor.
+    - Central sprout patch must always show baked diffuse plus baked 0.1 reflection.
+    - Surrounding live floor must always follow the UI floor roughness through live path tracing.
+    - At roughness 0.1, 1SPP should show a clean central sprout patch and noisy surrounding live floor.
+    - At roughness 0.1, 1000SPP should make surrounding live floor converge toward the central sprout patch.
+    - Future code and tests must separate central sprout patch replacement from surrounding live floor behavior.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-quick-preview-fill.test.js
+    - node docs/tests/r7-2-light-importance-sampling.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9002 --cdp-port=9245 --angle=swiftshader
+  runner_result:
+    - status: pass
+    - roughnessMatchedFloorReplacement: true
+    - mirrorRoughnessFloorReplacement: false
+    - roughnessOneFloorReplacement: false
+    - report: .omc/r7-3-9-c1-accurate-reflection-preview/20260511-235313/
+  interpretation:
+    - Central sprout patch uses accepted baked 0.1 reflection.
+    - Surrounding live floor uses live path-traced reflection at the UI roughness value.
+    - Roughness 0 on surrounding live floor gives mirror reflection.
+    - Roughness 1 on surrounding live floor gives total diffuse.
+    - Any rule that replaces the whole floor at roughness 0.1 is wrong.
+```
+
+## R7-3.9｜C1 large-floor reflection cache brightness fixed after sample double-division
+
+```yaml
+- id: R7-3.9-c1-floor-reflection-cache-double-division-fix
+  date: 2026-05-11
+  type: reflection_package_fix
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_report:
+    - Floor reflection now appears at roughness 0 and 0.15.
+    - At exactly roughness 0.1, the ceiling lamp reflection disappears.
+  root_cause:
+    - Roughness 0.1 exactly matched the R7-3.9 package roughness, so runtime used the baked reflection cache.
+    - renderR739MainReadback() reads screenCopyRenderTarget, which is already averaged by ScreenOutput using uOneOverSampleCounter.
+    - buildR739ReflectionArtifacts() subtracted full - disabled, then divided by samples again.
+    - The surface cache was therefore around 1000x too dark.
+  evidence:
+    - old_package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523/
+    - old_floor_cache_max_luma: 0.0002531471
+    - corrected_floor_cache_max_luma: 0.25314711
+  fix:
+    - Removed the extra division by samples in buildR739ReflectionArtifacts().
+    - Created corrected-brightness large-floor package .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/.
+    - Updated docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json to point to the corrected package.
+    - Added a contract check that floor reflection cache max luma must stay above 0.05.
+  corrected_understanding_after_user_review:
+    - The corrected package fixes brightness only.
+    - It still targets floor_primary_c1 and remains invalid as the central sprout reflection asset.
+    - The required next package must target sprout_reflection_c1 and report outsideSproutPixels = 0.
+    - Outside the sprout patch, roughness 0.05 through 0.95 must remain live path-traced glossy reflection.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-quick-preview-fill.test.js
+    - node docs/tests/r7-2-light-importance-sampling.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9003 --cdp-port=9246 --angle=swiftshader
+  runner_result:
+    - status: pass
+    - package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900
+    - roughnessMatchedFloorReplacement: true
+    - mirrorRoughnessFloorReplacement: false
+    - roughnessOneFloorReplacement: false
+    - report: .omc/r7-3-9-c1-accurate-reflection-preview/20260512-000006/
+  interpretation:
+    - The corrected baked reflection cache is failure evidence and brightness reference.
+    - Central sprout patch still needs a dedicated sprout_reflection_c1 package.
+    - Surrounding live floor at roughness 0.1 should still be live path tracing.
+    - The intended 1000SPP proof is that surrounding live roughness 0.1 converges toward the central sprout patch.
 ```

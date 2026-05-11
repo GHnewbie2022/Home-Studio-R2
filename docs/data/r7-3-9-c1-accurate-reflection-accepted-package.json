@@ -1,7 +1,7 @@
 {
   "version": "r7-3-9-c1-accurate-reflection-bake",
   "packageStatus": "accepted",
-  "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523",
+  "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900",
   "diffuseCheckpointTag": "r7-3-8-c1-diffuse-bake-success-20260511",
   "policy": "accuracy_over_speed",
   "config": 1,
@@ -29,10 +29,10 @@
     "validationReport": "validation-report.json"
   },
   "artifactHashes": {
-    "referenceSha256": "1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86",
+    "referenceSha256": "4c4d6de490db322c48eda7ea4e15a3a82d0ca2a2525309e2c57b3c7303d5c229",
     "maskSha256": "ad0d59e4b12906612fc4e75b31bf771f69c05ddc33310e37514516216c55e129",
     "objectIdsSha256": "2591a1e83a819c891434e5bbe9067126a6917efc66cb73c8151de53f1c731fe7",
-    "surfaceCacheSha256": "1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86",
+    "surfaceCacheSha256": "4c4d6de490db322c48eda7ea4e15a3a82d0ca2a2525309e2c57b3c7303d5c229",
     "directionMetadataSha256": "b3f741cc7fa4043021f57d60886b434d5e2f212ce8f557a62a3d7880f7f863b6",
     "texelMetadataSha256": "5b1a516040e5f4a39fb258b36a9d622a617c54fa27e52bb147ed883833c8dbab"
   },
@@ -47,5 +47,7 @@
       "speaker_cabinets_rotated_boxes": 0,
       "background": 825430
     }
-  }
+  },
+  "sourcePackage": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523",
+  "fixNote": "Scaled R7-3.9 reflection cache back from an accidental extra division by cameraReferenceSamples."
 }

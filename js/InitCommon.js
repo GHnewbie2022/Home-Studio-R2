@@ -1094,6 +1094,9 @@ function r739C1AccurateReflectionConfigAllowed()
 function updateR739C1AccurateReflectionUniforms()
 {
 	if (!pathTracingUniforms) return false;
+	var packageFloorRoughness = r739C1AccurateReflectionPackage && Number.isFinite(Number(r739C1AccurateReflectionPackage.floorRoughnessForReflection))
+		? Number(r739C1AccurateReflectionPackage.floorRoughnessForReflection)
+		: 0.1;
 	var captureMode = pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0;
 	var referenceMode = pathTracingUniforms.uR739C1ReflectionReferenceMode ? pathTracingUniforms.uR739C1ReflectionReferenceMode.value : 0;
 	var maskMode = pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode ? pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value : 0;
@@ -1107,6 +1110,8 @@ function updateR739C1AccurateReflectionUniforms()
 		pathTracingUniforms.uR739C1AccurateReflectionMode.value = applied ? 1.0 : 0.0;
 	if (pathTracingUniforms.uR739C1ReflectionReady)
 		pathTracingUniforms.uR739C1ReflectionReady.value = r739C1AccurateReflectionReady ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR739C1ReflectionFloorRoughness)
+		pathTracingUniforms.uR739C1ReflectionFloorRoughness.value = packageFloorRoughness;
 	if (r739C1AccurateReflectionTexture && pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture)
 		pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture.value = r739C1AccurateReflectionTexture;
 	return applied;
@@ -1864,7 +1869,6 @@ function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadba
 		background: 0
 	};
 	var nonFiniteReflectionSamples = 0;
-	var divisor = Math.max(1, samples);
 	var cameraPos = worldCamera ? worldCamera.position : { x: 0, y: 0, z: 0 };
 	for (var p = 0, i = 0; p < pixelCount; p += 1, i += 4)
 	{
@@ -1886,9 +1890,9 @@ function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadba
 		var rz = 0.0;
 		if (targetId > 0)
 		{
-			rx = Math.max(0, (fullReadback.pixels[i] - disabledReadback.pixels[i]) / divisor);
-			ry = Math.max(0, (fullReadback.pixels[i + 1] - disabledReadback.pixels[i + 1]) / divisor);
-			rz = Math.max(0, (fullReadback.pixels[i + 2] - disabledReadback.pixels[i + 2]) / divisor);
+			rx = Math.max(0, fullReadback.pixels[i] - disabledReadback.pixels[i]);
+			ry = Math.max(0, fullReadback.pixels[i + 1] - disabledReadback.pixels[i + 1]);
+			rz = Math.max(0, fullReadback.pixels[i + 2] - disabledReadback.pixels[i + 2]);
 			if (!Number.isFinite(rx) || !Number.isFinite(ry) || !Number.isFinite(rz))
 			{
 				nonFiniteReflectionSamples += 1;
@@ -2117,6 +2121,12 @@ window.setR739C1AccurateReflectionEnabled = function(enabled)
 window.reportR739C1AccurateReflectionConfig = function()
 {
 	var applied = updateR739C1AccurateReflectionUniforms();
+	var floorRoughness = pathTracingUniforms && pathTracingUniforms.uFloorRoughness ? pathTracingUniforms.uFloorRoughness.value : null;
+	var packageFloorRoughness = r739C1AccurateReflectionPackage && Number.isFinite(Number(r739C1AccurateReflectionPackage.floorRoughnessForReflection))
+		? Number(r739C1AccurateReflectionPackage.floorRoughnessForReflection)
+		: null;
+	var sproutReplacementActive = applied;
+	var surroundingLiveFloorReplacementActive = false;
 	return {
 		version: 'r7-3-9-c1-accurate-reflection-bake',
 		enabled: r739C1AccurateReflectionEnabled,
@@ -2128,6 +2138,11 @@ window.reportR739C1AccurateReflectionConfig = function()
 		policy: 'accuracy_over_speed',
 		cubemapRuntimeEnabled: false,
 		packageDir: r739C1AccurateReflectionPackage ? r739C1AccurateReflectionPackage.packageDir : null,
+		floorRoughness: floorRoughness,
+		packageFloorRoughnessForReflection: packageFloorRoughness,
+		sproutReplacementActive: sproutReplacementActive,
+		surroundingLiveFloorReplacementActive: surroundingLiveFloorReplacementActive,
+		floorReplacementActive: sproutReplacementActive,
 		referenceWidth: r739C1AccurateReflectionPackage ? r739C1AccurateReflectionPackage.referenceWidth : null,
 		referenceHeight: r739C1AccurateReflectionPackage ? r739C1AccurateReflectionPackage.referenceHeight : null,
 		uniformMode: pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode ? pathTracingUniforms.uR739C1AccurateReflectionMode.value : null,
@@ -2195,7 +2210,7 @@ window.reportHomeStudioHibernationLoopState = function()
 	var maxSamples = (typeof MAX_SAMPLES === 'number') ? MAX_SAMPLES : null;
 	var currentSamples = Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0);
 	return {
-		version: 'r7-3-9-c1-floor-roughness-ui-v8',
+		version: 'r7-3-9-c1-floor-reflection-roughness-v1',
 		sleeping: !!homeStudioAnimationSleeping,
 		framePending: !!homeStudioAnimationFrameId,
 		samplingPaused: !!samplingPaused,
@@ -3034,7 +3049,7 @@ function initTHREEjs()
 		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
 	};
 
-fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-9-c1-floor-roughness-ui-v8', function (shaderText)
+fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-9-c1-floor-reflection-roughness-v1', function (shaderText)
 	{
 
 		screenOutputFragmentShader = shaderText;

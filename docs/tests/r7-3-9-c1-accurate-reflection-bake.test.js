@@ -49,6 +49,24 @@ assert.equal(accepted.validation.targetCounts.iron_door_west, 0);
 assert.equal(accepted.validation.targetCounts.speaker_stands_rotated_boxes, 0);
 assert.equal(accepted.validation.targetCounts.speaker_cabinets_rotated_boxes, 0);
 
+{
+  const packageDir = accepted.packageDir;
+  const mask = new Uint8Array(fs.readFileSync(`${packageDir}/${accepted.artifacts.mask}`));
+  const cacheBuffer = fs.readFileSync(`${packageDir}/${accepted.artifacts.surfaceCache}`);
+  const cache = new Float32Array(cacheBuffer.buffer, cacheBuffer.byteOffset, cacheBuffer.byteLength / 4);
+  let floorCount = 0;
+  let floorMaxLuma = 0;
+  for (let p = 0; p < mask.length; p += 1) {
+    if (mask[p] !== 1) continue;
+    const i = p * 4;
+    const luma = 0.299 * cache[i] + 0.587 * cache[i + 1] + 0.114 * cache[i + 2];
+    floorCount += 1;
+    floorMaxLuma = Math.max(floorMaxLuma, luma);
+  }
+  assert.equal(floorCount, accepted.validation.targetCounts.floor_primary_c1);
+  assert(floorMaxLuma > 0.05, `Accepted floor reflection cache is too dark: max luma ${floorMaxLuma}`);
+}
+
 assert.match(homeStudio, /uR739C1AccurateReflectionMode/);
 assert.match(homeStudio, /tR739C1ReflectionSurfaceCacheTexture/);
 assert.match(initCommon, /window\.reportR739C1AccurateReflectionAfterSamples/);
@@ -56,13 +74,27 @@ assert.match(initCommon, /window\.loadR739C1AccurateReflectionPackage/);
 assert.match(initCommon, /window\.waitForR739C1AccurateReflectionReady/);
 assert.match(initCommon, /loadR739C1AccurateReflectionPackage\(\)\.catch/);
 assert.match(shader, /uniform float uR739C1AccurateReflectionMode;/);
+assert.match(shader, /uniform float uR739C1ReflectionFloorRoughness;/);
 assert.match(shader, /r739SampleAccurateSurfaceReflection/);
-assert.match(shader, /uFloorRoughness\s*>=\s*0\.999/);
-assert.match(shader, /r739C1AccurateReflectionReplacesTarget/);
-assert.match(shader, /return targetId == 1;/);
+assert.match(shader, /bool r739C1AccurateReflectionReplacesTarget\(int targetId,\s*vec3 visiblePosition\)/);
+assert.match(shader, /r738C1BakePastePreviewUv\(visiblePosition,\s*r739SproutUv\)/);
+{
+  const replaceFunction = shader.match(/bool r739C1AccurateReflectionReplacesTarget[\s\S]*?\n}/)?.[0] || '';
+  assert.doesNotMatch(replaceFunction, /uFloorRoughness/);
+  assert.doesNotMatch(replaceFunction, /uR739C1ReflectionFloorRoughness/);
+}
+assert.doesNotMatch(shader, /targetId == 1 && uFloorRoughness\s*>=\s*0\.999\)\s*return vec3\(0\.0\);/);
 assert.match(runner, /--accurate-reflection-capture/);
 assert.match(runner, /floorRoughness:\s*0\.1/);
+assert.doesNotMatch(initCommon, /fullReadback\.pixels\[i\][\s\S]{0,80}\/ divisor/);
 assert.match(initCommon, /floorRoughnessForReflection:\s*floorRoughness/);
+assert.match(initCommon, /uR739C1ReflectionFloorRoughness/);
+assert.match(initCommon, /sproutReplacementActive/);
+assert.match(initCommon, /surroundingLiveFloorReplacementActive/);
+{
+  const configFunction = initCommon.match(/window\.reportR739C1AccurateReflectionConfig = function\(\)[\s\S]*?\n};/)?.[0] || '';
+  assert.doesNotMatch(configFunction, /Math\.abs\(Number\(floorRoughness\) - Number\(packageFloorRoughness\)\)/);
+}
 assert.match(initCommon, /options\.floorRoughness\)\s*\?\s*options\.floorRoughness\s*:\s*0\.1/);
 assert.doesNotMatch(shader, /tR739C1ReflectionProbeTexture/);
 
