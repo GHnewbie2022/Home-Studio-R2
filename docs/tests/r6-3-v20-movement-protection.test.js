@@ -67,13 +67,14 @@ assert(initCommon.includes('movementProtectionRenderTarget'), 'Movement protecti
 assert(initCommon.includes('window.setMovementProtectionConfig = function'), 'Movement protection must expose a console setter');
 assert(initCommon.includes('window.reportMovementProtectionConfig = function'), 'Movement protection must expose a console reporter');
 assert(initCommon.includes('captureMovementProtectionStableFrame'), 'Movement protection must capture stable frames');
+assert(initCommon.includes('if (!movementProtectionConfigAllowed())\n\t\treturn false;'), 'C1/C2 must not pay for movement-protection stable-frame capture');
 assert(initCommon.includes('updateMovementProtectionUniforms'), 'Movement protection uniforms must be updated from JS');
 assert(initCommon.includes('updateMovementProtectionUniforms(cameraIsMoving);'), 'Movement protection display blend must use actual camera movement, not first-frame burst render mode');
 assert(initCommon.includes('if (!cameraIsMoving)\n\t\t\tcaptureMovementProtectionStableFrame();'), 'Movement protection must capture stable frames only when the actual camera is still');
-assert(initCommon.includes('ScreenOutput_Fragment.glsl?v=r7-3-quick-preview-fill-v3al'), 'ScreenOutput shader cache token must identify current R7 experiment');
-assert(html.includes('InitCommon.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust InitCommon for current R7 experiment');
-assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust Home_Studio for current R7 experiment');
-assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al'), 'Home_Studio shader cache token must identify current R7 experiment');
+assert(initCommon.includes('ScreenOutput_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'ScreenOutput shader cache token must identify current R7 experiment');
+assert(html.includes('InitCommon.js?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'HTML must cache-bust InitCommon for current R7 experiment');
+assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'HTML must cache-bust Home_Studio for current R7 experiment');
+assert(homeStudio.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'Home_Studio shader cache token must identify current R7 experiment');
 
 assert(homeStudio.includes('invalidateMovementProtectionStableFrame'), 'Home_Studio must invalidate stable frame for non-camera content changes');
 assert(homeStudio.includes("invalidateMovementProtectionStableFrame('applyPanelConfig')"), 'Panel config changes must drop stale stable frame');

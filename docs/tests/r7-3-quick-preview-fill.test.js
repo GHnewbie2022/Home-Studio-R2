@@ -15,7 +15,7 @@ const pathShader = fs.readFileSync(path.join(root, 'shaders/Home_Studio_Fragment
 const screenOutput = fs.readFileSync(path.join(root, 'shaders/ScreenOutput_Fragment.glsl'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css/default.css'), 'utf8');
 
-const version = 'r7-3-quick-preview-fill-v3al';
+const version = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
 
 function assertOrder(source, before, after, message) {
 	const beforeIndex = source.indexOf(before);
@@ -40,13 +40,12 @@ assert(homeStudio.includes(`R7_3_QUICK_PREVIEW_FILL_VERSION = '${version}'`), 'H
 assert(homeStudio.includes(`Home_Studio_Fragment.glsl?v=${version}`), 'Home shader cache token must identify R7-3');
 assert(initCommon.includes(`ScreenOutput_Fragment.glsl?v=${version}`), 'ScreenOutput shader cache token must identify R7-3');
 
-assert(html.includes('id="r73-quick-preview-fill-controls"'), 'R7-3 high-SPP validation must restore a minimal bottom-left toggle');
-assert(html.includes('id="chk-r73-quick-preview-fill"'), 'R7-3 high-SPP validation must expose an on/off checkbox');
-assert(html.includes('R7-3'), 'R7-3 high-SPP validation toggle must be labeled clearly');
+assert(!html.includes('id="r73-quick-preview-fill-controls"'), 'R7-3 validation toggle must be removed from the bottom-left UI');
+assert(!html.includes('id="chk-r73-quick-preview-fill"'), 'R7-3 validation toggle must not expose a checkbox');
 assert(!html.includes('input-r73-quick-preview-fill-spp'), 'R7-3 UI must not expose editable SPP fields');
 assert(!html.includes('class="r73-fill-spp-input"'), 'R7-3 UI must remove number inputs');
-assert(css.includes('#r73-quick-preview-fill-controls'), 'R7-3 high-SPP validation toggle must have bottom-left styling');
-assert(css.includes('.r73-fill-toggle'), 'R7-3 high-SPP validation toggle must have compact toggle styling');
+assert(!css.includes('#r73-quick-preview-fill-controls'), 'R7-3 validation toggle styling must be removed');
+assert(!css.includes('.r73-fill-toggle'), 'R7-3 compact toggle styling must be removed');
 assert(!css.includes('.r73-fill-spp-input'), 'R7-3 UI must not keep editable field styling');
 
 assert(initCommon.includes('let r73QuickPreviewFillEnabled = true'), 'R7-3 fixed curve must default on');
@@ -73,13 +72,13 @@ assert(initCommon.includes('r73QuickPreviewFillApplied: applied'), 'R7-3 reporte
 assert(!initCommon.includes('function normalizeR73QuickPreviewFillCurveValue'), 'R7-3 v3j must remove input normalizer');
 assert(!initCommon.includes('function updateR73QuickPreviewFillCurveFromControls()'), 'R7-3 v3j must remove editable SPP field handling');
 assert(!initCommon.includes('function rebuildR73QuickPreviewFillAccumulationForCurrentSamples()'), 'R7-3 v3j must remove low-SPP rebuild tied to field edits');
-assert(initCommon.includes('function updateR73QuickPreviewFillControls()'), 'R7-3 high-SPP validation toggle must sync UI state');
-assert(initCommon.includes('function initR73QuickPreviewFillControls()'), 'R7-3 high-SPP validation toggle must initialize UI binding');
-assert(initCommon.includes("document.getElementById('chk-r73-quick-preview-fill')"), 'R7-3 high-SPP validation toggle must bind the checkbox');
+assert(!initCommon.includes('function updateR73QuickPreviewFillControls()'), 'R7-3 validation toggle sync function must be removed');
+assert(!initCommon.includes('function initR73QuickPreviewFillControls()'), 'R7-3 validation toggle init function must be removed');
+assert(!initCommon.includes("document.getElementById('chk-r73-quick-preview-fill')"), 'R7-3 validation toggle must not bind a checkbox');
 assert(!initCommon.includes("document.getElementById('input-r73-quick-preview-fill-spp1')"), 'R7-3 UI must not bind removed SPP fields');
 assert(initCommon.includes('strengthCurve: R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT.slice()'), 'R7-3 reporter must expose the fixed curve');
 assert(initCommon.includes('baseStrength: R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0]'), 'R7-3 reporter must expose the fixed 1SPP strength');
-assert(homeStudio.includes("'r73-quick-preview-fill-controls'"), 'Hide/pointer guard must include the minimal R7-3 validation toggle');
+assert(!homeStudio.includes("'r73-quick-preview-fill-controls'"), 'Hide/pointer guard must not include the removed R7-3 validation toggle');
 assert(initCommon.includes('wakeRender();'), 'R7-3 v3 must restart accumulation because terminal preview lives in the path shader');
 assert(initCommon.includes('updateR73QuickPreviewFillUniforms();'), 'R7-3 uniforms must refresh during the render loop');
 

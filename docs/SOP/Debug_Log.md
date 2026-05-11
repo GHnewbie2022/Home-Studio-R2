@@ -5571,3 +5571,78 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - 每 texel / sample 成本是否可接受。
     - Cloud、軌道、廣角分燈 bake 是否能在 tone mapping 前線性相加。
 ```
+
+## R7-3｜C1/C2 FPS 仍偏低，交接後優先修
+
+```yaml
+- id: R7-3-c1-c2-fps-regression-handoff
+  date: 2026-05-11
+  type: performance_blocker
+  user_decision:
+    - 不再追舊記憶中的 60 FPS。
+    - 目前接受約 30 FPS 作為 Home_Studio 這個房間持續採樣時的實用目標。
+    - 不再繼續往舊 commit 降版本找 60 FPS。
+    - 回到保留 R7-3 功能的最新版基準後，優先把 C1/C2 提回約 30 FPS。
+  baseline_to_keep:
+    - C3 R7-3 quick-preview 固定曲線保留。
+    - C3/C4 可見第一格 SPP 行為保留目前紀錄。
+    - 快照 UI / 系統優化保留。
+  latest_attempt:
+    - 嘗試在 js/InitCommon.js 的 captureMovementProtectionStableFrame() 加上 movementProtectionConfigAllowed() guard。
+    - 目的：C1/C2 不使用 movement protection，應跳過 stable-frame capture。
+    - cache token: r7-3-quick-preview-fill-v3al-c1c2-fps1。
+  user_validation:
+    - URL: http://127.0.0.1:9002/Home_Studio.html?verify=r7-3-c1c2-fps1&fpsprobe=1
+    - version: fps-root-cause-probe-r7-3-c1c2-fps1
+    - spp/sec: 12.997
+    - fps: 0 -> 14
+    - samples: 7 -> 72
+    - buffer: 1280x720
+    - hotPath: r7-3-c1c2-fps1-movement-capture-gate
+    - HUD: FPS 14 / FOV 55 / Samples 171 / elapsed 00m12s
+  conclusion:
+    - 此修正不足，C1/C2 仍偏低，下一輪要先修這件事。
+  handoff_md:
+    - docs/superpowers/plans/2026-05-10-r7-3-7-c1-static-room-bake.md
+```
+
+## R7-3｜C1/C2 FPS recovered by removing visible diagnostic UI
+
+```yaml
+- id: R7-3-c1-c2-fps-recovered-ui-overlay
+  date: 2026-05-11
+  type: performance_fix
+  context:
+    - 使用者要求移除左下角 R7-3 checkbox UI。
+    - 移除後使用者回報 C1 FPS 回到約 30，且 C3 調光曲線仍正常運作。
+    - 使用者接著要求移除畫面上的 FPS probe overlay。
+    - 使用者發現右下角眼睛按鈕按下去時，左下角資訊欄消失但快照按鈕仍留著，判斷應反過來。
+  implementation:
+    - 移除 Home_Studio.html 的 r73-quick-preview-fill-controls 與 chk-r73-quick-preview-fill。
+    - 移除 css/default.css 的 r73-fill-toggle 與 r73-quick-preview-fill-controls 樣式。
+    - 移除 js/InitCommon.js 內 R7-3 checkbox 初始化與同步函式。
+    - 保留 window.setR73QuickPreviewFillEnabled() 與 reportR73QuickPreviewFillConfig() console helper。
+    - 移除 FPS probe 的可見 overlay 與 URL 自動 overlay 顯示；保留 reportHomeStudioFpsRootCauseAfterMs() console helper。
+    - 修正右下角眼睛按鈕：保留 cameraInfo 左下資訊列，隱藏 snapshot-bar 與 snapshot-actions。
+  user_validation:
+    - URL: http://127.0.0.1:9002/Home_Studio.html?verify=r7-3-c1c2-fps1&fpsprobe=1
+    - version: fps-root-cause-probe-r7-3-c1c2-fps1
+    - spp/sec: 29.995
+    - fps: 33 -> 29
+    - samples: 18 -> 168
+    - buffer: 1280x720
+    - hotPath: r7-3-c1c2-fps1-movement-capture-gate
+  conclusion:
+    - C1/C2 已回到約 30 FPS 的實用目標。
+    - 這次下降主因較像 visible HTML overlay/control composition 成本，不是 C1 path shader 本身新增大量工作。
+    - 後續診斷工具若要保留，優先保留 console helper，不要預設顯示大型畫面 overlay。
+  validation:
+    - node docs/tests/fps-root-cause-probe.test.js
+    - node docs/tests/r6-3-max-samples.test.js
+    - node docs/tests/r7-3-quick-preview-fill.test.js
+    - node docs/tests/r6-3-v20-movement-protection.test.js
+    - node docs/tests/r7-2-light-importance-sampling.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - git diff --check
+```

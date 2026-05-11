@@ -609,31 +609,11 @@ function updateR73QuickPreviewFillUniforms()
 	return applied;
 }
 
-function updateR73QuickPreviewFillControls()
-{
-	var checkbox = document.getElementById('chk-r73-quick-preview-fill');
-	if (checkbox)
-		checkbox.checked = !!r73QuickPreviewFillEnabled;
-}
-
-function initR73QuickPreviewFillControls()
-{
-	var checkbox = document.getElementById('chk-r73-quick-preview-fill');
-	if (!checkbox)
-		return;
-	checkbox.checked = !!r73QuickPreviewFillEnabled;
-	checkbox.addEventListener('change', function()
-	{
-		window.setR73QuickPreviewFillEnabled(checkbox.checked);
-	}, false);
-}
-
 window.setR73QuickPreviewFillEnabled = function(enabled)
 {
 	r73QuickPreviewFillEnabled = !!enabled;
 	r73QuickPreviewFillStrength = R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0];
 	updateR73QuickPreviewFillUniforms();
-	updateR73QuickPreviewFillControls();
 	if (typeof wakeRender === 'function')
 		wakeRender();
 	return window.reportR73QuickPreviewFillConfig();
@@ -643,7 +623,7 @@ window.reportR73QuickPreviewFillConfig = function()
 {
 	var applied = updateR73QuickPreviewFillUniforms();
 	return {
-		version: 'r7-3-quick-preview-fill-v3al',
+		version: 'r7-3-quick-preview-fill-v3al-c1c2-fps1',
 		enabled: r73QuickPreviewFillEnabled,
 		strength: r73QuickPreviewFillStrength,
 		baseStrength: R73_QUICK_PREVIEW_FILL_CURVE_DEFAULT[0],
@@ -666,6 +646,92 @@ window.reportR73QuickPreviewFillConfig = function()
 			: null,
 		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
 		currentPanelConfig: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0
+	};
+};
+
+function collectHomeStudioFpsProbeSnapshot()
+{
+	var maxSamples = typeof MAX_SAMPLES !== 'undefined' ? MAX_SAMPLES : null;
+	return {
+		devicePixelRatio: window.devicePixelRatio,
+		pixelRatio: typeof pixelRatio === 'number' ? pixelRatio : null,
+		innerWidth: window.innerWidth,
+		innerHeight: window.innerHeight,
+		bodyClientWidth: document.body ? document.body.clientWidth : null,
+		bodyClientHeight: document.body ? document.body.clientHeight : null,
+		canvasPixels: renderer && renderer.domElement
+			? {
+				width: renderer.domElement.width,
+				height: renderer.domElement.height,
+				megapixels: Number((renderer.domElement.width * renderer.domElement.height / 1000000).toFixed(3))
+			}
+			: null,
+		currentPanelConfig: typeof currentPanelConfig === 'number' ? currentPanelConfig : null,
+		sampleCounter: typeof sampleCounter === 'number' ? sampleCounter : null,
+		fps: window._fpsAcc ? window._fpsAcc.fps : null,
+		renderingWouldStop: !!(maxSamples !== null && sampleCounter >= maxSamples && !cameraIsMoving),
+		hibernating: !!(maxSamples !== null && sampleCounter >= maxSamples && !cameraIsMoving),
+		cameraIsMoving: !!cameraIsMoving,
+		needClearAccumulation: !!needClearAccumulation,
+		postProcessChanged: !!postProcessChanged,
+		needChangePixelResolution: !!needChangePixelResolution,
+		firstFrameRecovery: typeof window.reportFirstFrameRecoveryConfig === 'function' ? window.reportFirstFrameRecoveryConfig() : null,
+		movementProtection: typeof window.reportMovementProtectionConfig === 'function' ? window.reportMovementProtectionConfig() : null,
+		r72LightImportanceSampling: typeof window.reportR72LightImportanceSampling === 'function' ? window.reportR72LightImportanceSampling() : null,
+		shaderHotPath: 'r7-3-c1c2-fps1-movement-capture-gate',
+		r73QuickPreview: typeof window.reportR73QuickPreviewFillConfig === 'function' ? window.reportR73QuickPreviewFillConfig() : null,
+		borrowStrength: pathTracingUniforms && pathTracingUniforms.uBorrowStrength
+			? pathTracingUniforms.uBorrowStrength.value
+			: null,
+		maxBounces: pathTracingUniforms && pathTracingUniforms.uMaxBounces
+			? pathTracingUniforms.uMaxBounces.value
+			: null,
+		pathResolution: pathTracingUniforms && pathTracingUniforms.uResolution
+			? {
+				x: pathTracingUniforms.uResolution.value.x,
+				y: pathTracingUniforms.uResolution.value.y
+			}
+			: null
+	};
+}
+
+window.reportHomeStudioFpsRootCauseAfterMs = async function(durationMs)
+{
+	var waitMs = Math.max(250, Number(durationMs) || 5000);
+	var initialSamplingState = typeof window.reportSamplingPaused === 'function'
+		? window.reportSamplingPaused()
+		: null;
+	var autoResumedSampling = !!(initialSamplingState && initialSamplingState.paused && typeof window.setSamplingPaused === 'function');
+	if (autoResumedSampling)
+	{
+		window.setSamplingPaused(false);
+		if (typeof wakeRender === 'function')
+			wakeRender();
+		await new Promise(function(resolve) { setTimeout(resolve, 100); });
+	}
+	var before = collectHomeStudioFpsProbeSnapshot();
+	var beforeSamples = typeof sampleCounter === 'number' ? sampleCounter : null;
+	var startTime = performance.now();
+	await new Promise(function(resolve) { setTimeout(resolve, waitMs); });
+	var endTime = performance.now();
+	var after = collectHomeStudioFpsProbeSnapshot();
+	var afterSamples = typeof sampleCounter === 'number' ? sampleCounter : null;
+	var measuredMs = Math.max(1, endTime - startTime);
+	var sampleDelta = beforeSamples !== null && afterSamples !== null
+		? afterSamples - beforeSamples
+		: null;
+	if (autoResumedSampling && typeof window.setSamplingPaused === 'function')
+		window.setSamplingPaused(true);
+	return {
+		version: 'fps-root-cause-probe-r7-3-c1c2-fps1',
+		durationMs: Math.round(measuredMs),
+		sppPerSec: sampleDelta !== null
+			? Number((sampleDelta * 1000 / measuredMs).toFixed(3))
+			: null,
+		autoResumedSampling: autoResumedSampling,
+		initialSamplingState: initialSamplingState,
+		before: before,
+		after: after
 	};
 };
 
@@ -839,7 +905,7 @@ window.reportR73GikWallLumaComparisonAfterSamples = async function(targetSamples
 		var c3 = await measureR73GikWallConfig(3, target, timeout);
 		var c4 = await measureR73GikWallConfig(4, target, timeout);
 		var result = {
-			version: 'r7-3-quick-preview-fill-v3al',
+			version: 'r7-3-quick-preview-fill-v3al-c1c2-fps1',
 			scope: 'c3c4GikWallQuickPreviewLuma',
 			targetSamples: target,
 			c3: c3,
@@ -875,8 +941,6 @@ window.reportR73GikWallLumaComparisonAfterSamples = async function(targetSamples
 			wakeRender();
 	}
 };
-
-initR73QuickPreviewFillControls();
 
 function updateMovementPreviewUniforms(activeCameraMoving)
 {
@@ -935,6 +999,8 @@ function updateMovementProtectionUniforms(activeCameraMoving)
 function captureMovementProtectionStableFrame()
 {
 	if (!movementProtectionEnabled || !movementProtectionRenderTarget || !screenOutputUniforms)
+		return false;
+	if (!movementProtectionConfigAllowed())
 		return false;
 	if (cameraIsMoving || sampleCounter < movementProtectionMinStableSamples)
 		return false;
@@ -1676,7 +1742,7 @@ function initTHREEjs()
 		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
 	};
 
-fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-quick-preview-fill-v3al', function (shaderText)
+fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1', function (shaderText)
 	{
 
 		screenOutputFragmentShader = shaderText;

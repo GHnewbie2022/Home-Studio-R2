@@ -32,7 +32,7 @@ const C_DARK_VENT = [0.0, 0.0, 0.0];
 const ACTIVE_LIGHT_POOL_MAX = 11;
 const ACTIVE_LIGHT_LUT_SENTINEL = -1;
 const R7_2_LIGHT_IMPORTANCE_VERSION = 'r7-2-light-importance-sampling-v1-r7-2d-step-history';
-const R7_3_QUICK_PREVIEW_FILL_VERSION = 'r7-3-quick-preview-fill-v3al';
+const R7_3_QUICK_PREVIEW_FILL_VERSION = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
 let r72LightImportanceSamplingEnabled = false;
 
 // === Scene Box Data (single source of truth) ===
@@ -5162,7 +5162,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -6782,11 +6782,13 @@ function initUI() {
             if (uiContainer) uiContainer.style.display = d;
             if (topRightGroup) topRightGroup.style.display = d;
             if (helpWrapper) helpWrapper.style.display = d;
-            // R4-5：隱藏 UI 時同步隱藏左下角資訊 + 快照列
+            // R4-5：隱藏 UI 時保留左下資訊，收起快照列與快照按鈕
             var cameraInfoEl = document.getElementById('cameraInfo');
             var snapshotBarEl = document.getElementById('snapshot-bar');
-            if (cameraInfoEl) cameraInfoEl.style.display = d;
+            var snapshotActionsEl = document.getElementById('snapshot-actions');
+            if (cameraInfoEl) cameraInfoEl.style.display = "";
             if (snapshotBarEl) snapshotBarEl.style.display = d;
+            if (snapshotActionsEl) snapshotActionsEl.style.display = d;
         };
     }
 
@@ -6804,7 +6806,7 @@ function initUI() {
     }
 
     // Pointer-lock guard for snapshot bar and actions（bug fix：chip 點選會觸發 pointer lock）
-    ['snapshot-bar', 'snapshot-actions', 'r73-quick-preview-fill-controls'].forEach(function(id) {
+    ['snapshot-bar', 'snapshot-actions'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);

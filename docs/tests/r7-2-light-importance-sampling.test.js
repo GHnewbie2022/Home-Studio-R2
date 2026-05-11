@@ -109,8 +109,8 @@ assert(shader.includes('float selectPdf = uActiveLightPickPdf[slot];'), 'Shader 
 assert(!shader.includes('float selectPdf = 1.0 / float(uActiveLightCount);'), 'Shader must not hard-code uniform selectPdf in the direct NEE picker');
 assert(!shader.includes('pdfNeeForLight(misBsdfBounceOrigin, x, reverseEmissionNormal, reverseCloudPdfArea, 1.0 / float(uActiveLightCount))'), 'Cloud reverse MIS must use activeLightPickPdfByIndex');
 
-assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al'), 'HTML must cache-bust Home_Studio.js for current R7 experiment');
-assert(js.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al'), 'JS must cache-bust shader for current R7 experiment');
+assert(html.includes('Home_Studio.js?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'HTML must cache-bust Home_Studio.js for current R7 experiment');
+assert(js.includes('Home_Studio_Fragment.glsl?v=r7-3-quick-preview-fill-v3al-c1c2-fps1'), 'JS must cache-bust shader for current R7 experiment');
 assert(r7Sop.includes('R7-2 light importance sampling v1'), 'R7 SOP must record R7-2 v1');
 
 console.log('PASS  R7-2 light importance sampling contract');

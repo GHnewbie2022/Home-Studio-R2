@@ -48,6 +48,11 @@ assert(html.includes('btn-save-all'), 'Save-all snapshot button should stay avai
 assert(html.includes('btn-toggle-sampling'), 'Sampling pause/resume button should stay available');
 assert(html.includes('btn-step-sampling'), 'Sampling next-sample button should stay available');
 assert(html.includes('btn-step-back-sampling'), 'Sampling previous-sample button should stay available');
+assert(src.includes("var snapshotActionsEl = document.getElementById('snapshot-actions');"), 'Hide UI must locate snapshot actions');
+assert(src.includes('if (cameraInfoEl) cameraInfoEl.style.display = "";'), 'Hide UI must keep the bottom-left info line visible');
+assert(src.includes('if (snapshotBarEl) snapshotBarEl.style.display = d;'), 'Hide UI must hide/show the snapshot bar');
+assert(src.includes('if (snapshotActionsEl) snapshotActionsEl.style.display = d;'), 'Hide UI must hide/show snapshot action buttons');
+assert(!src.includes('if (cameraInfoEl) cameraInfoEl.style.display = d;'), 'Hide UI must not hide the bottom-left info line');
 assert(initCommon.includes('let samplingPaused = false'), 'Sampling pause must default to running');
 assert(initCommon.includes('let samplingStepOnceRequested = false'), 'Sampling step-once must default to inactive');
 assert(initCommon.includes('let samplingStepHistory = []'), 'Sampling step history must default to empty');
