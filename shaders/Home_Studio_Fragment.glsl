@@ -404,15 +404,19 @@ vec3 r739C1ReflectionTargetColor(int targetId)
 	if (targetId == 4) return vec3(1.0, 0.0, 1.0);
 	return vec3(0.0);
 }
+bool r739C1AccurateReflectionReplacesTarget(int targetId)
+{
+	return targetId == 1;
+}
 bool r739C1ReflectionReferenceDisablesTarget(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
 	return (uR739C1ReflectionReferenceMode > 1.5 || (uR739C1AccurateReflectionMode > 0.5 && uR739C1ReflectionReady > 0.5)) &&
-		r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) > 0;
+		r739C1AccurateReflectionReplacesTarget(r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition));
 }
 vec3 r739SampleAccurateSurfaceReflection(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
 	int targetId = r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
-	if (targetId == 0) return vec3(0.0);
+	if (!r739C1AccurateReflectionReplacesTarget(targetId)) return vec3(0.0);
 	if (targetId == 1 && uFloorRoughness >= 0.999) return vec3(0.0);
 	vec2 reflectionUv = clamp(gl_FragCoord.xy / max(uResolution, vec2(1.0)), vec2(0.0), vec2(1.0));
 	return max(texture(tR739C1ReflectionSurfaceCacheTexture, reflectionUv).rgb, vec3(0.0));

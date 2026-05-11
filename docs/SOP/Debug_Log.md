@@ -17,8 +17,9 @@ Branch:
   codex/r7-3-9-c1-reflection-bake
 
 Purpose:
-  Add a separate accuracy-first reflection bake path after the accepted R7-3.8 diffuse floor patch.
-  Target surfaces are the C1-visible floor, west iron door, rotated speaker stands, and speaker cabinets.
+  Add a separate accuracy-first floor reflection bake path after the accepted R7-3.8 diffuse floor patch.
+  Current runtime replacement target is the C1-visible floor only.
+  West iron door, rotated speaker stands, and speaker cabinets remain on live reflection until their own accurate packages exist.
   Runtime cubemap reflection is disabled for this line.
 
 Protected diffuse baseline:
@@ -42,7 +43,7 @@ Implementation:
     --accurate-reflection-preview-test
 
 Accepted reflection package:
-  .omc/r7-3-9-c1-accurate-reflection-bake/20260511-182915/
+  .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523/
 
 Accepted package pointer:
   docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json
@@ -52,44 +53,48 @@ Package validation:
   actualSamples: 1000
   referenceWidth: 1280
   referenceHeight: 720
+  floorRoughnessForReflection: 0.1
   nonFiniteReflectionSamples: 0
   policy: accuracy_over_speed
   cubemapRuntimeEnabled: false
 
 Target counts:
   floor_primary_c1: 96170
-  iron_door_west: 1647
-  speaker_stands_rotated_boxes: 7875
-  speaker_cabinets_rotated_boxes: 10558
-  background: 805350
+  iron_door_west: 0
+  speaker_stands_rotated_boxes: 0
+  speaker_cabinets_rotated_boxes: 0
+  background: 825430
 
 Artifact hashes:
-  referenceSha256: 2a4117911484c5fa4e7e005d750a9517a828fc6eee20ab36e813c0bb78b83815
-  maskSha256: 70c17a6099d0a44fc68e52e686d77a44817b48fcac22b6aa7913308f15b6bb00
-  objectIdsSha256: bb736b88dd6f875783fa5a6c6217deacc3631be56dc024f03e723ea801dbaefe
-  surfaceCacheSha256: 2a4117911484c5fa4e7e005d750a9517a828fc6eee20ab36e813c0bb78b83815
-  directionMetadataSha256: 451947a866258a79ba17cf5addf2f87ae1b4a4146fc67188f25c30198674c299
-  texelMetadataSha256: 47f7a2ca10d44140a34c366cd5fab1e9056e9aabda1da7021c132b4dde87c6b9
+  referenceSha256: 1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86
+  maskSha256: ad0d59e4b12906612fc4e75b31bf771f69c05ddc33310e37514516216c55e129
+  objectIdsSha256: 2591a1e83a819c891434e5bbe9067126a6917efc66cb73c8151de53f1c731fe7
+  surfaceCacheSha256: 1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86
+  directionMetadataSha256: b3f741cc7fa4043021f57d60886b434d5e2f212ce8f557a62a3d7880f7f863b6
+  texelMetadataSha256: 5b1a516040e5f4a39fb258b36a9d622a617c54fa27e52bb147ed883833c8dbab
 
 Preview validation:
   command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9002 --cdp-port=9241 --angle=metal
-  output: .omc/r7-3-9-c1-accurate-reflection-preview/20260511-184332/
+  output: .omc/r7-3-9-c1-accurate-reflection-preview/20260511-190846/
   status: pass
   ready: true
   applied: true
-  package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-182915
+  package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523
   note: passed after adding automatic package load on normal page initialization.
 
 Debug note:
   First capture attempt generated a black output because the global R7-3.9 target helper referenced the local rotated-object loop variable objectCount.
   The fix uses stable object IDs for speaker cabinets and stands.
   Smoke recapture after the fix restored normal raw HDR values and surface classes.
+  The first accepted R7-3.9 package incorrectly used floorRoughness 0.25 and replaced iron door / speaker stand / speaker cabinet reflections.
+  It was replaced with floorRoughness 0.1 and floor-only runtime replacement.
 
 Current scope:
   This package is the C1 camera visible-direction reflection cache and proof path.
-  It is accurate for the captured C1 reference view and target mask.
+  It is accurate for the captured C1 reference view, original floor reflection roughness 0.1, and floor target mask.
   The package records surface position and normal metadata for the next expansion.
-  Full walkable multi-view reflection still needs additional surface-direction coverage before it can replace every runtime reflection case.
+  Iron door, speaker stands, and speaker cabinets remain live path-traced reflections in this branch.
+  Full walkable multi-view reflection still needs additional surface-direction coverage before it can replace more runtime reflection cases.
 
 Validation commands:
   node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js

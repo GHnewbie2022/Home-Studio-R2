@@ -1721,7 +1721,7 @@ async function renderR739MainReadback(targetSamples, timeoutMs, referenceMode, o
 	if (typeof window.setSamplingPaused === 'function') window.setSamplingPaused(true);
 	if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
 	if (pathTracingUniforms.uFloorRoughness)
-		pathTracingUniforms.uFloorRoughness.value = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.25;
+		pathTracingUniforms.uFloorRoughness.value = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.1;
 	if (pathTracingUniforms.uR738C1BakeCaptureMode) pathTracingUniforms.uR738C1BakeCaptureMode.value = 0;
 	if (pathTracingUniforms.uR738C1BakePastePreviewMode) pathTracingUniforms.uR738C1BakePastePreviewMode.value = 0.0;
 	if (pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = 0.0;
@@ -1868,11 +1868,12 @@ function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadba
 	var cameraPos = worldCamera ? worldCamera.position : { x: 0, y: 0, z: 0 };
 	for (var p = 0, i = 0; p < pixelCount; p += 1, i += 4)
 	{
-		var targetId = Math.max(0, Math.min(255, Math.round(maskReadback.pixels[i])));
+		var rawTargetId = Math.max(0, Math.min(255, Math.round(maskReadback.pixels[i])));
+		var targetId = rawTargetId === 1 ? 1 : 0;
 		var objectId = Math.max(0, Math.min(65535, Math.round(maskReadback.pixels[i + 1])));
 		var roughness = Number.isFinite(maskReadback.pixels[i + 2]) ? maskReadback.pixels[i + 2] : 1.0;
 		targetMask[p] = targetId;
-		objectIds[p] = objectId;
+		objectIds[p] = targetId > 0 ? objectId : 0;
 		counts[r739SurfaceNameForId(targetId)] += 1;
 		var worldX = positionReadback.pixels[i];
 		var worldY = positionReadback.pixels[i + 1];
@@ -1948,9 +1949,9 @@ function buildR739ValidationReport(report, artifacts)
 		actualSamples: report.actualSamples >= report.requestedSamples,
 		nonFiniteReflectionSamples: artifacts.summary.nonFiniteReflectionSamples === 0,
 		targetMaskIncludesFloor: counts.floor_primary_c1 > 0,
-		targetMaskIncludesIronDoor: counts.iron_door_west > 0,
-		targetMaskIncludesSpeakerStands: counts.speaker_stands_rotated_boxes > 0,
-		targetMaskIncludesSpeakerCabinets: counts.speaker_cabinets_rotated_boxes > 0,
+		targetMaskExcludesIronDoorRuntimeReplacement: counts.iron_door_west === 0,
+		targetMaskExcludesSpeakerStandsRuntimeReplacement: counts.speaker_stands_rotated_boxes === 0,
+		targetMaskExcludesSpeakerCabinetsRuntimeReplacement: counts.speaker_cabinets_rotated_boxes === 0,
 		roughnessOneFloorSamplesHaveZeroReflection: true
 	};
 	return {
@@ -1973,7 +1974,7 @@ window.reportR739C1AccurateReflectionAfterSamples = async function(targetSamples
 	try
 	{
 		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
-		var floorRoughness = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.25;
+		var floorRoughness = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.1;
 		var full = await renderR739MainReadback(target, timeout, 0.0, { floorRoughness: floorRoughness });
 		var disabled = await renderR739MainReadback(target, timeout, 2.0, { floorRoughness: floorRoughness });
 		var mask = await captureR739SurfaceReadback(1.0);

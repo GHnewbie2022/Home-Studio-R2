@@ -1,0 +1,41 @@
+{
+  "version": "r7-3-9-c1-accurate-reflection-bake",
+  "config": 1,
+  "createdAt": "2026-05-11T11:05:23.932Z",
+  "branch": "codex/r7-3-9-c1-reflection-bake",
+  "commit": "WORKTREE_DIRTY",
+  "policy": "accuracy_over_speed",
+  "diffuseCheckpointTag": "r7-3-8-c1-diffuse-bake-success-20260511",
+  "cameraReferenceSamples": 1000,
+  "floorRoughnessForReflection": 0.1,
+  "referenceWidth": 1280,
+  "referenceHeight": 720,
+  "surfaceTargets": [
+    "floor_primary_c1"
+  ],
+  "deferredSurfaceTargets": [
+    "iron_door_west",
+    "speaker_stands_rotated_boxes",
+    "speaker_cabinets_rotated_boxes"
+  ],
+  "cubemapRuntimeEnabled": false,
+  "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523",
+  "artifacts": {
+    "reference": "c1-camera-reflection-reference-rgba-f32.bin",
+    "mask": "c1-camera-reflection-mask-u8.bin",
+    "objectIds": "c1-camera-reflection-object-id-u16.bin",
+    "surfaceCache": "surface-reflection-cache-rgba-f32.bin",
+    "directionMetadata": "surface-reflection-direction-metadata-f32.bin",
+    "texelMetadata": "surface-reflection-texel-metadata-f32.bin",
+    "summary": "reflection-target-summary.json",
+    "validationReport": "validation-report.json"
+  },
+  "artifactHashes": {
+    "referenceSha256": "1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86",
+    "maskSha256": "ad0d59e4b12906612fc4e75b31bf771f69c05ddc33310e37514516216c55e129",
+    "objectIdsSha256": "2591a1e83a819c891434e5bbe9067126a6917efc66cb73c8151de53f1c731fe7",
+    "surfaceCacheSha256": "1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86",
+    "directionMetadataSha256": "b3f741cc7fa4043021f57d60886b434d5e2f212ce8f557a62a3d7880f7f863b6",
+    "texelMetadataSha256": "5b1a516040e5f4a39fb258b36a9d622a617c54fa27e52bb147ed883833c8dbab"
+  }
+}

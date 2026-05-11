@@ -162,7 +162,7 @@ Class D: cubemap diagnostic only
 
 ## Required Target Surfaces
 
-The first accurate reflection package must include these targets:
+The accepted floor-first reflection package must include this runtime replacement target:
 
 ```text
 floor_primary_c1:
@@ -174,8 +174,15 @@ floor_primary_c1:
     z = [-1.874, 3.056]
   material:
     dielectric floor
-  first roughness checks:
-    1.0, 0.25, 0.0
+  accepted reflection roughness:
+    0.1
+  note:
+    This is the original floor reflection value before the R7-3.8 diffuse-only roughness override.
+```
+
+Deferred targets keep live reflection until their own accurate packages exist:
+
+```text
 
 iron_door_west:
   source:
@@ -316,7 +323,7 @@ Initial content:
       "kind": "planar",
       "plane": { "axis": "y", "value": 0.01, "normal": [0, 1, 0] },
       "bounds": { "xMin": -1.91, "xMax": 1.91, "zMin": -1.874, "zMax": 3.056 },
-      "material": { "class": "dielectric_floor", "roughnessValues": [1.0, 0.25, 0.0], "metalness": 0.0 },
+      "material": { "class": "dielectric_floor", "acceptedReflectionRoughness": 0.1, "roughnessValues": [0.1], "metalness": 0.0 },
       "firstImplementation": true
     },
     {
@@ -688,8 +695,9 @@ referenceHeight = 720
 reflectionReferenceFloatCount = 3686400
 nonFinitePixels = 0
 targetMaskIncludesFloor = true
-targetMaskIncludesIronDoor = true
-targetMaskIncludesSpeakerStands = true
+targetMaskExcludesIronDoorRuntimeReplacement = true
+targetMaskExcludesSpeakerStandsRuntimeReplacement = true
+targetMaskExcludesSpeakerCabinetsRuntimeReplacement = true
 ```
 
 Exit condition:
@@ -933,7 +941,7 @@ Expected:
 Visual check B:
 
 ```text
-Floor roughness = 0.25
+Floor roughness = 0.1
 
 Expected:
   Floor reflection appears in the correct physical position for C1.
@@ -1235,15 +1243,16 @@ node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-capture 
 
 Result:
   Accepted package:
-    .omc/r7-3-9-c1-accurate-reflection-bake/20260511-182915/
+    .omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523/
   Validation:
     status = pass
     actualSamples = 1000
+    floorRoughnessForReflection = 0.1
     nonFiniteReflectionSamples = 0
     floor_primary_c1 = 96170
-    iron_door_west = 1647
-    speaker_stands_rotated_boxes = 7875
-    speaker_cabinets_rotated_boxes = 10558
+    iron_door_west = 0
+    speaker_stands_rotated_boxes = 0
+    speaker_cabinets_rotated_boxes = 0
 
 Expected:
 
@@ -1251,8 +1260,9 @@ Expected:
 actualSamples = 1000
 nonFinitePixels = 0
 targetMaskIncludesFloor = true
-targetMaskIncludesIronDoor = true
-targetMaskIncludesSpeakerStands = true
+targetMaskExcludesIronDoorRuntimeReplacement = true
+targetMaskExcludesSpeakerStandsRuntimeReplacement = true
+targetMaskExcludesSpeakerCabinetsRuntimeReplacement = true
 surfaceCacheStatus = pass
 ```
 
@@ -1286,7 +1296,7 @@ cubemapRuntimeEnabled = false
 Status:
   Ready for user visual check at http://localhost:9002/Home_Studio.html.
   Automated preview test passed:
-    .omc/r7-3-9-c1-accurate-reflection-preview/20260511-184332/
+    .omc/r7-3-9-c1-accurate-reflection-preview/20260511-190846/
 
 Use:
 
@@ -1297,11 +1307,10 @@ http://localhost:9002/Home_Studio.html
 Check:
 
 ```text
-floor roughness 1.0
-floor roughness 0.25
-iron door
-speaker stands
-speaker cabinets
+floor roughness 0.1
+iron door live reflection remains visible
+speaker stands live reflection remains visible
+speaker cabinets live reflection remains visible
 Samples: 1000 hibernation
 ```
 

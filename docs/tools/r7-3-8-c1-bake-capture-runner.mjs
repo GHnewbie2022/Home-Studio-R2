@@ -483,9 +483,11 @@ function buildR739Manifest({ report, packageDir }) {
     policy: 'accuracy_over_speed',
     diffuseCheckpointTag: 'r7-3-8-c1-diffuse-bake-success-20260511',
     cameraReferenceSamples: report.actualSamples,
+    floorRoughnessForReflection: report.floorRoughnessForReflection,
     referenceWidth: report.buffer.width,
     referenceHeight: report.buffer.height,
-    surfaceTargets: ['floor_primary_c1', 'iron_door_west', 'speaker_stands_rotated_boxes', 'speaker_cabinets_rotated_boxes'],
+    surfaceTargets: ['floor_primary_c1'],
+    deferredSurfaceTargets: ['iron_door_west', 'speaker_stands_rotated_boxes', 'speaker_cabinets_rotated_boxes'],
     cubemapRuntimeEnabled: false,
     packageDir: path.relative(repoRoot, packageDir),
     artifacts: {
@@ -510,6 +512,7 @@ function validateR739Payload({ report, validationReport, referenceBuffer, maskBu
     config: report.config === 1,
     policy: report.policy === 'accuracy_over_speed',
     cubemapRuntimeDisabled: report.cubemapRuntimeEnabled === false,
+    floorRoughnessForReflection: report.floorRoughnessForReflection === 0.1,
     actualSamples: report.actualSamples >= report.requestedSamples,
     validationPass: validationReport.status === 'pass',
     referenceBytes: referenceBuffer.length === pixels * 4 * 4,
@@ -519,9 +522,9 @@ function validateR739Payload({ report, validationReport, referenceBuffer, maskBu
     directionBytes: directionBuffer.length === pixels * 8 * 4,
     texelBytes: texelBuffer.length === pixels * 8 * 4,
     targetMaskIncludesFloor: validationReport.checks.targetMaskIncludesFloor === true,
-    targetMaskIncludesIronDoor: validationReport.checks.targetMaskIncludesIronDoor === true,
-    targetMaskIncludesSpeakerStands: validationReport.checks.targetMaskIncludesSpeakerStands === true,
-    targetMaskIncludesSpeakerCabinets: validationReport.checks.targetMaskIncludesSpeakerCabinets === true
+    targetMaskExcludesIronDoorRuntimeReplacement: validationReport.checks.targetMaskExcludesIronDoorRuntimeReplacement === true,
+    targetMaskExcludesSpeakerStandsRuntimeReplacement: validationReport.checks.targetMaskExcludesSpeakerStandsRuntimeReplacement === true,
+    targetMaskExcludesSpeakerCabinetsRuntimeReplacement: validationReport.checks.targetMaskExcludesSpeakerCabinetsRuntimeReplacement === true
   };
   const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
   return { status: failed.length === 0 ? 'pass' : 'fail', checks, failed };
@@ -966,7 +969,7 @@ async function main() {
         }
         return (async () => {
           const report = await window.reportR739C1AccurateReflectionAfterSamples(${args.samples}, ${args.timeoutMs}, {
-            floorRoughness: 0.25,
+            floorRoughness: 0.1,
             referenceOnly: ${args.referenceOnly ? 'true' : 'false'},
             surfaceCache: ${args.surfaceCache ? 'true' : 'false'}
           });

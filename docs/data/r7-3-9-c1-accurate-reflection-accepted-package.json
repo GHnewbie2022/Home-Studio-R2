@@ -1,16 +1,19 @@
 {
   "version": "r7-3-9-c1-accurate-reflection-bake",
   "packageStatus": "accepted",
-  "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-182915",
+  "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523",
   "diffuseCheckpointTag": "r7-3-8-c1-diffuse-bake-success-20260511",
   "policy": "accuracy_over_speed",
   "config": 1,
   "cameraReferenceSamples": 1000,
+  "floorRoughnessForReflection": 0.1,
   "referenceWidth": 1280,
   "referenceHeight": 720,
   "cubemapRuntimeEnabled": false,
   "surfaceTargets": [
-    "floor_primary_c1",
+    "floor_primary_c1"
+  ],
+  "deferredSurfaceTargets": [
     "iron_door_west",
     "speaker_stands_rotated_boxes",
     "speaker_cabinets_rotated_boxes"
@@ -26,12 +29,12 @@
     "validationReport": "validation-report.json"
   },
   "artifactHashes": {
-    "referenceSha256": "2a4117911484c5fa4e7e005d750a9517a828fc6eee20ab36e813c0bb78b83815",
-    "maskSha256": "70c17a6099d0a44fc68e52e686d77a44817b48fcac22b6aa7913308f15b6bb00",
-    "objectIdsSha256": "bb736b88dd6f875783fa5a6c6217deacc3631be56dc024f03e723ea801dbaefe",
-    "surfaceCacheSha256": "2a4117911484c5fa4e7e005d750a9517a828fc6eee20ab36e813c0bb78b83815",
-    "directionMetadataSha256": "451947a866258a79ba17cf5addf2f87ae1b4a4146fc67188f25c30198674c299",
-    "texelMetadataSha256": "47f7a2ca10d44140a34c366cd5fab1e9056e9aabda1da7021c132b4dde87c6b9"
+    "referenceSha256": "1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86",
+    "maskSha256": "ad0d59e4b12906612fc4e75b31bf771f69c05ddc33310e37514516216c55e129",
+    "objectIdsSha256": "2591a1e83a819c891434e5bbe9067126a6917efc66cb73c8151de53f1c731fe7",
+    "surfaceCacheSha256": "1a72162de9a37bd813d4f0f9c220ef123ac490d30a6baa33bb434c368a725b86",
+    "directionMetadataSha256": "b3f741cc7fa4043021f57d60886b434d5e2f212ce8f557a62a3d7880f7f863b6",
+    "texelMetadataSha256": "5b1a516040e5f4a39fb258b36a9d622a617c54fa27e52bb147ed883833c8dbab"
   },
   "validation": {
     "status": "pass",
@@ -39,10 +42,10 @@
     "nonFiniteReflectionSamples": 0,
     "targetCounts": {
       "floor_primary_c1": 96170,
-      "iron_door_west": 1647,
-      "speaker_stands_rotated_boxes": 7875,
-      "speaker_cabinets_rotated_boxes": 10558,
-      "background": 805350
+      "iron_door_west": 0,
+      "speaker_stands_rotated_boxes": 0,
+      "speaker_cabinets_rotated_boxes": 0,
+      "background": 825430
     }
   }
 }
