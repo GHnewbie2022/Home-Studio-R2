@@ -23,7 +23,11 @@ function parseArgs(argv) {
     hibernationTest: false,
     keyboardIdleTest: false,
     snapshotUiTest: false,
-    floorRoughnessTest: false
+    floorRoughnessTest: false,
+    accurateReflectionCapture: false,
+    referenceOnly: false,
+    surfaceCache: false,
+    accurateReflectionPreviewTest: false
   };
   for (const arg of argv) {
     if (arg.startsWith('--samples=')) out.samples = Number(arg.slice('--samples='.length));
@@ -38,6 +42,10 @@ function parseArgs(argv) {
     else if (arg === '--keyboard-idle-test') out.keyboardIdleTest = true;
     else if (arg === '--snapshot-ui-test') out.snapshotUiTest = true;
     else if (arg === '--floor-roughness-test') out.floorRoughnessTest = true;
+    else if (arg === '--accurate-reflection-capture') out.accurateReflectionCapture = true;
+    else if (arg === '--reference-only') out.referenceOnly = true;
+    else if (arg === '--surface-cache') out.surfaceCache = true;
+    else if (arg === '--accurate-reflection-preview-test') out.accurateReflectionPreviewTest = true;
   }
   if (!['metal', 'swiftshader', 'opengl'].includes(out.angle)) throw new Error('Invalid angle mode');
   for (const key of ['samples', 'atlasResolution', 'timeoutMs', 'httpPort', 'cdpPort']) {
@@ -458,6 +466,67 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
   return { status: failed.length === 0 ? 'pass' : 'fail', checks, failed };
 }
 
+function sha256(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function buildR739Manifest({ report, packageDir }) {
+  const branch = getGitValue(['branch', '--show-current'], 'UNKNOWN_BRANCH');
+  const dirty = getGitValue(['status', '--porcelain'], '');
+  const commit = dirty ? 'WORKTREE_DIRTY' : getGitValue(['rev-parse', 'HEAD'], 'UNKNOWN_COMMIT');
+  return {
+    version: 'r7-3-9-c1-accurate-reflection-bake',
+    config: 1,
+    createdAt: new Date().toISOString(),
+    branch,
+    commit,
+    policy: 'accuracy_over_speed',
+    diffuseCheckpointTag: 'r7-3-8-c1-diffuse-bake-success-20260511',
+    cameraReferenceSamples: report.actualSamples,
+    referenceWidth: report.buffer.width,
+    referenceHeight: report.buffer.height,
+    surfaceTargets: ['floor_primary_c1', 'iron_door_west', 'speaker_stands_rotated_boxes', 'speaker_cabinets_rotated_boxes'],
+    cubemapRuntimeEnabled: false,
+    packageDir: path.relative(repoRoot, packageDir),
+    artifacts: {
+      reference: 'c1-camera-reflection-reference-rgba-f32.bin',
+      mask: 'c1-camera-reflection-mask-u8.bin',
+      objectIds: 'c1-camera-reflection-object-id-u16.bin',
+      surfaceCache: 'surface-reflection-cache-rgba-f32.bin',
+      directionMetadata: 'surface-reflection-direction-metadata-f32.bin',
+      texelMetadata: 'surface-reflection-texel-metadata-f32.bin',
+      summary: 'reflection-target-summary.json',
+      validationReport: 'validation-report.json'
+    }
+  };
+}
+
+function validateR739Payload({ report, validationReport, referenceBuffer, maskBuffer, objectIdBuffer, surfaceCacheBuffer, directionBuffer, texelBuffer }) {
+  const width = report.buffer.width;
+  const height = report.buffer.height;
+  const pixels = width * height;
+  const checks = {
+    version: report.version === 'r7-3-9-c1-accurate-reflection-bake',
+    config: report.config === 1,
+    policy: report.policy === 'accuracy_over_speed',
+    cubemapRuntimeDisabled: report.cubemapRuntimeEnabled === false,
+    actualSamples: report.actualSamples >= report.requestedSamples,
+    validationPass: validationReport.status === 'pass',
+    referenceBytes: referenceBuffer.length === pixels * 4 * 4,
+    maskBytes: maskBuffer.length === pixels,
+    objectIdBytes: objectIdBuffer.length === pixels * 2,
+    surfaceCacheBytes: surfaceCacheBuffer.length === pixels * 4 * 4,
+    directionBytes: directionBuffer.length === pixels * 8 * 4,
+    texelBytes: texelBuffer.length === pixels * 8 * 4,
+    targetMaskIncludesFloor: validationReport.checks.targetMaskIncludesFloor === true,
+    targetMaskIncludesIronDoor: validationReport.checks.targetMaskIncludesIronDoor === true,
+    targetMaskIncludesSpeakerStands: validationReport.checks.targetMaskIncludesSpeakerStands === true,
+    targetMaskIncludesSpeakerCabinets: validationReport.checks.targetMaskIncludesSpeakerCabinets === true
+  };
+  const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
+  return { status: failed.length === 0 ? 'pass' : 'fail', checks, failed };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   console.error('[r738-runner] starting static server');
@@ -498,13 +567,18 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 3000));
     console.error('[r738-runner] page navigation issued');
     console.error('[r738-runner] waiting for capture helper');
-    await waitForExpression(cdp, args.hibernationTest || args.keyboardIdleTest || args.snapshotUiTest
+    const helperExpression = args.hibernationTest || args.keyboardIdleTest || args.snapshotUiTest
       ? 'typeof window.reportHomeStudioHibernationLoopState === "function"'
       : args.floorRoughnessTest
         ? 'typeof window.reportFloorRoughness === "function"'
-        : args.previewTest
-        ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
-        : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"', 60000);
+        : args.accurateReflectionPreviewTest
+          ? 'typeof window.reportR739C1AccurateReflectionConfig === "function"'
+          : args.previewTest
+            ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
+            : args.accurateReflectionCapture
+              ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
+              : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"';
+    await waitForExpression(cdp, helperExpression, 60000);
     if (args.floorRoughnessTest) {
       console.error('[r738-runner] running floor roughness helper');
       const floorRoughnessReport = await evaluate(cdp, `(() => {
@@ -798,6 +872,41 @@ async function main() {
       completed = true;
       return;
     }
+    if (args.accurateReflectionPreviewTest) {
+      console.error('[r739-runner] running accurate reflection preview helper');
+      const reflectionPreviewReport = await evaluate(cdp, `(() => {
+        return (async () => {
+          await window.loadR739C1AccurateReflectionPackage();
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          return window.reportR739C1AccurateReflectionConfig();
+        })();
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: Math.min(args.timeoutMs, 60000) + 30000
+      });
+      const previewDir = path.join(repoRoot, '.omc', 'r7-3-9-c1-accurate-reflection-preview', timestampForPath());
+      fs.mkdirSync(previewDir, { recursive: true });
+      const previewValidation = {
+        status: reflectionPreviewReport.ready &&
+          reflectionPreviewReport.applied &&
+          reflectionPreviewReport.currentPanelConfig === 1 &&
+          reflectionPreviewReport.policy === 'accuracy_over_speed' &&
+          reflectionPreviewReport.cubemapRuntimeEnabled === false
+          ? 'pass'
+          : 'fail',
+        report: reflectionPreviewReport
+      };
+      fs.writeFileSync(path.join(previewDir, 'preview-report.json'), `${JSON.stringify(previewValidation, null, 2)}\n`);
+      console.log('R7-3.9 C1 accurate reflection preview completed');
+      console.log(`ready: ${reflectionPreviewReport.ready}`);
+      console.log(`applied: ${reflectionPreviewReport.applied}`);
+      console.log(`package: ${reflectionPreviewReport.packageDir}`);
+      console.log(`status: ${previewValidation.status}`);
+      console.log(`report: ${path.relative(repoRoot, previewDir)}`);
+      if (previewValidation.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
     if (args.previewTest) {
       console.error('[r738-runner] running paste-preview helper');
       const previewReport = await evaluate(cdp, `(() => {
@@ -838,6 +947,100 @@ async function main() {
       console.log(`status: ${previewValidation.status}`);
       console.log(`preview: ${path.relative(repoRoot, previewDir)}`);
       if (previewValidation.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.accurateReflectionCapture) {
+      console.error('[r739-runner] running accurate reflection capture helper');
+      const expression = `(() => {
+        function typedToBase64(value) {
+          if (!value) return null;
+          const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+          let binary = '';
+          const chunkSize = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            const chunk = bytes.subarray(i, i + chunkSize);
+            binary += String.fromCharCode.apply(null, chunk);
+          }
+          return btoa(binary);
+        }
+        return (async () => {
+          const report = await window.reportR739C1AccurateReflectionAfterSamples(${args.samples}, ${args.timeoutMs}, {
+            floorRoughness: 0.25,
+            referenceOnly: ${args.referenceOnly ? 'true' : 'false'},
+            surfaceCache: ${args.surfaceCache ? 'true' : 'false'}
+          });
+          const artifacts = window.getR739C1AccurateReflectionArtifacts();
+          return {
+            report,
+            validationReport: artifacts.validationReport,
+            targetSummary: artifacts.targetSummary,
+            referenceBase64: typedToBase64(artifacts.referencePixels),
+            maskBase64: typedToBase64(artifacts.targetMask),
+            objectIdsBase64: typedToBase64(artifacts.objectIds),
+            surfaceCacheBase64: typedToBase64(artifacts.surfaceCachePixels),
+            directionMetadataBase64: typedToBase64(artifacts.directionMetadata),
+            texelMetadataBase64: typedToBase64(artifacts.texelMetadata)
+          };
+        })();
+      })()`;
+      const payload = await evaluate(cdp, expression, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs * 3 + 180000
+      });
+      console.error('[r739-runner] accurate reflection helper returned');
+      const referenceBuffer = base64ToBuffer(payload.referenceBase64);
+      const maskBuffer = base64ToBuffer(payload.maskBase64);
+      const objectIdBuffer = base64ToBuffer(payload.objectIdsBase64);
+      const surfaceCacheBuffer = base64ToBuffer(payload.surfaceCacheBase64);
+      const directionBuffer = base64ToBuffer(payload.directionMetadataBase64);
+      const texelBuffer = base64ToBuffer(payload.texelMetadataBase64);
+      const validation = validateR739Payload({
+        report: payload.report,
+        validationReport: payload.validationReport,
+        referenceBuffer,
+        maskBuffer,
+        objectIdBuffer,
+        surfaceCacheBuffer,
+        directionBuffer,
+        texelBuffer
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-9-c1-accurate-reflection-bake', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      const manifest = buildR739Manifest({ report: payload.report, packageDir });
+      const validationReport = {
+        ...payload.validationReport,
+        runnerStatus: validation.status,
+        runnerChecks: validation.checks,
+        runnerFailedChecks: validation.failed,
+        status: validation.status
+      };
+      const artifactHashes = {
+        referenceSha256: sha256(referenceBuffer),
+        maskSha256: sha256(maskBuffer),
+        objectIdsSha256: sha256(objectIdBuffer),
+        surfaceCacheSha256: sha256(surfaceCacheBuffer),
+        directionMetadataSha256: sha256(directionBuffer),
+        texelMetadataSha256: sha256(texelBuffer)
+      };
+      fs.writeFileSync(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ ...manifest, artifactHashes }, null, 2)}\n`);
+      fs.writeFileSync(path.join(packageDir, 'c1-camera-reflection-reference-rgba-f32.bin'), referenceBuffer);
+      fs.writeFileSync(path.join(packageDir, 'c1-camera-reflection-mask-u8.bin'), maskBuffer);
+      fs.writeFileSync(path.join(packageDir, 'c1-camera-reflection-object-id-u16.bin'), objectIdBuffer);
+      fs.writeFileSync(path.join(packageDir, 'surface-reflection-cache-rgba-f32.bin'), surfaceCacheBuffer);
+      fs.writeFileSync(path.join(packageDir, 'surface-reflection-direction-metadata-f32.bin'), directionBuffer);
+      fs.writeFileSync(path.join(packageDir, 'surface-reflection-texel-metadata-f32.bin'), texelBuffer);
+      fs.writeFileSync(path.join(packageDir, 'reflection-target-summary.json'), `${JSON.stringify(payload.targetSummary, null, 2)}\n`);
+      fs.writeFileSync(path.join(packageDir, 'validation-report.json'), `${JSON.stringify(validationReport, null, 2)}\n`);
+      console.log('R7-3.9 C1 accurate reflection capture completed');
+      console.log(`samples: ${payload.report.actualSamples}`);
+      console.log(`buffer: ${payload.report.buffer.width}x${payload.report.buffer.height}`);
+      console.log(`status: ${validationReport.status}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (validationReport.status !== 'pass') {
+        console.error(`failedChecks: ${validation.failed.join(', ')}`);
+        process.exitCode = 1;
+      }
       completed = true;
       return;
     }

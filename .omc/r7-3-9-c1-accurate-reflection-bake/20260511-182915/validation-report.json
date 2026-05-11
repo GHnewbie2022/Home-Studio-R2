@@ -1,0 +1,45 @@
+{
+  "status": "pass",
+  "checks": {
+    "version": true,
+    "config": true,
+    "actualSamples": true,
+    "nonFiniteReflectionSamples": true,
+    "targetMaskIncludesFloor": true,
+    "targetMaskIncludesIronDoor": true,
+    "targetMaskIncludesSpeakerStands": true,
+    "targetMaskIncludesSpeakerCabinets": true,
+    "roughnessOneFloorSamplesHaveZeroReflection": true
+  },
+  "width": 1280,
+  "height": 720,
+  "actualSamples": 1000,
+  "nonFiniteReflectionSamples": 0,
+  "targetCounts": {
+    "floor_primary_c1": 96170,
+    "iron_door_west": 1647,
+    "speaker_stands_rotated_boxes": 7875,
+    "speaker_cabinets_rotated_boxes": 10558,
+    "background": 805350
+  },
+  "runnerStatus": "pass",
+  "runnerChecks": {
+    "version": true,
+    "config": true,
+    "policy": true,
+    "cubemapRuntimeDisabled": true,
+    "actualSamples": true,
+    "validationPass": true,
+    "referenceBytes": true,
+    "maskBytes": true,
+    "objectIdBytes": true,
+    "surfaceCacheBytes": true,
+    "directionBytes": true,
+    "texelBytes": true,
+    "targetMaskIncludesFloor": true,
+    "targetMaskIncludesIronDoor": true,
+    "targetMaskIncludesSpeakerStands": true,
+    "targetMaskIncludesSpeakerCabinets": true
+  },
+  "runnerFailedChecks": []
+}

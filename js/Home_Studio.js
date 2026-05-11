@@ -5434,6 +5434,19 @@ function initSceneData() {
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
     pathTracingUniforms.uR738C1BakePatchWorldBounds = { value: new THREE.Vector4(-1.0, 1.0, -1.0, 1.0) };
+    pathTracingUniforms.uR739C1AccurateReflectionMode = { value: 0.0 };
+    pathTracingUniforms.uR739C1ReflectionReferenceMode = { value: 0.0 };
+    pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode = { value: 0.0 };
+    pathTracingUniforms.uR739C1ReflectionReady = { value: 0.0 };
+    var r739DefaultReflectionSurfaceCacheTexture = new THREE.DataTexture(new Float32Array([0, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
+    r739DefaultReflectionSurfaceCacheTexture.minFilter = THREE.NearestFilter;
+    r739DefaultReflectionSurfaceCacheTexture.magFilter = THREE.NearestFilter;
+    r739DefaultReflectionSurfaceCacheTexture.wrapS = THREE.ClampToEdgeWrapping;
+    r739DefaultReflectionSurfaceCacheTexture.wrapT = THREE.ClampToEdgeWrapping;
+    r739DefaultReflectionSurfaceCacheTexture.flipY = false;
+    r739DefaultReflectionSurfaceCacheTexture.generateMipmaps = false;
+    r739DefaultReflectionSurfaceCacheTexture.needsUpdate = true;
+    pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture = { value: r739DefaultReflectionSurfaceCacheTexture };
 
     // R3-0 / R3-7：NEE 直接光補償（shader 10 處 `mask *= weight * uLegacyGain`）。
     // 同屬 erichlof 框架能量校準係數，R2-18 肉眼定案 1.5；與 uIndirectMultiplier 同為框架補償性質非物理值。

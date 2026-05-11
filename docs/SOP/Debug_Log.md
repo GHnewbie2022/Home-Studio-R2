@@ -9,6 +9,99 @@
 ## Cloud / GIK 名詞鎖定
 
 ```
+
+## 2026-05-11 R7-3.9 C1 Accurate Reflection Bake
+
+```text
+Branch:
+  codex/r7-3-9-c1-reflection-bake
+
+Purpose:
+  Add a separate accuracy-first reflection bake path after the accepted R7-3.8 diffuse floor patch.
+  Target surfaces are the C1-visible floor, west iron door, rotated speaker stands, and speaker cabinets.
+  Runtime cubemap reflection is disabled for this line.
+
+Protected diffuse baseline:
+  tag: r7-3-8-c1-diffuse-bake-success-20260511
+  pointer: docs/data/r7-3-8-c1-bake-accepted-package.json
+  package: .omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229/
+  rule: preserve unchanged.
+
+Implementation:
+  Added docs/data/r7-3-9-c1-accurate-reflection-surface-spec.json.
+  Added docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js.
+  Added R7-3.9 reflection uniforms and a default float cache texture.
+  Added reflection-only reference mode in the shader.
+  Added target-mask, world-position, and normal readback modes.
+  Added window.reportR739C1AccurateReflectionAfterSamples().
+  Added window.loadR739C1AccurateReflectionPackage().
+  Extended docs/tools/r7-3-8-c1-bake-capture-runner.mjs with:
+    --accurate-reflection-capture
+    --reference-only
+    --surface-cache
+    --accurate-reflection-preview-test
+
+Accepted reflection package:
+  .omc/r7-3-9-c1-accurate-reflection-bake/20260511-182915/
+
+Accepted package pointer:
+  docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json
+
+Package validation:
+  status: pass
+  actualSamples: 1000
+  referenceWidth: 1280
+  referenceHeight: 720
+  nonFiniteReflectionSamples: 0
+  policy: accuracy_over_speed
+  cubemapRuntimeEnabled: false
+
+Target counts:
+  floor_primary_c1: 96170
+  iron_door_west: 1647
+  speaker_stands_rotated_boxes: 7875
+  speaker_cabinets_rotated_boxes: 10558
+  background: 805350
+
+Artifact hashes:
+  referenceSha256: 2a4117911484c5fa4e7e005d750a9517a828fc6eee20ab36e813c0bb78b83815
+  maskSha256: 70c17a6099d0a44fc68e52e686d77a44817b48fcac22b6aa7913308f15b6bb00
+  objectIdsSha256: bb736b88dd6f875783fa5a6c6217deacc3631be56dc024f03e723ea801dbaefe
+  surfaceCacheSha256: 2a4117911484c5fa4e7e005d750a9517a828fc6eee20ab36e813c0bb78b83815
+  directionMetadataSha256: 451947a866258a79ba17cf5addf2f87ae1b4a4146fc67188f25c30198674c299
+  texelMetadataSha256: 47f7a2ca10d44140a34c366cd5fab1e9056e9aabda1da7021c132b4dde87c6b9
+
+Preview validation:
+  command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --accurate-reflection-preview-test --timeout-ms=60000 --http-port=9002 --cdp-port=9241 --angle=metal
+  output: .omc/r7-3-9-c1-accurate-reflection-preview/20260511-184332/
+  status: pass
+  ready: true
+  applied: true
+  package: .omc/r7-3-9-c1-accurate-reflection-bake/20260511-182915
+  note: passed after adding automatic package load on normal page initialization.
+
+Debug note:
+  First capture attempt generated a black output because the global R7-3.9 target helper referenced the local rotated-object loop variable objectCount.
+  The fix uses stable object IDs for speaker cabinets and stands.
+  Smoke recapture after the fix restored normal raw HDR values and surface classes.
+
+Current scope:
+  This package is the C1 camera visible-direction reflection cache and proof path.
+  It is accurate for the captured C1 reference view and target mask.
+  The package records surface position and normal metadata for the next expansion.
+  Full walkable multi-view reflection still needs additional surface-direction coverage before it can replace every runtime reflection case.
+
+Validation commands:
+  node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+  node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+  node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+  node docs/tests/r6-3-max-samples.test.js
+  node --check js/Home_Studio.js
+  node --check js/InitCommon.js
+  node --check js/PathTracingCommon.js
+  node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  git diff --check
+```
 Cloud GIK：
   指 R2-16 的吊頂 6 片白色 GIK 吸音板本體。
   它是幾何與材質表面，不是光源。

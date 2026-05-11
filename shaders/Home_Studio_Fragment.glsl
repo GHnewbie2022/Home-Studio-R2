@@ -47,6 +47,11 @@ uniform float uR738C1BakePastePreviewMode;
 uniform float uR738C1BakePastePreviewReady;
 uniform float uR738C1BakePastePreviewStrength;
 uniform vec4 uR738C1BakePatchWorldBounds;
+uniform float uR739C1AccurateReflectionMode;
+uniform float uR739C1ReflectionReferenceMode;
+uniform float uR739C1ReflectionSurfaceMaskMode;
+uniform float uR739C1ReflectionReady;
+uniform sampler2D tR739C1ReflectionSurfaceCacheTexture;
 
 // R2-13 X-ray 透視剝離
 uniform vec3 uCamPos;
@@ -381,6 +386,36 @@ bool r738C1BakePastePreviewUv(vec3 visiblePosition, out vec2 atlasUv)
 vec3 r738C1BakePastePreviewSample(vec2 atlasUv)
 {
 	return max(texture(tR738C1BakeAtlasTexture, clamp(atlasUv, vec2(0.0), vec2(1.0))).rgb, vec3(0.0));
+}
+int r739C1ReflectionTargetId(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	if (cloudVisibleSurfaceIsFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition)) return 1;
+	if (visibleHitType == IRON_DOOR && abs(visiblePosition.x + 1.96) < 0.08) return 2;
+	if (visibleObjectID >= 101.0 && visibleObjectID <= 103.0) return 3;
+	if (visibleObjectID >= 105.0 && visibleObjectID <= 107.0) return 3;
+	if (visibleHitType == SPEAKER && (abs(visibleObjectID - 100.0) < 0.5 || abs(visibleObjectID - 104.0) < 0.5)) return 4;
+	return 0;
+}
+vec3 r739C1ReflectionTargetColor(int targetId)
+{
+	if (targetId == 1) return vec3(1.0, 0.0, 0.0);
+	if (targetId == 2) return vec3(0.0, 1.0, 0.0);
+	if (targetId == 3) return vec3(0.0, 0.0, 1.0);
+	if (targetId == 4) return vec3(1.0, 0.0, 1.0);
+	return vec3(0.0);
+}
+bool r739C1ReflectionReferenceDisablesTarget(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return (uR739C1ReflectionReferenceMode > 1.5 || (uR739C1AccurateReflectionMode > 0.5 && uR739C1ReflectionReady > 0.5)) &&
+		r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) > 0;
+}
+vec3 r739SampleAccurateSurfaceReflection(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	int targetId = r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
+	if (targetId == 0) return vec3(0.0);
+	if (targetId == 1 && uFloorRoughness >= 0.999) return vec3(0.0);
+	vec2 reflectionUv = clamp(gl_FragCoord.xy / max(uResolution, vec2(1.0)), vec2(0.0), vec2(1.0));
+	return max(texture(tR739C1ReflectionSurfaceCacheTexture, reflectionUv).rgb, vec3(0.0));
 }
 bool cloudVisibleSurfaceProbeModeMatches(int mode, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
@@ -1728,6 +1763,19 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				accumCol += r738C1SurfaceClassColor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition).rgb;
 				break;
 			}
+			if (uR739C1ReflectionSurfaceMaskMode > 0.5)
+			{
+				int r739TargetId = r739C1ReflectionTargetId(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition);
+				if (uR739C1ReflectionSurfaceMaskMode < 1.5)
+					accumCol += vec3(float(r739TargetId), firstVisibleObjectID, hitRoughness);
+				else if (uR739C1ReflectionSurfaceMaskMode < 2.5)
+					accumCol += firstVisiblePosition;
+				else if (uR739C1ReflectionSurfaceMaskMode < 3.5)
+					accumCol += firstVisibleNormal * 0.5 + 0.5;
+				else
+					accumCol += r739C1ReflectionTargetColor(r739TargetId);
+				break;
+			}
 			if (uR73GikWallProbeMode > 0)
 			{
 				bool r73ProbeMatch =
@@ -2027,7 +2075,20 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					hitColor = pow(texture(u150B, uv).rgb, vec3(2.2));
 			}
 			// R2-18 Step 5：per-box hitMetalness 切金屬路徑（Step 6 GUI multiplier 可調）
-			if (rand() < hitMetalness) {
+			bool r739SpeakerReferenceDisabled = r739C1ReflectionReferenceDisablesTarget(hitType, hitObjectID, nl, x);
+			if (!r739SpeakerReferenceDisabled && hitRoughness < 0.999) {
+				float speakerCosI = max(0.0, dot(-rayDirection, nl));
+				float speakerF = 0.04 + 0.96 * pow(1.0 - speakerCosI, 5.0);
+				if (rand() < speakerF) {
+					mask *= hitColor;
+					vec3 speakerReflDir = reflect(rayDirection, nl);
+					vec3 speakerDiffDir = randomCosWeightedDirectionInHemisphere(nl);
+					rayDirection = normalize(mix(speakerReflDir, speakerDiffDir, hitRoughness * hitRoughness));
+					rayOrigin = x + nl * uEPS_intersect;
+					continue;
+				}
+			}
+			if (!r739SpeakerReferenceDisabled && rand() < hitMetalness) {
 				mask *= hitColor;
 				vec3 reflDir = reflect(rayDirection, nl);
 				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
@@ -2128,7 +2189,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			// R2-18 fix10：改為機率分支（rand() < ironM），消除 0.5 硬閾值，金屬度呈平滑漸變
 			float ironM = clamp(hitMetalness * uIronDoorMetalnessScale, 0.0, 1.0);
 			float ironR = clamp(hitRoughness * uIronDoorRoughnessScale, 0.0, 1.0);
-			if (rand() < ironM) {
+			if (!r739C1ReflectionReferenceDisablesTarget(hitType, hitObjectID, nl, x) && rand() < ironM) {
 				mask *= hitColor;
 				vec3 reflDir = reflect(rayDirection, nl);
 				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
@@ -2656,7 +2717,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			// Schlick F0=0.04，rand()<F 走鏡面（roughness² blur），否則走下方漫射
 			bool isFloor = (hitObjectID < 1.5 && hitNormal.y > 0.5 && hitBoxMax.y < 0.1);
 			bool r738DiffuseOnlyActive = (uR738C1BakeCaptureMode == 2 && uR738C1BakeDiffuseOnlyMode > 0.5);
-			if (isFloor && !r738DiffuseOnlyActive && uFloorRoughness < 0.999) {
+			bool r739ReferenceDisabled = r739C1ReflectionReferenceDisablesTarget(hitType, hitObjectID, nl, x);
+			if (isFloor && !r738DiffuseOnlyActive && !r739ReferenceDisabled && uFloorRoughness < 0.999) {
 				float cosI = max(0.0, dot(-rayDirection, nl));
 				float F = 0.04 + 0.96 * pow(1.0 - cosI, 5.0);
 				if (rand() < F) {
@@ -2668,7 +2730,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				}
 			}
 			// R2-18 Step 4 金屬路徑切分：per-box hitMetalness 驅動，mix 權重 = roughness²
-			if (rand() < hitMetalness) {
+			if (!r739ReferenceDisabled && rand() < hitMetalness) {
 				mask *= hitColor;
 				vec3 reflDir = reflect(rayDirection, nl);
 				vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
@@ -2789,6 +2851,15 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			vec3 r738BakedPatchColor = r738C1BakePastePreviewSample(r738BakedPatchUv);
 			accumCol = mix(accumCol, r738BakedPatchColor, clamp(uR738C1BakePastePreviewStrength, 0.0, 1.0));
 		}
+	}
+
+	if (uR738C1BakeCaptureMode == 0 &&
+		uR739C1ReflectionReferenceMode < 0.5 &&
+		uR739C1ReflectionSurfaceMaskMode < 0.5 &&
+		uR739C1AccurateReflectionMode > 0.5 &&
+		uR739C1ReflectionReady > 0.5)
+	{
+		accumCol += r739SampleAccurateSurfaceReflection(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition);
 	}
 
 	// R3-1 DCE-proof sink: 保留 uniform reference 但恆不貢獻 accumCol。

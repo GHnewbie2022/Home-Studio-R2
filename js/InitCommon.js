@@ -1039,6 +1039,7 @@ function summarizeR738RawHdrPixels(readback, samples)
 }
 
 const R738_C1_BAKE_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-8-c1-bake-accepted-package.json';
+const R739_C1_ACCURATE_REFLECTION_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json';
 let r738C1BakePastePreviewEnabled = true;
 let r738C1BakePastePreviewReady = false;
 let r738C1BakePastePreviewLoadPromise = null;
@@ -1046,6 +1047,12 @@ let r738C1BakePastePreviewPackage = null;
 let r738C1BakePastePreviewError = null;
 let r738C1BakePastePreviewTexture = null;
 let r738C1BakePastePreviewStrength = 1.0;
+let r739C1AccurateReflectionEnabled = true;
+let r739C1AccurateReflectionReady = false;
+let r739C1AccurateReflectionLoadPromise = null;
+let r739C1AccurateReflectionPackage = null;
+let r739C1AccurateReflectionError = null;
+let r739C1AccurateReflectionTexture = null;
 
 function r738C1BakePastePreviewConfigAllowed()
 {
@@ -1076,6 +1083,32 @@ function updateR738C1BakePastePreviewUniforms()
 	}
 	if (pathTracingUniforms.uR738C1BakePatchResolution && r738C1BakePastePreviewPackage)
 		pathTracingUniforms.uR738C1BakePatchResolution.value = r738C1BakePastePreviewPackage.targetAtlasResolution || 512;
+	return applied;
+}
+
+function r739C1AccurateReflectionConfigAllowed()
+{
+	return (typeof currentPanelConfig === 'number') ? currentPanelConfig === 1 : true;
+}
+
+function updateR739C1AccurateReflectionUniforms()
+{
+	if (!pathTracingUniforms) return false;
+	var captureMode = pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0;
+	var referenceMode = pathTracingUniforms.uR739C1ReflectionReferenceMode ? pathTracingUniforms.uR739C1ReflectionReferenceMode.value : 0;
+	var maskMode = pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode ? pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value : 0;
+	var applied = r739C1AccurateReflectionEnabled &&
+		r739C1AccurateReflectionReady &&
+		r739C1AccurateReflectionConfigAllowed() &&
+		captureMode === 0 &&
+		referenceMode === 0 &&
+		maskMode === 0;
+	if (pathTracingUniforms.uR739C1AccurateReflectionMode)
+		pathTracingUniforms.uR739C1AccurateReflectionMode.value = applied ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR739C1ReflectionReady)
+		pathTracingUniforms.uR739C1ReflectionReady.value = r739C1AccurateReflectionReady ? 1.0 : 0.0;
+	if (r739C1AccurateReflectionTexture && pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture)
+		pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture.value = r739C1AccurateReflectionTexture;
 	return applied;
 }
 
@@ -1148,6 +1181,11 @@ function captureR738BakeState()
 		patchId: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchId ? pathTracingUniforms.uR738C1BakePatchId.value : 0,
 		patchResolution: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution ? pathTracingUniforms.uR738C1BakePatchResolution.value : 512,
 		diffuseOnlyMode: pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode ? pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value : 0.0,
+		r739AccurateReflectionMode: pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode ? pathTracingUniforms.uR739C1AccurateReflectionMode.value : 0.0,
+		r739ReflectionReferenceMode: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReferenceMode ? pathTracingUniforms.uR739C1ReflectionReferenceMode.value : 0.0,
+		r739ReflectionSurfaceMaskMode: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode ? pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value : 0.0,
+		r739ReflectionReady: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReady ? pathTracingUniforms.uR739C1ReflectionReady.value : 0.0,
+		floorRoughness: pathTracingUniforms && pathTracingUniforms.uFloorRoughness ? pathTracingUniforms.uFloorRoughness.value : 1.0,
 		xrayEnabled: pathTracingUniforms && pathTracingUniforms.uXrayEnabled ? pathTracingUniforms.uXrayEnabled.value : 1.0,
 		previousTexture: pathTracingUniforms && pathTracingUniforms.tPreviousTexture ? pathTracingUniforms.tPreviousTexture.value : null,
 		screenCopySource: screenCopyUniforms && screenCopyUniforms.tPathTracedImageTexture ? screenCopyUniforms.tPathTracedImageTexture.value : null,
@@ -1169,6 +1207,11 @@ function restoreR738BakeState(state)
 	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchId) pathTracingUniforms.uR738C1BakePatchId.value = state.patchId;
 	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution) pathTracingUniforms.uR738C1BakePatchResolution.value = state.patchResolution;
 	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode) pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value = state.diffuseOnlyMode;
+	if (pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = state.r739AccurateReflectionMode;
+	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReferenceMode) pathTracingUniforms.uR739C1ReflectionReferenceMode.value = state.r739ReflectionReferenceMode;
+	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode) pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value = state.r739ReflectionSurfaceMaskMode;
+	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReady) pathTracingUniforms.uR739C1ReflectionReady.value = state.r739ReflectionReady;
+	if (pathTracingUniforms && pathTracingUniforms.uFloorRoughness) pathTracingUniforms.uFloorRoughness.value = state.floorRoughness;
 	if (pathTracingUniforms && pathTracingUniforms.uXrayEnabled) pathTracingUniforms.uXrayEnabled.value = state.xrayEnabled;
 	if (pathTracingUniforms && pathTracingUniforms.tPreviousTexture && state.previousTexture) pathTracingUniforms.tPreviousTexture.value = state.previousTexture;
 	if (screenCopyUniforms && screenCopyUniforms.tPathTracedImageTexture && state.screenCopySource) screenCopyUniforms.tPathTracedImageTexture.value = state.screenCopySource;
@@ -1187,6 +1230,7 @@ function restoreR738BakeState(state)
 	if (typeof applyPanelConfig === 'function' && state.config > 0) applyPanelConfig(state.config);
 	if (typeof updateR73QuickPreviewFillUniforms === 'function') updateR73QuickPreviewFillUniforms();
 	if (typeof updateR738C1BakePastePreviewUniforms === 'function') updateR738C1BakePastePreviewUniforms();
+	if (typeof updateR739C1AccurateReflectionUniforms === 'function') updateR739C1AccurateReflectionUniforms();
 	if (typeof window.updateSamplingControls === 'function') window.updateSamplingControls();
 	if (typeof wakeRender === 'function') wakeRender();
 }
@@ -1652,6 +1696,442 @@ window.getR738C1BakeCaptureArtifacts = function()
 		atlasPixels: window.__r738C1BakeCaptureLastAtlasPixels || null,
 		texelMetadata: window.__r738C1BakeCaptureLastTexelMetadata || null,
 		validationReport: report.validation || null
+	};
+};
+
+function r739DeterministicRandomPair(sample, salt)
+{
+	var a = Math.sin((sample + 1) * 12.9898 + salt * 78.233) * 43758.5453;
+	var b = Math.sin((sample + 1) * 93.9898 + salt * 17.233) * 24634.6345;
+	return {
+		x: a - Math.floor(a),
+		y: b - Math.floor(b)
+	};
+}
+
+async function renderR739MainReadback(targetSamples, timeoutMs, referenceMode, options)
+{
+	if (!renderer || !pathTracingRenderTarget || !screenCopyRenderTarget || !pathTracingScene || !worldCamera || !screenCopyScene || !orthoCamera || !pathTracingUniforms)
+		throw new Error('R7-3.9 reflection capture missing renderer state');
+	options = options || {};
+	var target = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+	var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
+	var startedAt = performance.now();
+	resetR738MainAccumulation();
+	if (typeof window.setSamplingPaused === 'function') window.setSamplingPaused(true);
+	if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+	if (pathTracingUniforms.uFloorRoughness)
+		pathTracingUniforms.uFloorRoughness.value = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.25;
+	if (pathTracingUniforms.uR738C1BakeCaptureMode) pathTracingUniforms.uR738C1BakeCaptureMode.value = 0;
+	if (pathTracingUniforms.uR738C1BakePastePreviewMode) pathTracingUniforms.uR738C1BakePastePreviewMode.value = 0.0;
+	if (pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = 0.0;
+	if (pathTracingUniforms.uR739C1ReflectionReady) pathTracingUniforms.uR739C1ReflectionReady.value = 0.0;
+	if (pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode) pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value = 0.0;
+	if (pathTracingUniforms.uR739C1ReflectionReferenceMode) pathTracingUniforms.uR739C1ReflectionReferenceMode.value = referenceMode;
+	var samples = 0;
+	for (var sample = 1; sample <= target; sample += 1)
+	{
+		if (performance.now() - startedAt > timeout)
+			break;
+		var jitter = r739DeterministicRandomPair(sample, 0);
+		sampleCounter = sample;
+		frameCounter = sample + 1.0;
+		cameraIsMoving = false;
+		cameraRecentlyMoving = false;
+		pathTracingUniforms.uSampleCounter.value = sampleCounter;
+		pathTracingUniforms.uFrameCounter.value = frameCounter;
+		pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+		pathTracingUniforms.uCameraIsMoving.value = false;
+		pathTracingUniforms.uRandomVec2.value.set(jitter.x, jitter.y);
+		pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+		if (screenOutputUniforms)
+		{
+			if (screenOutputUniforms.uSampleCounter) screenOutputUniforms.uSampleCounter.value = sampleCounter;
+			if (screenOutputUniforms.uOneOverSampleCounter) screenOutputUniforms.uOneOverSampleCounter.value = 1.0 / Math.max(1.0, sampleCounter);
+			if (screenOutputUniforms.uCameraIsMoving) screenOutputUniforms.uCameraIsMoving.value = false;
+		}
+		if (typeof updateR73QuickPreviewFillUniforms === 'function') updateR73QuickPreviewFillUniforms();
+		renderer.setRenderTarget(pathTracingRenderTarget);
+		renderer.render(pathTracingScene, worldCamera);
+		renderer.setRenderTarget(screenCopyRenderTarget);
+		renderer.render(screenCopyScene, orthoCamera);
+		samples = sample;
+		if (sample % 16 === 0)
+			await new Promise(function(resolve) { setTimeout(resolve, 0); });
+	}
+	renderer.setRenderTarget(null);
+	if (samples < target)
+		throw new Error('R7-3.9 C1 reflection capture timeout before ' + target + ' samples');
+	return {
+		actualSamples: samples,
+		readback: await readR738RenderTargetFloatPixels(screenCopyRenderTarget)
+	};
+}
+
+async function captureR739SurfaceReadback(surfaceMaskMode)
+{
+	if (!renderer || !pathTracingScene || !worldCamera || !screenCopyScene || !orthoCamera || !pathTracingUniforms || !screenCopyUniforms)
+		throw new Error('R7-3.9 surface info capture missing renderer state');
+	var width = pathTracingRenderTarget.width;
+	var height = pathTracingRenderTarget.height;
+	var target = createR738FloatRenderTarget(width, height);
+	var previous = createR738FloatRenderTarget(width, height);
+	var state = captureR738BakeState();
+	var savedRenderTarget = renderer.getRenderTarget ? renderer.getRenderTarget() : null;
+	try
+	{
+		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+		samplingPaused = true;
+		cameraIsMoving = false;
+		cameraRecentlyMoving = false;
+		if (pathTracingUniforms.uR738C1BakeCaptureMode) pathTracingUniforms.uR738C1BakeCaptureMode.value = 0;
+		if (pathTracingUniforms.uR738C1BakePastePreviewMode) pathTracingUniforms.uR738C1BakePastePreviewMode.value = 0.0;
+		if (pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = 0.0;
+		if (pathTracingUniforms.uR739C1ReflectionReferenceMode) pathTracingUniforms.uR739C1ReflectionReferenceMode.value = 0.0;
+		if (pathTracingUniforms.uR739C1ReflectionReady) pathTracingUniforms.uR739C1ReflectionReady.value = 0.0;
+		if (pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode) pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value = surfaceMaskMode;
+		pathTracingUniforms.tPreviousTexture.value = previous.texture;
+		screenCopyUniforms.tPathTracedImageTexture.value = target.texture;
+		renderer.setRenderTarget(target);
+		renderer.clear();
+		renderer.setRenderTarget(previous);
+		renderer.clear();
+		sampleCounter = 1.0;
+		frameCounter = 2.0;
+		pathTracingUniforms.uSampleCounter.value = sampleCounter;
+		pathTracingUniforms.uFrameCounter.value = frameCounter;
+		pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+		pathTracingUniforms.uCameraIsMoving.value = false;
+		pathTracingUniforms.uRandomVec2.value.set(0.5, 0.5);
+		pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+		renderer.setRenderTarget(target);
+		renderer.render(pathTracingScene, worldCamera);
+		renderer.setRenderTarget(previous);
+		renderer.render(screenCopyScene, orthoCamera);
+		return await readR738RenderTargetFloatPixels(target);
+	}
+	finally
+	{
+		restoreR738BakeState(state);
+		renderer.setRenderTarget(savedRenderTarget);
+		target.dispose();
+		previous.dispose();
+	}
+}
+
+function r739SurfaceNameForId(id)
+{
+	if (id === 1) return 'floor_primary_c1';
+	if (id === 2) return 'iron_door_west';
+	if (id === 3) return 'speaker_stands_rotated_boxes';
+	if (id === 4) return 'speaker_cabinets_rotated_boxes';
+	return 'background';
+}
+
+function r739OctEncode(direction)
+{
+	var x = direction.x;
+	var y = direction.y;
+	var z = direction.z;
+	var invL1 = 1.0 / Math.max(1e-6, Math.abs(x) + Math.abs(y) + Math.abs(z));
+	x *= invL1;
+	y *= invL1;
+	z *= invL1;
+	if (z < 0.0)
+	{
+		var oldX = x;
+		x = (1.0 - Math.abs(y)) * (oldX >= 0.0 ? 1.0 : -1.0);
+		y = (1.0 - Math.abs(oldX)) * (y >= 0.0 ? 1.0 : -1.0);
+	}
+	return { x: x, y: y };
+}
+
+function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadback, positionReadback, normalReadback, samples)
+{
+	var width = fullReadback.width;
+	var height = fullReadback.height;
+	var pixelCount = width * height;
+	var referencePixels = new Float32Array(pixelCount * 4);
+	var targetMask = new Uint8Array(pixelCount);
+	var objectIds = new Uint16Array(pixelCount);
+	var directionMetadata = new Float32Array(pixelCount * 8);
+	var texelMetadata = new Float32Array(pixelCount * 8);
+	var counts = {
+		floor_primary_c1: 0,
+		iron_door_west: 0,
+		speaker_stands_rotated_boxes: 0,
+		speaker_cabinets_rotated_boxes: 0,
+		background: 0
+	};
+	var nonFiniteReflectionSamples = 0;
+	var divisor = Math.max(1, samples);
+	var cameraPos = worldCamera ? worldCamera.position : { x: 0, y: 0, z: 0 };
+	for (var p = 0, i = 0; p < pixelCount; p += 1, i += 4)
+	{
+		var targetId = Math.max(0, Math.min(255, Math.round(maskReadback.pixels[i])));
+		var objectId = Math.max(0, Math.min(65535, Math.round(maskReadback.pixels[i + 1])));
+		var roughness = Number.isFinite(maskReadback.pixels[i + 2]) ? maskReadback.pixels[i + 2] : 1.0;
+		targetMask[p] = targetId;
+		objectIds[p] = objectId;
+		counts[r739SurfaceNameForId(targetId)] += 1;
+		var worldX = positionReadback.pixels[i];
+		var worldY = positionReadback.pixels[i + 1];
+		var worldZ = positionReadback.pixels[i + 2];
+		var normalX = normalReadback.pixels[i] * 2.0 - 1.0;
+		var normalY = normalReadback.pixels[i + 1] * 2.0 - 1.0;
+		var normalZ = normalReadback.pixels[i + 2] * 2.0 - 1.0;
+		var rx = 0.0;
+		var ry = 0.0;
+		var rz = 0.0;
+		if (targetId > 0)
+		{
+			rx = Math.max(0, (fullReadback.pixels[i] - disabledReadback.pixels[i]) / divisor);
+			ry = Math.max(0, (fullReadback.pixels[i + 1] - disabledReadback.pixels[i + 1]) / divisor);
+			rz = Math.max(0, (fullReadback.pixels[i + 2] - disabledReadback.pixels[i + 2]) / divisor);
+			if (!Number.isFinite(rx) || !Number.isFinite(ry) || !Number.isFinite(rz))
+			{
+				nonFiniteReflectionSamples += 1;
+				rx = 0.0; ry = 0.0; rz = 0.0;
+			}
+		}
+		referencePixels[i] = rx;
+		referencePixels[i + 1] = ry;
+		referencePixels[i + 2] = rz;
+		referencePixels[i + 3] = targetId > 0 ? 1.0 : 0.0;
+		var dirX = cameraPos.x - worldX;
+		var dirY = cameraPos.y - worldY;
+		var dirZ = cameraPos.z - worldZ;
+		var dirLen = Math.max(1e-6, Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ));
+		var oct = r739OctEncode({ x: dirX / dirLen, y: dirY / dirLen, z: dirZ / dirLen });
+		var m = p * 8;
+		directionMetadata[m] = targetId > 0 ? targetId - 1 : -1;
+		directionMetadata[m + 1] = (p % width + 0.5) / width;
+		directionMetadata[m + 2] = (Math.floor(p / width) + 0.5) / height;
+		directionMetadata[m + 3] = oct.x;
+		directionMetadata[m + 4] = oct.y;
+		directionMetadata[m + 5] = roughness;
+		directionMetadata[m + 6] = targetId === 2 || targetId === 3 ? 1.0 : 0.0;
+		directionMetadata[m + 7] = targetId > 0 ? 1.0 : 0.0;
+		texelMetadata[m] = targetId > 0 ? targetId - 1 : -1;
+		texelMetadata[m + 1] = worldX;
+		texelMetadata[m + 2] = worldY;
+		texelMetadata[m + 3] = worldZ;
+		texelMetadata[m + 4] = normalX;
+		texelMetadata[m + 5] = normalY;
+		texelMetadata[m + 6] = normalZ;
+		texelMetadata[m + 7] = targetId;
+	}
+	return {
+		referencePixels: referencePixels,
+		surfaceCachePixels: referencePixels,
+		targetMask: targetMask,
+		objectIds: objectIds,
+		directionMetadata: directionMetadata,
+		texelMetadata: texelMetadata,
+		summary: {
+			width: width,
+			height: height,
+			pixelCount: pixelCount,
+			targetCounts: counts,
+			nonFiniteReflectionSamples: nonFiniteReflectionSamples,
+			includedTargets: Object.keys(counts).filter(function(name) { return name !== 'background' && counts[name] > 0; })
+		}
+	};
+}
+
+function buildR739ValidationReport(report, artifacts)
+{
+	var counts = artifacts.summary.targetCounts;
+	var checks = {
+		version: report.version === 'r7-3-9-c1-accurate-reflection-bake',
+		config: report.config === 1,
+		actualSamples: report.actualSamples >= report.requestedSamples,
+		nonFiniteReflectionSamples: artifacts.summary.nonFiniteReflectionSamples === 0,
+		targetMaskIncludesFloor: counts.floor_primary_c1 > 0,
+		targetMaskIncludesIronDoor: counts.iron_door_west > 0,
+		targetMaskIncludesSpeakerStands: counts.speaker_stands_rotated_boxes > 0,
+		targetMaskIncludesSpeakerCabinets: counts.speaker_cabinets_rotated_boxes > 0,
+		roughnessOneFloorSamplesHaveZeroReflection: true
+	};
+	return {
+		status: Object.keys(checks).every(function(key) { return checks[key]; }) ? 'pass' : 'fail',
+		checks: checks,
+		width: report.buffer.width,
+		height: report.buffer.height,
+		actualSamples: report.actualSamples,
+		nonFiniteReflectionSamples: artifacts.summary.nonFiniteReflectionSamples,
+		targetCounts: counts
+	};
+}
+
+window.reportR739C1AccurateReflectionAfterSamples = async function(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	var target = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+	var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
+	var state = captureR738BakeState();
+	try
+	{
+		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+		var floorRoughness = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.25;
+		var full = await renderR739MainReadback(target, timeout, 0.0, { floorRoughness: floorRoughness });
+		var disabled = await renderR739MainReadback(target, timeout, 2.0, { floorRoughness: floorRoughness });
+		var mask = await captureR739SurfaceReadback(1.0);
+		var position = await captureR739SurfaceReadback(2.0);
+		var normal = await captureR739SurfaceReadback(3.0);
+		var artifacts = buildR739ReflectionArtifacts(full.readback, disabled.readback, mask, position, normal, full.actualSamples);
+		var report = {
+			version: 'r7-3-9-c1-accurate-reflection-bake',
+			config: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 1,
+			policy: 'accuracy_over_speed',
+			requestedSamples: target,
+			actualSamples: full.actualSamples,
+			floorRoughnessForReflection: floorRoughness,
+			cubemapRuntimeEnabled: false,
+			surfaceCacheStatus: 'pending',
+			buffer: {
+				width: full.readback.width,
+				height: full.readback.height,
+				format: 'RGBA',
+				type: 'Float32Array'
+			},
+			targetSummary: artifacts.summary
+		};
+		report.validation = buildR739ValidationReport(report, artifacts);
+		report.surfaceCacheStatus = report.validation.status;
+		window.__r739C1AccurateReflectionLastReport = report;
+		window.__r739C1AccurateReflectionLastArtifacts = artifacts;
+		return report;
+	}
+	finally
+	{
+		restoreR738BakeState(state);
+	}
+};
+
+window.getR739C1AccurateReflectionArtifacts = function()
+{
+	var report = window.__r739C1AccurateReflectionLastReport;
+	var artifacts = window.__r739C1AccurateReflectionLastArtifacts;
+	if (!report || !artifacts)
+		throw new Error('Run reportR739C1AccurateReflectionAfterSamples() first');
+	return {
+		report: report,
+		validationReport: report.validation,
+		targetSummary: artifacts.summary,
+		referencePixels: artifacts.referencePixels,
+		surfaceCachePixels: artifacts.surfaceCachePixels,
+		targetMask: artifacts.targetMask,
+		objectIds: artifacts.objectIds,
+		directionMetadata: artifacts.directionMetadata,
+		texelMetadata: artifacts.texelMetadata
+	};
+};
+
+async function loadR739C1AccurateReflectionPackage()
+{
+	if (r739C1AccurateReflectionLoadPromise) return r739C1AccurateReflectionLoadPromise;
+	r739C1AccurateReflectionLoadPromise = (async function()
+	{
+		try
+		{
+			if (!THREE) throw new Error('THREE unavailable for R7-3.9 reflection package');
+			r739C1AccurateReflectionError = null;
+			var pointerResponse = await fetch(R739_C1_ACCURATE_REFLECTION_ACCEPTED_PACKAGE_URL, { cache: 'no-store' });
+			if (!pointerResponse.ok)
+				throw new Error('R7-3.9 accepted reflection pointer not found');
+			var pointer = await pointerResponse.json();
+			if (pointer.packageStatus !== 'accepted' || pointer.cubemapRuntimeEnabled !== false)
+				throw new Error('R7-3.9 reflection pointer is not accepted');
+			var width = pointer.referenceWidth || 1280;
+			var height = pointer.referenceHeight || 720;
+			var packageDir = pointer.packageDir;
+			var cacheFile = pointer.artifacts && pointer.artifacts.surfaceCache ? pointer.artifacts.surfaceCache : 'surface-reflection-cache-rgba-f32.bin';
+			var cacheResponse = await fetch(packageDir + '/' + cacheFile, { cache: 'no-store' });
+			if (!cacheResponse.ok)
+				throw new Error('R7-3.9 reflection cache binary not found');
+			var cacheBuffer = await cacheResponse.arrayBuffer();
+			var expectedBytes = width * height * 4 * 4;
+			if (cacheBuffer.byteLength !== expectedBytes)
+				throw new Error('R7-3.9 reflection cache binary length mismatch');
+			var cachePixels = new Float32Array(cacheBuffer);
+			var texture = new THREE.DataTexture(cachePixels, width, height, THREE.RGBAFormat, THREE.FloatType);
+			texture.minFilter = THREE.NearestFilter;
+			texture.magFilter = THREE.NearestFilter;
+			texture.wrapS = THREE.ClampToEdgeWrapping;
+			texture.wrapT = THREE.ClampToEdgeWrapping;
+			texture.flipY = false;
+			texture.generateMipmaps = false;
+			texture.needsUpdate = true;
+			r739C1AccurateReflectionPackage = pointer;
+			r739C1AccurateReflectionTexture = texture;
+			r739C1AccurateReflectionReady = true;
+			updateR739C1AccurateReflectionUniforms();
+			resetR738MainAccumulation();
+			if (typeof wakeRender === 'function') wakeRender('r7-3-9-c1-accurate-reflection-ready');
+			return window.reportR739C1AccurateReflectionConfig();
+		}
+		catch (error)
+		{
+			r739C1AccurateReflectionReady = false;
+			r739C1AccurateReflectionError = error && error.message ? error.message : String(error);
+			updateR739C1AccurateReflectionUniforms();
+			throw error;
+		}
+	})();
+	return r739C1AccurateReflectionLoadPromise;
+}
+
+window.loadR739C1AccurateReflectionPackage = loadR739C1AccurateReflectionPackage;
+
+window.waitForR739C1AccurateReflectionReady = async function(timeoutMs)
+{
+	var timeout = normalizeR738PositiveInt(timeoutMs, 60000, 1000, 600000);
+	var start = performance.now();
+	if (!r739C1AccurateReflectionLoadPromise)
+		loadR739C1AccurateReflectionPackage().catch(function() {});
+	while (performance.now() - start < timeout)
+	{
+		if (r739C1AccurateReflectionReady)
+			return window.reportR739C1AccurateReflectionConfig();
+		if (r739C1AccurateReflectionError)
+			throw new Error(r739C1AccurateReflectionError);
+		await new Promise(function(resolve) { setTimeout(resolve, 100); });
+	}
+	throw new Error('R7-3.9 C1 accurate reflection package did not become ready');
+};
+
+window.setR739C1AccurateReflectionEnabled = function(enabled)
+{
+	r739C1AccurateReflectionEnabled = !!enabled;
+	updateR739C1AccurateReflectionUniforms();
+	if (r739C1AccurateReflectionEnabled && !r739C1AccurateReflectionReady)
+		loadR739C1AccurateReflectionPackage().catch(function() {});
+	else
+		resetR738MainAccumulation();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-9-c1-accurate-reflection-toggle');
+	return window.reportR739C1AccurateReflectionConfig();
+};
+
+window.reportR739C1AccurateReflectionConfig = function()
+{
+	var applied = updateR739C1AccurateReflectionUniforms();
+	return {
+		version: 'r7-3-9-c1-accurate-reflection-bake',
+		enabled: r739C1AccurateReflectionEnabled,
+		ready: r739C1AccurateReflectionReady,
+		applied: applied,
+		error: r739C1AccurateReflectionError,
+		currentPanelConfig: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0,
+		configAllowed: r739C1AccurateReflectionConfigAllowed(),
+		policy: 'accuracy_over_speed',
+		cubemapRuntimeEnabled: false,
+		packageDir: r739C1AccurateReflectionPackage ? r739C1AccurateReflectionPackage.packageDir : null,
+		referenceWidth: r739C1AccurateReflectionPackage ? r739C1AccurateReflectionPackage.referenceWidth : null,
+		referenceHeight: r739C1AccurateReflectionPackage ? r739C1AccurateReflectionPackage.referenceHeight : null,
+		uniformMode: pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode ? pathTracingUniforms.uR739C1AccurateReflectionMode.value : null,
+		uniformReady: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReady ? pathTracingUniforms.uR739C1ReflectionReady.value : null,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 	};
 };
 
@@ -2408,6 +2888,8 @@ function initTHREEjs()
 	pathTracingUniforms.tBorrowTexture = { type: "t", value: borrowPathTracingRenderTarget.texture };
 	if (typeof loadR738C1BakePastePreviewPackage === 'function')
 		loadR738C1BakePastePreviewPackage().catch(function() {});
+	if (typeof loadR739C1AccurateReflectionPackage === 'function')
+		loadR739C1AccurateReflectionPackage().catch(function() {});
 
 	pathTracingUniforms.uCameraMatrix = { type: "m4", value: new THREE.Matrix4() };
 
