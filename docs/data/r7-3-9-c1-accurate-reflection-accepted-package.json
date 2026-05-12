@@ -1,9 +1,9 @@
 {
   "version": "r7-3-9-config1-current-view-reflection",
   "packageStatus": "none",
-  "routeStatus": "accepted",
-  "runtimeEnabled": true,
-  "acceptedRoute": "runtime_path_tracing_current_view",
+  "routeStatus": "invalidated_by_ab_visual_check",
+  "runtimeEnabled": false,
+  "acceptedRoute": null,
   "cubemapRuntimeEnabled": false,
   "packageDir": null,
   "surfaceTargets": [
@@ -12,7 +12,7 @@
   "deferredSurfaceTargets": [],
   "checkpoint": {
     "label": "r7-3-9-config1-sprout-v2-success-20260513",
-    "description": "Clean sprout V2 checkpoint: accepted R7-3.8 diffuse bake plus accepted R7-3.9 Config 1 current-view sprout reflection route."
+    "description": "Invalidated sprout V2 checkpoint: R7-3.8 diffuse bake remains valid, but R7-3.9 current-view reflection blocked the diffuse paste and only proved live roughness forcing."
   },
   "routeContract": {
     "config": 1,
@@ -29,16 +29,24 @@
   },
   "visualAcceptance": {
     "date": "2026-05-13",
-    "acceptedByUser": true,
+    "acceptedByUser": false,
+    "invalidatedByUser": true,
     "roughnessOneObservation": "At floor roughness 1, the floor outside the sprout patch has no reflection, so the sprout boundary is expected to look hard.",
-    "roughnessPointOneObservation": "At floor roughness 0.1 and exactly 1000 spp, the sprout reflection blends into the surrounding floor as a complete ceiling-lamp reflection."
+    "roughnessPointOneObservation": "At floor roughness 0.1 and 1 spp, A diffuse is clean, but B and C are noisy like live path tracing; D proves the central patch roughness is forced to 0.1."
   },
   "validation": {
-    "automatedStatus": "pass",
-    "userVisualAcceptance": "pass",
+    "automatedStatus": "ab_visual_check_invalidated_previous_acceptance",
+    "userVisualAcceptance": "fail",
     "latestReport": ".omc/r7-3-9-config1-current-view-reflection/20260513-005253/validation-report.json",
     "latestActualSamples": 1000,
-    "cameraStateVariation": true
+    "cameraStateVariation": true,
+    "abVisualCheck": {
+      "samples": 1,
+      "modeA": "diffuse bake clean",
+      "modeB": "same noisy live look as mode C",
+      "modeC": "noisy live current-view reflection only",
+      "modeD": "central patch roughness forced to 0.1"
+    }
   },
   "clearedAt": "2026-05-12",
   "clearedPackages": [

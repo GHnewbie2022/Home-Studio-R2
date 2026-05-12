@@ -321,8 +321,8 @@ R7 採樣升級：
   - R7-3.9 C1 舊 sprout-only package `.omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/` 已判定為 camera-space reference，不是 runtime 可接受反射包；後續必須改走 surface position + outgoing direction 或 true planar reflection pass。
   - R7-3.9 C1 surrounding floor roughness 0.1 live reflection fix 與 roughness gate fix 都已被 reset 收攏成歷史紀錄；目前畫面基準只保留 R7-3.8 C1 嫩芽純漫射 bake。
   - R7-3.9 C1 large-floor reflection cache double-division fix 只保留為歷史紀錄；`.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 已不可用，後續不得沿用此路線；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-cache-double-division-fix`
-  - R7-3.9 Config 1 current-view sprout reflection route 已形成嫩芽 V2 checkpoint；漫射使用 R7-3.8 成功包，反射使用 R7-3.9 current-view route。讀 `Debug_Log.md` 的 `R7-3.9-config1-sprout-v2-success-checkpoint`。
-  - R7-3.9 Config 1 current-view sprout reflection route 曾只在 validation helper 內啟用，導致手動畫面看不到嫩芽反射；已補 `r739C1CurrentViewReflectionPreviewEnabled = true`，讀 `Debug_Log.md` 的 `R7-3.9-config1-current-view-sprout-reflection-preview-enable-fix`。
+  - R7-3.9 Config 1 current-view sprout V2 已被 1SPP A/B 肉眼驗收推翻；A 漫射乾淨，B 原V2 與 C 反射同樣 noisy，D 證明中央只是被固定 roughness 0.1。讀 `Debug_Log.md` 的 `R7-3.9-config1-sprout-v2-ab-invalidated`。
+  - R7-3.9 Config 1 current-view sprout reflection route 曾只在 validation helper 內啟用，後續又漏 startup uniform sync；這些只屬於診斷歷史，不能當 V2 成功證據。
   - R7-3.9 Config 1 current-view preview 預設 true 後仍漏了啟動 uniform 同步，手動畫面會保持 `uR739C1CurrentViewReflectionMode = 0`；已在 `initTHREEjs()` 補同步，讀 `Debug_Log.md` 的 `R7-3.9-config1-current-view-sprout-reflection-startup-uniform-sync-fix`。
 ```
 

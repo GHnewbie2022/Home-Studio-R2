@@ -5163,7 +5163,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-9-c1-floor-reflection-roughness-v1';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-10-sprout-ab-v1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5814,6 +5814,32 @@ function syncFloorRoughnessActionWidth() {
     var width = Math.ceil(manualRect.right - controlsRect.left);
     if (Number.isFinite(width) && width > 0)
         roughness.style.width = width + 'px';
+}
+
+function refreshR739SproutABButtons(report) {
+    var activeMode = report && report.mode ? String(report.mode).toUpperCase() : null;
+    ['A', 'B', 'C', 'D'].forEach(function(mode) {
+        var btn = document.getElementById('btn-r739-ab-' + mode.toLowerCase());
+        if (btn) btn.classList.toggle('glow-white', activeMode === mode);
+    });
+}
+
+function bindR739SproutABControls() {
+    var bar = document.getElementById('r739-sprout-ab-actions');
+    if (!bar) return;
+    ['A', 'B', 'C', 'D'].forEach(function(mode) {
+        var btn = document.getElementById('btn-r739-ab-' + mode.toLowerCase());
+        if (!btn) return;
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof window.setR739SproutABMode !== 'function') return;
+            var report = window.setR739SproutABMode(mode);
+            refreshR739SproutABButtons(report);
+            if (typeof window.logR739SproutABMode === 'function') window.logR739SproutABMode();
+        }, false);
+    });
+    if (typeof window.reportR739SproutABMode === 'function')
+        refreshR739SproutABButtons(window.reportR739SproutABMode());
 }
 
 // 強制重啟累加（即使已進入 1000 SPP 休眠也能即時刷新）
@@ -6881,7 +6907,7 @@ function initUI() {
     }
 
     // Pointer-lock guard for snapshot bar and actions（bug fix：chip 點選會觸發 pointer lock）
-    ['snapshot-controls', 'floor-roughness-actions', 'snapshot-bar', 'snapshot-actions'].forEach(function(id) {
+    ['snapshot-controls', 'floor-roughness-actions', 'r739-sprout-ab-actions', 'snapshot-bar', 'snapshot-actions'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);
@@ -6916,6 +6942,8 @@ function initUI() {
             if (uiLocked && document.pointerLockElement) document.exitPointerLock();
         }, false);
     }
+
+    bindR739SproutABControls();
 
     // R4-4：BVH 指針策略綁定（拖動期鎖 + 指針放開 50 ms 防抖）
     // 投射燈間距 / 投射燈軌道 x / 廣角燈距 Cloud 邊距 3 條接 BVH

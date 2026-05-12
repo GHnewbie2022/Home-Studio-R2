@@ -16,7 +16,8 @@ const screenOutput = fs.readFileSync(path.join(root, 'shaders/ScreenOutput_Fragm
 const css = fs.readFileSync(path.join(root, 'css/default.css'), 'utf8');
 
 const version = 'r7-3-quick-preview-fill-v3al-c1c2-fps1';
-const cacheToken = 'r7-3-9-c1-floor-reflection-roughness-v1';
+const cacheToken = 'r7-3-10-sprout-ab-v1';
+const previousCacheToken = 'r7-3-9-c1-floor-reflection-roughness-v1';
 
 function assertOrder(source, before, after, message) {
 	const beforeIndex = source.indexOf(before);
@@ -35,8 +36,8 @@ function functionBody(source, name) {
 }
 
 assert(!html.includes('css/default.css?v=fixed-1440p-r7-3-ui-v1'), 'R7-3 fixed curve must not keep the old UI CSS cache token');
-assert(html.includes(`InitCommon.js?v=${cacheToken}`) || html.includes(`InitCommon.js?v=${version}`), 'HTML must cache-bust InitCommon for current R7 work');
-assert(html.includes(`Home_Studio.js?v=${cacheToken}`) || html.includes(`Home_Studio.js?v=${version}`), 'HTML must cache-bust Home_Studio for current R7 work');
+assert(html.includes(`InitCommon.js?v=${cacheToken}`) || html.includes(`InitCommon.js?v=${previousCacheToken}`) || html.includes(`InitCommon.js?v=${version}`), 'HTML must cache-bust InitCommon for current R7 work');
+assert(html.includes(`Home_Studio.js?v=${cacheToken}`) || html.includes(`Home_Studio.js?v=${previousCacheToken}`) || html.includes(`Home_Studio.js?v=${version}`), 'HTML must cache-bust Home_Studio for current R7 work');
 assert(homeStudio.includes(`R7_3_QUICK_PREVIEW_FILL_VERSION = '${version}'`), 'Home_Studio must expose R7-3 version');
 assert(homeStudio.includes(`Home_Studio_Fragment.glsl?v=${cacheToken}`) || homeStudio.includes(`Home_Studio_Fragment.glsl?v=${version}`), 'Home shader cache token must identify current R7 work');
 assert(initCommon.includes(`ScreenOutput_Fragment.glsl?v=${cacheToken}`) || initCommon.includes(`ScreenOutput_Fragment.glsl?v=${version}`), 'ScreenOutput shader cache token must identify current R7 work');

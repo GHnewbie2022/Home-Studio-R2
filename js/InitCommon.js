@@ -1054,11 +1054,12 @@ let r739C1AccurateReflectionLoadPromise = null;
 let r739C1AccurateReflectionPackage = null;
 let r739C1AccurateReflectionError = null;
 let r739C1AccurateReflectionTexture = null;
-let r739C1CurrentViewReflectionPreviewEnabled = true;
+let r739C1CurrentViewReflectionPreviewEnabled = false;
 let r739C1CurrentViewReflectionValidationEnabled = false;
-let r739C1CurrentViewReflectionReady = true;
+let r739C1CurrentViewReflectionReady = false;
 let r739C1CurrentViewReflectionError = null;
 let r739C1CurrentViewReflectionRoughness = 0.1;
+let r739SproutABMode = 'A';
 
 const R739_C1_CURRENT_VIEW_VALIDATION_CAMERA_STATES = Object.freeze([
 	{
@@ -2418,6 +2419,141 @@ window.reportR739C1CurrentViewReflectionConfig = function()
 	};
 };
 
+function r739NormalizeSproutABMode(mode)
+{
+	var normalized = String(mode || '').trim().toUpperCase();
+	if (normalized === 'DIFFUSE' || normalized === 'DIFFUSE_ONLY') return 'A';
+	if (normalized === 'V2' || normalized === 'CURRENT' || normalized === 'COMBINED') return 'B';
+	if (normalized === 'REFLECTION' || normalized === 'REFLECTION_ONLY') return 'C';
+	if (normalized === 'ROUGHNESS_ONE' || normalized === 'ROUGHNESS1') return 'D';
+	if (['A', 'B', 'C', 'D'].indexOf(normalized) >= 0) return normalized;
+	return 'B';
+}
+
+function r739SproutABModeSettings(mode)
+{
+	var normalized = r739NormalizeSproutABMode(mode);
+	if (normalized === 'A') {
+		return {
+			mode: 'A',
+			label: 'A diffuse bake only',
+			diffuseBakeEnabled: true,
+			currentViewReflectionEnabled: false,
+			floorRoughness: 0.1
+		};
+	}
+	if (normalized === 'C') {
+		return {
+			mode: 'C',
+			label: 'C current-view reflection only',
+			diffuseBakeEnabled: false,
+			currentViewReflectionEnabled: true,
+			floorRoughness: 0.1
+		};
+	}
+	if (normalized === 'D') {
+		return {
+			mode: 'D',
+			label: 'D roughness 1 with current-view reflection',
+			diffuseBakeEnabled: true,
+			currentViewReflectionEnabled: true,
+			floorRoughness: 1.0
+		};
+	}
+	return {
+		mode: 'B',
+		label: 'B V2 requested diffuse plus current-view reflection',
+		diffuseBakeEnabled: true,
+		currentViewReflectionEnabled: true,
+		floorRoughness: 0.1
+	};
+}
+
+function r739SetFloorRoughnessForAB(value)
+{
+	var roughness = Number(value);
+	if (!Number.isFinite(roughness)) roughness = 0.1;
+	roughness = Math.max(0.0, Math.min(1.0, roughness));
+	if (typeof window.setFloorRoughness === 'function')
+		window.setFloorRoughness(roughness);
+	else if (pathTracingUniforms && pathTracingUniforms.uFloorRoughness)
+		pathTracingUniforms.uFloorRoughness.value = roughness;
+	return roughness;
+}
+
+window.setR739SproutABMode = function(mode)
+{
+	var settings = r739SproutABModeSettings(mode);
+	r739SproutABMode = settings.mode;
+	window.setR738C1BakePastePreviewEnabled(settings.diffuseBakeEnabled);
+	window.setR739C1CurrentViewReflectionPreviewEnabled(settings.currentViewReflectionEnabled);
+	r739SetFloorRoughnessForAB(settings.floorRoughness);
+	resetR738MainAccumulation();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-9-sprout-ab-mode');
+	return window.reportR739SproutABMode();
+};
+
+window.reportR739SproutABMode = function()
+{
+	var settings = r739SproutABModeSettings(r739SproutABMode);
+	var diffuseReport = typeof window.reportR738C1BakePastePreviewConfig === 'function'
+		? window.reportR738C1BakePastePreviewConfig()
+		: null;
+	var reflectionReport = typeof window.reportR739C1CurrentViewReflectionConfig === 'function'
+		? window.reportR739C1CurrentViewReflectionConfig()
+		: null;
+	var floorReport = typeof window.reportFloorRoughness === 'function'
+		? window.reportFloorRoughness()
+		: {
+			value: pathTracingUniforms && pathTracingUniforms.uFloorRoughness ? pathTracingUniforms.uFloorRoughness.value : null
+		};
+	var diffuseBakeApplied = !!(diffuseReport && diffuseReport.applied);
+	var currentViewReflectionApplied = !!(reflectionReport && reflectionReport.applied);
+	return {
+		version: 'r7-3-9-sprout-ab-visual-check',
+		mode: settings.mode,
+		label: settings.label,
+		requestedDiffuseBake: settings.diffuseBakeEnabled,
+		requestedCurrentViewReflection: settings.currentViewReflectionEnabled,
+		requestedFloorRoughness: settings.floorRoughness,
+		diffuseBakeApplied: diffuseBakeApplied,
+		currentViewReflectionApplied: currentViewReflectionApplied,
+		diffuseWouldBeBlockedByCurrentView: diffuseBakeApplied && currentViewReflectionApplied,
+		floorRoughness: floorReport ? floorReport.value : null,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
+		diffuseReport: diffuseReport,
+		reflectionReport: reflectionReport
+	};
+};
+
+window.logR739SproutABMode = function()
+{
+	var report = window.reportR739SproutABMode();
+	console.log('[R7-3.9 sprout A/B]', report.mode, report.label);
+	console.table({
+		mode: report.mode,
+		requestedDiffuseBake: report.requestedDiffuseBake,
+		diffuseBakeApplied: report.diffuseBakeApplied,
+		requestedCurrentViewReflection: report.requestedCurrentViewReflection,
+		currentViewReflectionApplied: report.currentViewReflectionApplied,
+		diffuseWouldBeBlockedByCurrentView: report.diffuseWouldBeBlockedByCurrentView,
+		floorRoughness: report.floorRoughness,
+		currentSamples: report.currentSamples
+	});
+	return report;
+};
+
+window.logR739SproutABHelp = function()
+{
+	console.log('R7-3.9 sprout A/B commands:');
+	console.log("await window.setR739SproutABMode('A');");
+	console.log("await window.setR739SproutABMode('B');");
+	console.log("await window.setR739SproutABMode('C');");
+	console.log("await window.setR739SproutABMode('D');");
+	console.log('window.logR739SproutABMode();');
+	return window.reportR739SproutABMode();
+};
+
 window.setR739Config1ValidationCameraState = function(state)
 {
 	if (!state || !state.position)
@@ -3425,7 +3561,7 @@ function initTHREEjs()
 		uHueB: { type: "f", value: 0.0 }          // 色相環旋轉角度（degrees），0=中性
 	};
 
-fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-9-c1-floor-reflection-roughness-v1', function (shaderText)
+fileLoader.load('shaders/ScreenOutput_Fragment.glsl?v=r7-3-10-sprout-ab-v1', function (shaderText)
 	{
 
 		screenOutputFragmentShader = shaderText;

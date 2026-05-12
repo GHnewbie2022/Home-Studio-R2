@@ -2,7 +2,7 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前 R7-3 接手重點：R7-3.9 Config 1 current-view 嫩芽反射路線已通過自動驗證與使用者畫面驗收，形成「嫩芽 V2」checkpoint；先讀本檔 `R7-3.9-config1-sprout-v2-success-checkpoint` 與 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`。
+> 目前 R7-3 接手重點：R7-3.9 Config 1 current-view 嫩芽 V2 已被 A/B 1SPP 肉眼驗收推翻；先讀本檔 `R7-3.9-config1-sprout-v2-ab-invalidated` 與 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`。
 
 ---
 
@@ -170,7 +170,7 @@
 ```yaml
 - id: R7-3.9-config1-sprout-v2-success-checkpoint
   date: 2026-05-13
-  type: reflection_visual_acceptance_checkpoint
+  type: superseded_reflection_visual_checkpoint
   branch: codex/r7-3-9-c1-reflection-bake
   checkpoint_label: r7-3-9-config1-sprout-v2-success-20260513
   scope:
@@ -179,17 +179,17 @@
     - bounds x=-1..1, z=-1..1
     - route roughness 0.1
   accepted_content:
-    - Existing R7-3.8 Config 1 sprout diffuse bake remains active.
-    - R7-3.9 current-view sprout reflection route is accepted for runtime preview.
-    - No R7-3.9 finite-view reflection cache binary is accepted as runtime data.
+    - Superseded by R7-3.9-config1-sprout-v2-ab-invalidated.
+    - Existing R7-3.8 Config 1 sprout diffuse bake remains valid.
+    - R7-3.9 current-view sprout reflection route is diagnostic only.
   user_visual_acceptance:
     - At roughness 1, the floor outside the sprout patch has no reflection, so the visible hard boundary is expected.
     - At roughness 0.1 and exactly 1000 spp, the sprout patch blends into the surrounding floor as a complete ceiling-lamp reflection.
   pointer_update:
     - docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json keeps packageStatus none because no finite reflection package is accepted.
-    - routeStatus is accepted.
-    - runtimeEnabled is true.
-    - acceptedRoute is runtime_path_tracing_current_view.
+    - Later routeStatus is invalidated_by_ab_visual_check.
+    - Later runtimeEnabled is false.
+    - Later acceptedRoute is null.
   validation:
     - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
     - node --check js/InitCommon.js
@@ -203,6 +203,34 @@
     - actualSamples: 1000
     - states: 14
     - cameraStateVariation: true
+```
+
+## R7-3.9｜Config 1 sprout V2 A/B invalidated
+
+```yaml
+- id: R7-3.9-config1-sprout-v2-ab-invalidated
+  date: 2026-05-13
+  type: reflection_visual_rejection
+  branch: codex/r7-3-10-reflection-expansion
+  user_ab_report:
+    - A diffuse at 1 spp shows a clean central sprout patch.
+    - B original V2 at 1 spp shows noisy central sprout patch, matching the surrounding live floor.
+    - C reflection-only at 1 spp matches B.
+    - D roughness 1 proves the central patch roughness is forced to 0.1.
+  console_evidence:
+    - A: diffuseBakeApplied true, currentViewReflectionApplied false, diffuseWouldBeBlockedByCurrentView false, floorRoughness 0.1.
+    - B: diffuseBakeApplied true, currentViewReflectionApplied true, diffuseWouldBeBlockedByCurrentView true, floorRoughness 0.1.
+    - C: diffuseBakeApplied false, currentViewReflectionApplied true, diffuseWouldBeBlockedByCurrentView false, floorRoughness 0.1.
+    - D: diffuseBakeApplied true, currentViewReflectionApplied true, diffuseWouldBeBlockedByCurrentView true, floorRoughness 1.
+  corrected_conclusion:
+    - The previous 1000 spp visual blend proved only that the central patch and surrounding floor could converge under live path tracing.
+    - It did not prove that the sprout patch used both baked diffuse and correct current-view reflection.
+    - Current V2 path blocks the R7-3.8 diffuse paste whenever current-view reflection is active.
+  status_update:
+    - docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json routeStatus is invalidated_by_ab_visual_check.
+    - runtimeEnabled is false.
+    - Default visual mode returns to A diffuse.
+    - A/B UI and console tools remain available for the next integration fix.
 ```
 
 ## Cloud / GIK 名詞鎖定

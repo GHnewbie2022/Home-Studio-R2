@@ -391,7 +391,7 @@ Immediate task when R7-3.9 resumes:
 
 ## 14. Current-View Route Implementation Evidence
 
-Status: automated validation complete; user visual acceptance complete for sprout V2.
+Status: automated validation complete; sprout V2 user visual acceptance invalidated by 1 spp A/B check.
 
 Evidence:
 
@@ -403,7 +403,7 @@ Evidence:
 5.  Every current-view on render and current-view off render finished at exactly 1000 spp.
 6.  The runner passed with visibleStateCount = 3, deltaStateCount = 2, and cameraStateVariation = true.
 7.  The validation report is .omc/r7-3-9-config1-current-view-reflection/20260512-234138/validation-report.json.
-8.  The accepted pointer records routeStatus = accepted and runtimeEnabled = true for runtime_path_tracing_current_view.
+8.  The accepted pointer records routeStatus = invalidated_by_ab_visual_check and runtimeEnabled = false.
 ```
 
 Follow-up fix:
@@ -428,11 +428,11 @@ Startup sync fix:
 Sprout V2 visual acceptance:
 
 ```text
-1.  User accepted the corrected runtime after the startup uniform sync fix.
-2.  At floor roughness 1, the floor outside the sprout patch has no reflection, so the visible hard boundary is expected.
-3.  At floor roughness 0.1 and exactly 1000 spp, the sprout patch blends into the surrounding floor as a complete ceiling-lamp reflection.
-4.  Clean checkpoint label: r7-3-9-config1-sprout-v2-success-20260513.
-5.  The active result is R7-3.8 sprout diffuse bake plus R7-3.9 current-view sprout reflection route.
-6.  No finite-view R7-3.9 reflection cache package is accepted as runtime data.
-7.  Latest validation report: .omc/r7-3-9-config1-current-view-reflection/20260513-005253/validation-report.json.
+1.  Later A/B visual check at 1 spp invalidated the sprout V2 acceptance.
+2.  A diffuse mode shows the central sprout patch clean.
+3.  B original V2 and C reflection-only are both noisy like live path tracing.
+4.  D roughness 1 proves the central patch roughness is forced to 0.1.
+5.  The previous 1000 spp blend did not prove baked diffuse plus reflection integration.
+6.  The active safe baseline returns to R7-3.8 sprout diffuse bake.
+7.  Current-view reflection remains diagnostic until a new integration route preserves baked diffuse at 1 spp.
 ```
