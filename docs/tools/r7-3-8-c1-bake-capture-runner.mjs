@@ -27,6 +27,7 @@ function parseArgs(argv) {
     accurateReflectionCapture: false,
     referenceOnly: false,
     surfaceCache: false,
+    currentViewValidation: false,
     accurateReflectionPreviewTest: false
   };
   for (const arg of argv) {
@@ -45,6 +46,7 @@ function parseArgs(argv) {
     else if (arg === '--accurate-reflection-capture') out.accurateReflectionCapture = true;
     else if (arg === '--reference-only') out.referenceOnly = true;
     else if (arg === '--surface-cache') out.surfaceCache = true;
+    else if (arg === '--r739-current-view-validation') out.currentViewValidation = true;
     else if (arg === '--accurate-reflection-preview-test') out.accurateReflectionPreviewTest = true;
   }
   if (!['metal', 'swiftshader', 'opengl'].includes(out.angle)) throw new Error('Invalid angle mode');
@@ -486,8 +488,9 @@ function buildR739Manifest({ report, packageDir }) {
     floorRoughnessForReflection: report.floorRoughnessForReflection,
     referenceWidth: report.buffer.width,
     referenceHeight: report.buffer.height,
-    surfaceTargets: ['floor_primary_c1'],
+    surfaceTargets: ['sprout_reflection_c1'],
     deferredSurfaceTargets: ['iron_door_west', 'speaker_stands_rotated_boxes', 'speaker_cabinets_rotated_boxes'],
+    sproutBounds: { xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 },
     cubemapRuntimeEnabled: false,
     packageDir: path.relative(repoRoot, packageDir),
     artifacts: {
@@ -513,7 +516,7 @@ function validateR739Payload({ report, validationReport, referenceBuffer, maskBu
     policy: report.policy === 'accuracy_over_speed',
     cubemapRuntimeDisabled: report.cubemapRuntimeEnabled === false,
     floorRoughnessForReflection: report.floorRoughnessForReflection === 0.1,
-    actualSamples: report.actualSamples >= report.requestedSamples,
+    actualSamples: report.actualSamples === 1000 && report.requestedSamples === 1000,
     validationPass: validationReport.status === 'pass',
     referenceBytes: referenceBuffer.length === pixels * 4 * 4,
     maskBytes: maskBuffer.length === pixels,
@@ -521,7 +524,12 @@ function validateR739Payload({ report, validationReport, referenceBuffer, maskBu
     surfaceCacheBytes: surfaceCacheBuffer.length === pixels * 4 * 4,
     directionBytes: directionBuffer.length === pixels * 8 * 4,
     texelBytes: texelBuffer.length === pixels * 8 * 4,
-    targetMaskIncludesFloor: validationReport.checks.targetMaskIncludesFloor === true,
+    targetMaskIncludesSprout: validationReport.checks.targetMaskIncludesSprout === true,
+    targetMaskExcludesFloorPrimary: validationReport.checks.targetMaskExcludesFloorPrimary === true,
+    outsideSproutPixels: validationReport.checks.outsideSproutPixels === true,
+    insideSproutPixels: validationReport.checks.insideSproutPixels === true,
+    reflectionMaxLuma: validationReport.checks.reflectionMaxLuma === true,
+    reflectionNotOverbright: validationReport.checks.reflectionNotOverbright === true,
     targetMaskExcludesIronDoorRuntimeReplacement: validationReport.checks.targetMaskExcludesIronDoorRuntimeReplacement === true,
     targetMaskExcludesSpeakerStandsRuntimeReplacement: validationReport.checks.targetMaskExcludesSpeakerStandsRuntimeReplacement === true,
     targetMaskExcludesSpeakerCabinetsRuntimeReplacement: validationReport.checks.targetMaskExcludesSpeakerCabinetsRuntimeReplacement === true
@@ -574,13 +582,15 @@ async function main() {
       ? 'typeof window.reportHomeStudioHibernationLoopState === "function"'
       : args.floorRoughnessTest
         ? 'typeof window.reportFloorRoughness === "function"'
-        : args.accurateReflectionPreviewTest
-          ? 'typeof window.reportR739C1AccurateReflectionConfig === "function"'
-          : args.previewTest
-            ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
-            : args.accurateReflectionCapture
-              ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
-              : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"';
+        : args.currentViewValidation
+          ? 'typeof window.runR739C1CurrentViewReflectionValidation === "function"'
+          : args.accurateReflectionPreviewTest
+            ? 'typeof window.reportR739C1AccurateReflectionConfig === "function"'
+            : args.previewTest
+              ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
+              : args.accurateReflectionCapture
+                ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
+                : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"';
     await waitForExpression(cdp, helperExpression, 60000);
     if (args.floorRoughnessTest) {
       console.error('[r738-runner] running floor roughness helper');
@@ -964,6 +974,47 @@ async function main() {
       completed = true;
       return;
     }
+    if (args.currentViewValidation) {
+      if (args.samples !== 1000) throw new Error('--r739-current-view-validation requires --samples=1000');
+      console.error('[r739-runner] running Config 1 current-view reflection validation helper');
+      const validationReport = await evaluate(cdp, `(() => {
+        return (async () => {
+          return await window.runR739C1CurrentViewReflectionValidation({
+            samples: 1000,
+            timeoutMs: ${args.timeoutMs},
+            sweep: true
+          });
+        })();
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs * 24 + 180000
+      });
+      if (validationReport.actualSamples !== 1000) {
+        throw new Error('R7-3.9 Config 1 current-view validation must end at exactly 1000 spp');
+      }
+      const currentViewDir = path.join(repoRoot, '.omc', 'r7-3-9-config1-current-view-reflection', timestampForPath());
+      fs.mkdirSync(currentViewDir, { recursive: true });
+      const validation = {
+        status: validationReport.status,
+        report: validationReport,
+        checks: validationReport.checks,
+        cameraStateVariation: validationReport.cameraStateVariation,
+        sproutVisiblePixels: validationReport.results.map((result) => result.summary.sproutVisiblePixels),
+        sproutDeltaMeanLuma: validationReport.results.map((result) => result.summary.sproutDeltaMeanLuma)
+      };
+      fs.writeFileSync(path.join(currentViewDir, 'validation-report.json'), `${JSON.stringify(validation, null, 2)}\n`);
+      console.log('R7-3.9 Config 1 current-view reflection validation completed');
+      console.log(`samples: ${validationReport.actualSamples}`);
+      console.log(`states: ${validationReport.results.length}`);
+      console.log(`sproutVisiblePixels: ${validation.sproutVisiblePixels.join(',')}`);
+      console.log(`sproutDeltaMeanLuma: ${validation.sproutDeltaMeanLuma.map((value) => value.toFixed(8)).join(',')}`);
+      console.log(`cameraStateVariation: ${validationReport.cameraStateVariation.changedAcrossCameraStates}`);
+      console.log(`status: ${validation.status}`);
+      console.log(`report: ${path.relative(repoRoot, currentViewDir)}`);
+      if (validation.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
     if (args.previewTest) {
       console.error('[r738-runner] running paste-preview helper');
       const previewReport = await evaluate(cdp, `(() => {
@@ -1046,6 +1097,9 @@ async function main() {
         timeoutMs: args.timeoutMs * 3 + 180000
       });
       console.error('[r739-runner] accurate reflection helper returned');
+      if (payload.report.actualSamples !== 1000 || payload.report.requestedSamples !== 1000) {
+        throw new Error('R7-3.9 Config 1 reference-only package must be exactly 1000 spp');
+      }
       const referenceBuffer = base64ToBuffer(payload.referenceBase64);
       const maskBuffer = base64ToBuffer(payload.maskBase64);
       const objectIdBuffer = base64ToBuffer(payload.objectIdsBase64);
@@ -1080,6 +1134,36 @@ async function main() {
         directionMetadataSha256: sha256(directionBuffer),
         texelMetadataSha256: sha256(texelBuffer)
       };
+      const acceptedPointer = {
+        version: manifest.version,
+        packageStatus: validation.status === 'pass' ? 'reference_only' : 'rejected',
+        packageDir: manifest.packageDir,
+        diffuseCheckpointTag: manifest.diffuseCheckpointTag,
+        policy: manifest.policy,
+        config: manifest.config,
+        cameraReferenceSamples: manifest.cameraReferenceSamples,
+        floorRoughnessForReflection: manifest.floorRoughnessForReflection,
+        referenceWidth: manifest.referenceWidth,
+        referenceHeight: manifest.referenceHeight,
+        cubemapRuntimeEnabled: manifest.cubemapRuntimeEnabled,
+        surfaceTargets: manifest.surfaceTargets,
+        deferredSurfaceTargets: manifest.deferredSurfaceTargets,
+        sproutBounds: manifest.sproutBounds,
+        artifacts: manifest.artifacts,
+        artifactHashes,
+        validation: {
+          status: validationReport.status,
+          actualSamples: validationReport.actualSamples,
+          nonFiniteReflectionSamples: validationReport.nonFiniteReflectionSamples,
+          insideSproutPixels: validationReport.insideSproutPixels,
+          outsideSproutPixels: validationReport.outsideSproutPixels,
+          reflectionMaxLuma: validationReport.reflectionMaxLuma,
+          reflectionMeanLuma: validationReport.reflectionMeanLuma,
+          targetCounts: validationReport.targetCounts
+        },
+        runtimeEnabled: false,
+        runtimeBlockReason: 'R7-3.9 reflection capture currently stores a camera-reference layer only. Do not promote it to runtime until the SOP-approved reflection format exists.'
+      };
       fs.writeFileSync(path.join(packageDir, 'manifest.json'), `${JSON.stringify({ ...manifest, artifactHashes }, null, 2)}\n`);
       fs.writeFileSync(path.join(packageDir, 'c1-camera-reflection-reference-rgba-f32.bin'), referenceBuffer);
       fs.writeFileSync(path.join(packageDir, 'c1-camera-reflection-mask-u8.bin'), maskBuffer);
@@ -1089,6 +1173,7 @@ async function main() {
       fs.writeFileSync(path.join(packageDir, 'surface-reflection-texel-metadata-f32.bin'), texelBuffer);
       fs.writeFileSync(path.join(packageDir, 'reflection-target-summary.json'), `${JSON.stringify(payload.targetSummary, null, 2)}\n`);
       fs.writeFileSync(path.join(packageDir, 'validation-report.json'), `${JSON.stringify(validationReport, null, 2)}\n`);
+      fs.writeFileSync(path.join(packageDir, 'reference-pointer.json'), `${JSON.stringify(acceptedPointer, null, 2)}\n`);
       console.log('R7-3.9 C1 accurate reflection capture completed');
       console.log(`samples: ${payload.report.actualSamples}`);
       console.log(`buffer: ${payload.report.buffer.width}x${payload.report.buffer.height}`);

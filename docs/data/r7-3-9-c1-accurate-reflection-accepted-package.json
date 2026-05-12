@@ -1,53 +1,49 @@
 {
-  "version": "r7-3-9-c1-accurate-reflection-bake",
-  "packageStatus": "accepted",
-  "packageDir": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900",
-  "diffuseCheckpointTag": "r7-3-8-c1-diffuse-bake-success-20260511",
-  "policy": "accuracy_over_speed",
-  "config": 1,
-  "cameraReferenceSamples": 1000,
-  "floorRoughnessForReflection": 0.1,
-  "referenceWidth": 1280,
-  "referenceHeight": 720,
+  "version": "r7-3-9-config1-current-view-reflection",
+  "packageStatus": "none",
+  "routeStatus": "accepted",
+  "runtimeEnabled": true,
+  "acceptedRoute": "runtime_path_tracing_current_view",
   "cubemapRuntimeEnabled": false,
+  "packageDir": null,
   "surfaceTargets": [
-    "floor_primary_c1"
+    "sprout_reflection_c1"
   ],
-  "deferredSurfaceTargets": [
-    "iron_door_west",
-    "speaker_stands_rotated_boxes",
-    "speaker_cabinets_rotated_boxes"
-  ],
-  "artifacts": {
-    "reference": "c1-camera-reflection-reference-rgba-f32.bin",
-    "mask": "c1-camera-reflection-mask-u8.bin",
-    "objectIds": "c1-camera-reflection-object-id-u16.bin",
-    "surfaceCache": "surface-reflection-cache-rgba-f32.bin",
-    "directionMetadata": "surface-reflection-direction-metadata-f32.bin",
-    "texelMetadata": "surface-reflection-texel-metadata-f32.bin",
-    "summary": "reflection-target-summary.json",
-    "validationReport": "validation-report.json"
+  "deferredSurfaceTargets": [],
+  "checkpoint": {
+    "label": "r7-3-9-config1-sprout-v2-success-20260513",
+    "description": "Clean sprout V2 checkpoint: accepted R7-3.8 diffuse bake plus accepted R7-3.9 Config 1 current-view sprout reflection route."
   },
-  "artifactHashes": {
-    "referenceSha256": "4c4d6de490db322c48eda7ea4e15a3a82d0ca2a2525309e2c57b3c7303d5c229",
-    "maskSha256": "ad0d59e4b12906612fc4e75b31bf771f69c05ddc33310e37514516216c55e129",
-    "objectIdsSha256": "2591a1e83a819c891434e5bbe9067126a6917efc66cb73c8151de53f1c731fe7",
-    "surfaceCacheSha256": "4c4d6de490db322c48eda7ea4e15a3a82d0ca2a2525309e2c57b3c7303d5c229",
-    "directionMetadataSha256": "b3f741cc7fa4043021f57d60886b434d5e2f212ce8f557a62a3d7880f7f863b6",
-    "texelMetadataSha256": "5b1a516040e5f4a39fb258b36a9d622a617c54fa27e52bb147ed883833c8dbab"
+  "routeContract": {
+    "config": 1,
+    "target": "sprout_reflection_c1",
+    "bounds": {
+      "xMin": -1.0,
+      "xMax": 1.0,
+      "zMin": -1.0,
+      "zMax": 1.0
+    },
+    "roughness": 0.1,
+    "samplesForReferenceOnlyProbe": 1000,
+    "exactSamplesRequired": true
+  },
+  "visualAcceptance": {
+    "date": "2026-05-13",
+    "acceptedByUser": true,
+    "roughnessOneObservation": "At floor roughness 1, the floor outside the sprout patch has no reflection, so the sprout boundary is expected to look hard.",
+    "roughnessPointOneObservation": "At floor roughness 0.1 and exactly 1000 spp, the sprout reflection blends into the surrounding floor as a complete ceiling-lamp reflection."
   },
   "validation": {
-    "status": "pass",
-    "actualSamples": 1000,
-    "nonFiniteReflectionSamples": 0,
-    "targetCounts": {
-      "floor_primary_c1": 96170,
-      "iron_door_west": 0,
-      "speaker_stands_rotated_boxes": 0,
-      "speaker_cabinets_rotated_boxes": 0,
-      "background": 825430
-    }
+    "automatedStatus": "pass",
+    "userVisualAcceptance": "pass",
+    "latestReport": ".omc/r7-3-9-config1-current-view-reflection/20260513-005253/validation-report.json",
+    "latestActualSamples": 1000,
+    "cameraStateVariation": true
   },
-  "sourcePackage": ".omc/r7-3-9-c1-accurate-reflection-bake/20260511-190523",
-  "fixNote": "Scaled R7-3.9 reflection cache back from an accidental extra division by cameraReferenceSamples."
+  "clearedAt": "2026-05-12",
+  "clearedPackages": [
+    ".omc/r7-3-9-c1-accurate-reflection-bake/",
+    ".omc/r7-3-9-c1-accurate-reflection-preview/"
+  ],
+  "activeDiffusePackage": "docs/data/r7-3-8-c1-bake-accepted-package.json"
 }

@@ -1040,6 +1040,7 @@ function summarizeR738RawHdrPixels(readback, samples)
 
 const R738_C1_BAKE_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-8-c1-bake-accepted-package.json';
 const R739_C1_ACCURATE_REFLECTION_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json';
+const R739_C1_SPROUT_REFLECTION_BOUNDS = Object.freeze({ xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 });
 let r738C1BakePastePreviewEnabled = true;
 let r738C1BakePastePreviewReady = false;
 let r738C1BakePastePreviewLoadPromise = null;
@@ -1047,12 +1048,67 @@ let r738C1BakePastePreviewPackage = null;
 let r738C1BakePastePreviewError = null;
 let r738C1BakePastePreviewTexture = null;
 let r738C1BakePastePreviewStrength = 1.0;
-let r739C1AccurateReflectionEnabled = true;
+let r739C1AccurateReflectionEnabled = false;
 let r739C1AccurateReflectionReady = false;
 let r739C1AccurateReflectionLoadPromise = null;
 let r739C1AccurateReflectionPackage = null;
 let r739C1AccurateReflectionError = null;
 let r739C1AccurateReflectionTexture = null;
+let r739C1CurrentViewReflectionPreviewEnabled = true;
+let r739C1CurrentViewReflectionValidationEnabled = false;
+let r739C1CurrentViewReflectionReady = true;
+let r739C1CurrentViewReflectionError = null;
+let r739C1CurrentViewReflectionRoughness = 0.1;
+
+const R739_C1_CURRENT_VIEW_VALIDATION_CAMERA_STATES = Object.freeze([
+	{
+		name: 'center_forward',
+		position: { x: 0.0, y: 1.6, z: 4.5 },
+		yaw: 0.0,
+		pitch: -0.18,
+		fov: 55
+	},
+	{
+		name: 'left_forward',
+		position: { x: -1.8, y: 1.6, z: 4.0 },
+		yaw: 0.42,
+		pitch: -0.36,
+		fov: 55
+	},
+	{
+		name: 'left_mid_forward',
+		position: { x: -1.2, y: 1.55, z: 4.0 },
+		yaw: 0.20,
+		pitch: -0.20,
+		fov: 55
+	},
+	{
+		name: 'left_wide_forward',
+		position: { x: -1.6, y: 1.55, z: 4.4 },
+		yaw: 0.25,
+		pitch: -0.18,
+		fov: 55
+	},
+	{
+		name: 'center_left_forward',
+		position: { x: -0.6, y: 1.55, z: 4.2 },
+		yaw: 0.10,
+		pitch: -0.18,
+		fov: 55
+	}
+]);
+
+const R739_C1_CURRENT_VIEW_VALIDATION_SWEEP_STATES = Object.freeze([
+	{ name: 'sweep_00', position: { x: -1.8, y: 1.60, z: 4.0 }, yaw: 0.42, pitch: -0.36, fov: 55 },
+	{ name: 'sweep_01', position: { x: -1.6, y: 1.55, z: 4.4 }, yaw: 0.25, pitch: -0.18, fov: 55 },
+	{ name: 'sweep_02', position: { x: -1.4, y: 1.55, z: 4.2 }, yaw: 0.23, pitch: -0.18, fov: 55 },
+	{ name: 'sweep_03', position: { x: -1.2, y: 1.55, z: 4.0 }, yaw: 0.20, pitch: -0.20, fov: 55 },
+	{ name: 'sweep_04', position: { x: -1.0, y: 1.55, z: 4.1 }, yaw: 0.17, pitch: -0.18, fov: 55 },
+	{ name: 'sweep_05', position: { x: -0.8, y: 1.55, z: 4.2 }, yaw: 0.14, pitch: -0.18, fov: 55 },
+	{ name: 'sweep_06', position: { x: -0.6, y: 1.55, z: 4.2 }, yaw: 0.10, pitch: -0.18, fov: 55 },
+	{ name: 'sweep_07', position: { x: -0.3, y: 1.58, z: 4.4 }, yaw: 0.05, pitch: -0.18, fov: 55 },
+	{ name: 'sweep_08', position: { x: 0.0, y: 1.60, z: 4.5 }, yaw: 0.0, pitch: -0.18, fov: 55 }
+]);
 
 function r738C1BakePastePreviewConfigAllowed()
 {
@@ -1091,6 +1147,11 @@ function r739C1AccurateReflectionConfigAllowed()
 	return (typeof currentPanelConfig === 'number') ? currentPanelConfig === 1 : true;
 }
 
+function r739C1CurrentViewReflectionConfigAllowed()
+{
+	return (typeof currentPanelConfig === 'number') ? currentPanelConfig === 1 : false;
+}
+
 function updateR739C1AccurateReflectionUniforms()
 {
 	if (!pathTracingUniforms) return false;
@@ -1114,6 +1175,27 @@ function updateR739C1AccurateReflectionUniforms()
 		pathTracingUniforms.uR739C1ReflectionFloorRoughness.value = packageFloorRoughness;
 	if (r739C1AccurateReflectionTexture && pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture)
 		pathTracingUniforms.tR739C1ReflectionSurfaceCacheTexture.value = r739C1AccurateReflectionTexture;
+	return applied;
+}
+
+function updateR739C1CurrentViewReflectionUniforms()
+{
+	if (!pathTracingUniforms) return false;
+	var captureMode = pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0;
+	var referenceMode = pathTracingUniforms.uR739C1ReflectionReferenceMode ? pathTracingUniforms.uR739C1ReflectionReferenceMode.value : 0;
+	var maskMode = pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode ? pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value : 0;
+	var applied = (r739C1CurrentViewReflectionPreviewEnabled || r739C1CurrentViewReflectionValidationEnabled) &&
+		r739C1CurrentViewReflectionReady &&
+		r739C1CurrentViewReflectionConfigAllowed() &&
+		captureMode === 0 &&
+		referenceMode === 0 &&
+		maskMode === 0;
+	if (pathTracingUniforms.uR739C1CurrentViewReflectionMode)
+		pathTracingUniforms.uR739C1CurrentViewReflectionMode.value = applied ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR739C1CurrentViewReflectionReady)
+		pathTracingUniforms.uR739C1CurrentViewReflectionReady.value = r739C1CurrentViewReflectionReady ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR739C1CurrentViewReflectionRoughness)
+		pathTracingUniforms.uR739C1CurrentViewReflectionRoughness.value = r739C1CurrentViewReflectionRoughness;
 	return applied;
 }
 
@@ -1187,6 +1269,8 @@ function captureR738BakeState()
 		patchResolution: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution ? pathTracingUniforms.uR738C1BakePatchResolution.value : 512,
 		diffuseOnlyMode: pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode ? pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value : 0.0,
 		r739AccurateReflectionMode: pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode ? pathTracingUniforms.uR739C1AccurateReflectionMode.value : 0.0,
+		r739CurrentViewReflectionMode: pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionMode ? pathTracingUniforms.uR739C1CurrentViewReflectionMode.value : 0.0,
+		r739CurrentViewReflectionReady: pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionReady ? pathTracingUniforms.uR739C1CurrentViewReflectionReady.value : 0.0,
 		r739ReflectionReferenceMode: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReferenceMode ? pathTracingUniforms.uR739C1ReflectionReferenceMode.value : 0.0,
 		r739ReflectionSurfaceMaskMode: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode ? pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value : 0.0,
 		r739ReflectionReady: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReady ? pathTracingUniforms.uR739C1ReflectionReady.value : 0.0,
@@ -1213,6 +1297,8 @@ function restoreR738BakeState(state)
 	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution) pathTracingUniforms.uR738C1BakePatchResolution.value = state.patchResolution;
 	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode) pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value = state.diffuseOnlyMode;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = state.r739AccurateReflectionMode;
+	if (pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionMode) pathTracingUniforms.uR739C1CurrentViewReflectionMode.value = state.r739CurrentViewReflectionMode;
+	if (pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionReady) pathTracingUniforms.uR739C1CurrentViewReflectionReady.value = state.r739CurrentViewReflectionReady;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReferenceMode) pathTracingUniforms.uR739C1ReflectionReferenceMode.value = state.r739ReflectionReferenceMode;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode) pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode.value = state.r739ReflectionSurfaceMaskMode;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReady) pathTracingUniforms.uR739C1ReflectionReady.value = state.r739ReflectionReady;
@@ -1236,6 +1322,7 @@ function restoreR738BakeState(state)
 	if (typeof updateR73QuickPreviewFillUniforms === 'function') updateR73QuickPreviewFillUniforms();
 	if (typeof updateR738C1BakePastePreviewUniforms === 'function') updateR738C1BakePastePreviewUniforms();
 	if (typeof updateR739C1AccurateReflectionUniforms === 'function') updateR739C1AccurateReflectionUniforms();
+	if (typeof updateR739C1CurrentViewReflectionUniforms === 'function') updateR739C1CurrentViewReflectionUniforms();
 	if (typeof window.updateSamplingControls === 'function') window.updateSamplingControls();
 	if (typeof wakeRender === 'function') wakeRender();
 }
@@ -1773,6 +1860,91 @@ async function renderR739MainReadback(targetSamples, timeoutMs, referenceMode, o
 	};
 }
 
+async function renderR739CurrentViewExactSamples(targetSamples, timeoutMs, currentViewEnabled)
+{
+	var target = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+	if (target !== 1000)
+		throw new Error('R7-3.9 Config 1 current-view validation requires exactly 1000 spp');
+	var savedPreviewEnabled = r739C1CurrentViewReflectionPreviewEnabled;
+	try
+	{
+		r739C1CurrentViewReflectionPreviewEnabled = false;
+		window.setR739C1CurrentViewReflectionValidationEnabled(!!currentViewEnabled);
+		var report = await renderR739MainReadback(target, timeoutMs, 0.0, { floorRoughness: 1.0 });
+		if (report.actualSamples !== 1000)
+			throw new Error('R7-3.9 Config 1 current-view validation ended at ' + report.actualSamples + ' spp');
+		return report;
+	}
+	finally
+	{
+		r739C1CurrentViewReflectionPreviewEnabled = savedPreviewEnabled;
+		r739C1CurrentViewReflectionReady = r739C1CurrentViewReflectionPreviewEnabled || r739C1CurrentViewReflectionValidationEnabled;
+		updateR739C1CurrentViewReflectionUniforms();
+	}
+}
+
+function summarizeR739SproutCurrentViewDelta(onReadback, offReadback, maskReadback, samples)
+{
+	var width = onReadback.width;
+	var height = onReadback.height;
+	var divisor = Math.max(1, Number(samples) || 1);
+	var onPixels = onReadback.pixels;
+	var offPixels = offReadback.pixels;
+	var maskPixels = maskReadback.pixels;
+	var sproutVisiblePixels = 0;
+	var nonFiniteDeltaPixels = 0;
+	var deltaSum = 0.0;
+	var deltaMax = 0.0;
+	var signedDeltaSum = 0.0;
+	for (var i = 0; i < onPixels.length; i += 4)
+	{
+		if (Math.round(maskPixels[i]) !== 1)
+			continue;
+		var dr = (onPixels[i] - offPixels[i]) / divisor;
+		var dg = (onPixels[i + 1] - offPixels[i + 1]) / divisor;
+		var db = (onPixels[i + 2] - offPixels[i + 2]) / divisor;
+		if (!Number.isFinite(dr) || !Number.isFinite(dg) || !Number.isFinite(db))
+		{
+			nonFiniteDeltaPixels += 1;
+			continue;
+		}
+		sproutVisiblePixels += 1;
+		var signedLuma = 0.2126 * dr + 0.7152 * dg + 0.0722 * db;
+		var absLuma = Math.abs(signedLuma);
+		signedDeltaSum += signedLuma;
+		deltaSum += absLuma;
+		if (absLuma > deltaMax) deltaMax = absLuma;
+	}
+	return {
+		width: width,
+		height: height,
+		samples: samples,
+		sproutVisiblePixels: sproutVisiblePixels,
+		nonFiniteDeltaPixels: nonFiniteDeltaPixels,
+		sproutDeltaMeanLuma: sproutVisiblePixels ? deltaSum / sproutVisiblePixels : 0.0,
+		sproutSignedDeltaMeanLuma: sproutVisiblePixels ? signedDeltaSum / sproutVisiblePixels : 0.0,
+		sproutDeltaMaxLuma: deltaMax
+	};
+}
+
+function r739CameraStateVariation(results)
+{
+	var visibleCounts = results.map(function(result) { return result.summary.sproutVisiblePixels; });
+	var deltas = results.map(function(result) { return result.summary.sproutDeltaMeanLuma; });
+	var minVisible = Math.min.apply(Math, visibleCounts);
+	var maxVisible = Math.max.apply(Math, visibleCounts);
+	var minDelta = Math.min.apply(Math, deltas);
+	var maxDelta = Math.max.apply(Math, deltas);
+	return {
+		stateCount: results.length,
+		minSproutVisiblePixels: Number.isFinite(minVisible) ? minVisible : 0,
+		maxSproutVisiblePixels: Number.isFinite(maxVisible) ? maxVisible : 0,
+		minSproutDeltaMeanLuma: Number.isFinite(minDelta) ? minDelta : 0.0,
+		maxSproutDeltaMeanLuma: Number.isFinite(maxDelta) ? maxDelta : 0.0,
+		changedAcrossCameraStates: Number.isFinite(minDelta) && Number.isFinite(maxDelta) && Math.abs(maxDelta - minDelta) > 0.00001
+	};
+}
+
 async function captureR739SurfaceReadback(surfaceMaskMode)
 {
 	if (!renderer || !pathTracingScene || !worldCamera || !screenCopyScene || !orthoCamera || !pathTracingUniforms || !screenCopyUniforms)
@@ -1826,11 +1998,17 @@ async function captureR739SurfaceReadback(surfaceMaskMode)
 
 function r739SurfaceNameForId(id)
 {
-	if (id === 1) return 'floor_primary_c1';
+	if (id === 1) return 'sprout_reflection_c1';
 	if (id === 2) return 'iron_door_west';
 	if (id === 3) return 'speaker_stands_rotated_boxes';
 	if (id === 4) return 'speaker_cabinets_rotated_boxes';
 	return 'background';
+}
+
+function r739PositionInsideSproutReflectionBounds(x, z)
+{
+	var b = R739_C1_SPROUT_REFLECTION_BOUNDS;
+	return x >= b.xMin && x <= b.xMax && z >= b.zMin && z <= b.zMax;
 }
 
 function r739OctEncode(direction)
@@ -1862,13 +2040,19 @@ function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadba
 	var directionMetadata = new Float32Array(pixelCount * 8);
 	var texelMetadata = new Float32Array(pixelCount * 8);
 	var counts = {
-		floor_primary_c1: 0,
+		sprout_reflection_c1: 0,
 		iron_door_west: 0,
 		speaker_stands_rotated_boxes: 0,
 		speaker_cabinets_rotated_boxes: 0,
 		background: 0
 	};
 	var nonFiniteReflectionSamples = 0;
+	var insideSproutPixels = 0;
+	var outsideSproutPixels = 0;
+	var reflectionMaxLuma = 0.0;
+	var reflectionSumLuma = 0.0;
+	var reflectionLumaCount = 0;
+	var sampleDivisor = Math.max(1.0, Number(samples) || 1.0);
 	var cameraPos = worldCamera ? worldCamera.position : { x: 0, y: 0, z: 0 };
 	for (var p = 0, i = 0; p < pixelCount; p += 1, i += 4)
 	{
@@ -1879,25 +2063,36 @@ function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadba
 		targetMask[p] = targetId;
 		objectIds[p] = targetId > 0 ? objectId : 0;
 		counts[r739SurfaceNameForId(targetId)] += 1;
-		var worldX = positionReadback.pixels[i];
-		var worldY = positionReadback.pixels[i + 1];
-		var worldZ = positionReadback.pixels[i + 2];
+		var worldX = positionReadback.pixels[i] * 20.0 - 10.0;
+		var worldY = positionReadback.pixels[i + 1] * 20.0 - 10.0;
+		var worldZ = positionReadback.pixels[i + 2] * 20.0 - 10.0;
 		var normalX = normalReadback.pixels[i] * 2.0 - 1.0;
 		var normalY = normalReadback.pixels[i + 1] * 2.0 - 1.0;
 		var normalZ = normalReadback.pixels[i + 2] * 2.0 - 1.0;
+		if (targetId === 1)
+		{
+			if (r739PositionInsideSproutReflectionBounds(worldX, worldZ))
+				insideSproutPixels += 1;
+			else
+				outsideSproutPixels += 1;
+		}
 		var rx = 0.0;
 		var ry = 0.0;
 		var rz = 0.0;
 		if (targetId > 0)
 		{
-			rx = Math.max(0, fullReadback.pixels[i] - disabledReadback.pixels[i]);
-			ry = Math.max(0, fullReadback.pixels[i + 1] - disabledReadback.pixels[i + 1]);
-			rz = Math.max(0, fullReadback.pixels[i + 2] - disabledReadback.pixels[i + 2]);
+			rx = Math.max(0, fullReadback.pixels[i] - disabledReadback.pixels[i]) / sampleDivisor;
+			ry = Math.max(0, fullReadback.pixels[i + 1] - disabledReadback.pixels[i + 1]) / sampleDivisor;
+			rz = Math.max(0, fullReadback.pixels[i + 2] - disabledReadback.pixels[i + 2]) / sampleDivisor;
 			if (!Number.isFinite(rx) || !Number.isFinite(ry) || !Number.isFinite(rz))
 			{
 				nonFiniteReflectionSamples += 1;
 				rx = 0.0; ry = 0.0; rz = 0.0;
 			}
+			var reflectionLuma = 0.299 * rx + 0.587 * ry + 0.114 * rz;
+			reflectionMaxLuma = Math.max(reflectionMaxLuma, reflectionLuma);
+			reflectionSumLuma += reflectionLuma;
+			reflectionLumaCount += 1;
 		}
 		referencePixels[i] = rx;
 		referencePixels[i + 1] = ry;
@@ -1939,6 +2134,10 @@ function buildR739ReflectionArtifacts(fullReadback, disabledReadback, maskReadba
 			pixelCount: pixelCount,
 			targetCounts: counts,
 			nonFiniteReflectionSamples: nonFiniteReflectionSamples,
+			insideSproutPixels: insideSproutPixels,
+			outsideSproutPixels: outsideSproutPixels,
+			reflectionMaxLuma: reflectionMaxLuma,
+			reflectionMeanLuma: reflectionLumaCount > 0 ? reflectionSumLuma / reflectionLumaCount : 0.0,
 			includedTargets: Object.keys(counts).filter(function(name) { return name !== 'background' && counts[name] > 0; })
 		}
 	};
@@ -1950,9 +2149,14 @@ function buildR739ValidationReport(report, artifacts)
 	var checks = {
 		version: report.version === 'r7-3-9-c1-accurate-reflection-bake',
 		config: report.config === 1,
-		actualSamples: report.actualSamples >= report.requestedSamples,
+		actualSamples: report.actualSamples === 1000 && report.requestedSamples === 1000,
 		nonFiniteReflectionSamples: artifacts.summary.nonFiniteReflectionSamples === 0,
-		targetMaskIncludesFloor: counts.floor_primary_c1 > 0,
+		targetMaskIncludesSprout: counts.sprout_reflection_c1 > 0,
+		targetMaskExcludesFloorPrimary: counts.floor_primary_c1 === undefined,
+		outsideSproutPixels: artifacts.summary.outsideSproutPixels === 0,
+		insideSproutPixels: artifacts.summary.insideSproutPixels > 0,
+		reflectionMaxLuma: artifacts.summary.reflectionMaxLuma > 0.05,
+		reflectionNotOverbright: artifacts.summary.reflectionMaxLuma < 2.0 && artifacts.summary.reflectionMeanLuma < 1.0,
 		targetMaskExcludesIronDoorRuntimeReplacement: counts.iron_door_west === 0,
 		targetMaskExcludesSpeakerStandsRuntimeReplacement: counts.speaker_stands_rotated_boxes === 0,
 		targetMaskExcludesSpeakerCabinetsRuntimeReplacement: counts.speaker_cabinets_rotated_boxes === 0,
@@ -1965,6 +2169,10 @@ function buildR739ValidationReport(report, artifacts)
 		height: report.buffer.height,
 		actualSamples: report.actualSamples,
 		nonFiniteReflectionSamples: artifacts.summary.nonFiniteReflectionSamples,
+		insideSproutPixels: artifacts.summary.insideSproutPixels,
+		outsideSproutPixels: artifacts.summary.outsideSproutPixels,
+		reflectionMaxLuma: artifacts.summary.reflectionMaxLuma,
+		reflectionMeanLuma: artifacts.summary.reflectionMeanLuma,
 		targetCounts: counts
 	};
 }
@@ -1979,8 +2187,14 @@ window.reportR739C1AccurateReflectionAfterSamples = async function(targetSamples
 	{
 		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
 		var floorRoughness = Number.isFinite(options.floorRoughness) ? options.floorRoughness : 0.1;
-		var full = await renderR739MainReadback(target, timeout, 0.0, { floorRoughness: floorRoughness });
-		var disabled = await renderR739MainReadback(target, timeout, 2.0, { floorRoughness: floorRoughness });
+		var full = await renderR739MainReadback(target, timeout, 1.0, { floorRoughness: floorRoughness });
+		var disabled = {
+			readback: {
+				width: full.readback.width,
+				height: full.readback.height,
+				pixels: new Float32Array(full.readback.pixels.length)
+			}
+		};
 		var mask = await captureR739SurfaceReadback(1.0);
 		var position = await captureR739SurfaceReadback(2.0);
 		var normal = await captureR739SurfaceReadback(3.0);
@@ -2048,6 +2262,8 @@ async function loadR739C1AccurateReflectionPackage()
 			var pointer = await pointerResponse.json();
 			if (pointer.packageStatus !== 'accepted' || pointer.cubemapRuntimeEnabled !== false)
 				throw new Error('R7-3.9 reflection pointer is not accepted');
+			if (!pointer.surfaceTargets || pointer.surfaceTargets.length !== 1 || pointer.surfaceTargets[0] !== 'sprout_reflection_c1')
+				throw new Error('R7-3.9 reflection pointer is not sprout-only');
 			var width = pointer.referenceWidth || 1280;
 			var height = pointer.referenceHeight || 720;
 			var packageDir = pointer.packageDir;
@@ -2093,8 +2309,6 @@ window.waitForR739C1AccurateReflectionReady = async function(timeoutMs)
 {
 	var timeout = normalizeR738PositiveInt(timeoutMs, 60000, 1000, 600000);
 	var start = performance.now();
-	if (!r739C1AccurateReflectionLoadPromise)
-		loadR739C1AccurateReflectionPackage().catch(function() {});
 	while (performance.now() - start < timeout)
 	{
 		if (r739C1AccurateReflectionReady)
@@ -2110,10 +2324,7 @@ window.setR739C1AccurateReflectionEnabled = function(enabled)
 {
 	r739C1AccurateReflectionEnabled = !!enabled;
 	updateR739C1AccurateReflectionUniforms();
-	if (r739C1AccurateReflectionEnabled && !r739C1AccurateReflectionReady)
-		loadR739C1AccurateReflectionPackage().catch(function() {});
-	else
-		resetR738MainAccumulation();
+	resetR738MainAccumulation();
 	if (typeof wakeRender === 'function') wakeRender('r7-3-9-c1-accurate-reflection-toggle');
 	return window.reportR739C1AccurateReflectionConfig();
 };
@@ -2149,6 +2360,171 @@ window.reportR739C1AccurateReflectionConfig = function()
 		uniformReady: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReady ? pathTracingUniforms.uR739C1ReflectionReady.value : null,
 		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 	};
+};
+
+window.setR739C1CurrentViewReflectionValidationEnabled = function(enabled)
+{
+	r739C1CurrentViewReflectionValidationEnabled = !!enabled;
+	r739C1CurrentViewReflectionReady = r739C1CurrentViewReflectionPreviewEnabled || r739C1CurrentViewReflectionValidationEnabled;
+	r739C1CurrentViewReflectionError = null;
+	updateR739C1CurrentViewReflectionUniforms();
+	resetR738MainAccumulation();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-9-current-view-reflection-validation-toggle');
+	return window.reportR739C1CurrentViewReflectionConfig();
+};
+
+window.setR739C1CurrentViewReflectionPreviewEnabled = function(enabled)
+{
+	r739C1CurrentViewReflectionPreviewEnabled = !!enabled;
+	r739C1CurrentViewReflectionReady = r739C1CurrentViewReflectionPreviewEnabled || r739C1CurrentViewReflectionValidationEnabled;
+	r739C1CurrentViewReflectionError = null;
+	updateR739C1CurrentViewReflectionUniforms();
+	resetR738MainAccumulation();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-9-current-view-reflection-preview-toggle');
+	return window.reportR739C1CurrentViewReflectionConfig();
+};
+
+window.reportR739C1CurrentViewReflectionConfig = function()
+{
+	var applied = updateR739C1CurrentViewReflectionUniforms();
+	var cameraPosition = cameraControlsObject ? cameraControlsObject.position : (worldCamera ? worldCamera.position : null);
+	return {
+		version: 'r7-3-9-config1-current-view-reflection',
+		previewEnabled: r739C1CurrentViewReflectionPreviewEnabled,
+		enabled: r739C1CurrentViewReflectionValidationEnabled,
+		ready: r739C1CurrentViewReflectionReady,
+		applied: applied,
+		error: r739C1CurrentViewReflectionError,
+		currentPanelConfig: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0,
+		configAllowed: r739C1CurrentViewReflectionConfigAllowed(),
+		routeKind: applied ? 'runtime_path_tracing_current_view' : null,
+		computeFromCurrentCamera: applied,
+		finiteViewBakeRuntimeEnabled: false,
+		nearestDirectionLookupEnabled: false,
+		directionInterpolationEnabled: false,
+		cubemapRuntimeEnabled: false,
+		screenCopyFallbackEnabled: false,
+		zeroFillFallbackEnabled: false,
+		liveNoiseFallbackEnabled: false,
+		surfaceTarget: 'sprout_reflection_c1',
+		bounds: R739_C1_SPROUT_REFLECTION_BOUNDS,
+		routeRoughness: r739C1CurrentViewReflectionRoughness,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
+		cameraPosition: cameraPosition ? {
+			x: cameraPosition.x,
+			y: cameraPosition.y,
+			z: cameraPosition.z
+		} : null
+	};
+};
+
+window.setR739Config1ValidationCameraState = function(state)
+{
+	if (!state || !state.position)
+		throw new Error('R7-3.9 validation camera state missing position');
+	if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+	cameraControlsObject.position.set(state.position.x, state.position.y, state.position.z);
+	cameraControlsPitchObject.rotation.set(Number(state.pitch) || 0, 0, 0);
+	cameraControlsYawObject.rotation.set(0, Number(state.yaw) || 0, 0);
+	inputRotationHorizontal = Number(state.yaw) || 0;
+	inputRotationVertical = Number(state.pitch) || 0;
+	oldYawRotation = inputRotationHorizontal;
+	oldPitchRotation = inputRotationVertical;
+	worldCamera.fov = Number.isFinite(Number(state.fov)) ? Number(state.fov) : 55;
+	fovScale = worldCamera.fov * 0.5 * (Math.PI / 180.0);
+	pathTracingUniforms.uVLen.value = Math.tan(fovScale);
+	pathTracingUniforms.uULen.value = pathTracingUniforms.uVLen.value * worldCamera.aspect;
+	cameraControlsObject.updateMatrixWorld(true);
+	cameraControlsYawObject.updateMatrixWorld(true);
+	cameraControlsPitchObject.updateMatrixWorld(true);
+	worldCamera.updateMatrixWorld(true);
+	pathTracingScene.updateMatrixWorld(true);
+	pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+	resetR738MainAccumulation();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-9-current-view-validation-camera');
+	return window.reportR739C1CurrentViewReflectionConfig();
+};
+
+window.runR739C1CurrentViewReflectionValidation = async function(options)
+{
+	options = options || {};
+	var timeout = normalizeR738PositiveInt(options.timeoutMs, 180000, 1000, 3600000);
+	var sampleTarget = normalizeR738PositiveInt(options.samples, 1000, 1, 1000000);
+	if (sampleTarget !== 1000)
+		throw new Error('R7-3.9 Config 1 current-view validation requires exactly 1000 spp');
+	var states = options.sweep === true ?
+		R739_C1_CURRENT_VIEW_VALIDATION_CAMERA_STATES.concat(R739_C1_CURRENT_VIEW_VALIDATION_SWEEP_STATES) :
+		R739_C1_CURRENT_VIEW_VALIDATION_CAMERA_STATES;
+	var state = captureR738BakeState();
+	var results = [];
+	try
+	{
+		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+		for (var i = 0; i < states.length; i += 1)
+		{
+			var cameraState = states[i];
+			window.setR739Config1ValidationCameraState(cameraState);
+			window.setR739C1CurrentViewReflectionValidationEnabled(false);
+			var maskReadback = await captureR739SurfaceReadback(1.0);
+			var offReport = await renderR739CurrentViewExactSamples(1000, timeout, false);
+			var onReport = await renderR739CurrentViewExactSamples(1000, timeout, true);
+			var routeReport = window.reportR739C1CurrentViewReflectionConfig();
+			var summary = summarizeR739SproutCurrentViewDelta(onReport.readback, offReport.readback, maskReadback, 1000);
+			results.push({
+				cameraState: cameraState,
+				routeReport: routeReport,
+				actualSamples: onReport.actualSamples,
+				offSamples: offReport.actualSamples,
+				summary: summary
+			});
+		}
+		var cameraStateVariation = r739CameraStateVariation(results);
+		var visibleResults = results.filter(function(result) { return result.summary.sproutVisiblePixels > 0; });
+		var deltaResults = visibleResults.filter(function(result) { return result.summary.sproutDeltaMeanLuma > 0.000001; });
+		var checks = {
+			version: true,
+			config: results.every(function(result) { return result.routeReport.currentPanelConfig === 1 && result.routeReport.configAllowed === true; }),
+			exactSamples: results.every(function(result) { return result.actualSamples === 1000 && result.offSamples === 1000; }),
+			currentViewRouteApplied: results.every(function(result) { return result.routeReport.applied === true && result.routeReport.computeFromCurrentCamera === true; }),
+			rejectsFiniteViewBakeRuntime: results.every(function(result) { return result.routeReport.finiteViewBakeRuntimeEnabled === false; }),
+			rejectsLookupFallbacks: results.every(function(result) {
+				return result.routeReport.nearestDirectionLookupEnabled === false &&
+					result.routeReport.directionInterpolationEnabled === false &&
+					result.routeReport.cubemapRuntimeEnabled === false &&
+					result.routeReport.screenCopyFallbackEnabled === false &&
+					result.routeReport.zeroFillFallbackEnabled === false &&
+					result.routeReport.liveNoiseFallbackEnabled === false;
+			}),
+			roughness: results.every(function(result) { return result.routeReport.routeRoughness === 0.1; }),
+			sproutVisiblePixels: visibleResults.length >= 3,
+			finiteDelta: results.every(function(result) { return result.summary.nonFiniteDeltaPixels === 0; }),
+			sproutDeltaMeanLuma: deltaResults.length >= 2,
+			cameraStateVariation: cameraStateVariation.changedAcrossCameraStates === true
+		};
+		var report = {
+			version: 'r7-3-9-config1-current-view-reflection',
+			config: 1,
+			target: 'sprout_reflection_c1',
+			routeKind: 'runtime_path_tracing_current_view',
+			requestedSamples: 1000,
+			actualSamples: 1000,
+			floorRoughnessForReflection: 0.1,
+			cameraStateVariation: cameraStateVariation,
+			visibleStateCount: visibleResults.length,
+			deltaStateCount: deltaResults.length,
+			missingSproutStates: results.filter(function(result) { return result.summary.sproutVisiblePixels === 0; }).map(function(result) { return result.cameraState.name; }),
+			results: results,
+			checks: checks,
+			status: Object.keys(checks).every(function(key) { return checks[key]; }) ? 'pass' : 'fail'
+		};
+		window.__r739C1CurrentViewReflectionValidationReport = report;
+		return report;
+	}
+	finally
+	{
+		restoreR738BakeState(state);
+		window.setR739C1CurrentViewReflectionValidationEnabled(false);
+	}
 };
 
 window.loadR738C1BakePastePreviewPackage = loadR738C1BakePastePreviewPackage;
@@ -2904,8 +3280,8 @@ function initTHREEjs()
 	pathTracingUniforms.tBorrowTexture = { type: "t", value: borrowPathTracingRenderTarget.texture };
 	if (typeof loadR738C1BakePastePreviewPackage === 'function')
 		loadR738C1BakePastePreviewPackage().catch(function() {});
-	if (typeof loadR739C1AccurateReflectionPackage === 'function')
-		loadR739C1AccurateReflectionPackage().catch(function() {});
+	if (typeof updateR739C1CurrentViewReflectionUniforms === 'function')
+		updateR739C1CurrentViewReflectionUniforms();
 
 	pathTracingUniforms.uCameraMatrix = { type: "m4", value: new THREE.Matrix4() };
 

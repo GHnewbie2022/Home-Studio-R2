@@ -52,6 +52,9 @@ uniform float uR739C1ReflectionReferenceMode;
 uniform float uR739C1ReflectionSurfaceMaskMode;
 uniform float uR739C1ReflectionReady;
 uniform float uR739C1ReflectionFloorRoughness;
+uniform float uR739C1CurrentViewReflectionMode;
+uniform float uR739C1CurrentViewReflectionReady;
+uniform float uR739C1CurrentViewReflectionRoughness;
 uniform sampler2D tR739C1ReflectionSurfaceCacheTexture;
 
 // R2-13 X-ray 透視剝離
@@ -411,17 +414,28 @@ bool r739C1AccurateReflectionReplacesTarget(int targetId, vec3 visiblePosition)
 	vec2 r739SproutUv;
 	return r738C1BakePastePreviewUv(visiblePosition, r739SproutUv);
 }
+bool r739C1CurrentViewReflectionActiveForTarget(int targetId, vec3 visiblePosition)
+{
+	return uR739C1CurrentViewReflectionMode > 0.5 &&
+		uR739C1CurrentViewReflectionReady > 0.5 &&
+		r739C1AccurateReflectionReplacesTarget(targetId, visiblePosition);
+}
+float r739C1CurrentViewFloorRoughness(int targetId, vec3 visiblePosition)
+{
+	if (r739C1CurrentViewReflectionActiveForTarget(targetId, visiblePosition))
+		return clamp(uR739C1CurrentViewReflectionRoughness, 0.0, 1.0);
+	return uFloorRoughness;
+}
 bool r739C1ReflectionReferenceDisablesTarget(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
-	return (uR739C1ReflectionReferenceMode > 1.5 || (uR739C1AccurateReflectionMode > 0.5 && uR739C1ReflectionReady > 0.5)) &&
+	return uR739C1ReflectionReferenceMode > 1.5 &&
 		r739C1AccurateReflectionReplacesTarget(r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition), visiblePosition);
 }
 vec3 r739SampleAccurateSurfaceReflection(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
 	int targetId = r739C1ReflectionTargetId(visibleHitType, visibleObjectID, visibleNormal, visiblePosition);
 	if (!r739C1AccurateReflectionReplacesTarget(targetId, visiblePosition)) return vec3(0.0);
-	vec2 reflectionUv = clamp(gl_FragCoord.xy / max(uResolution, vec2(1.0)), vec2(0.0), vec2(1.0));
-	return max(texture(tR739C1ReflectionSurfaceCacheTexture, reflectionUv).rgb, vec3(0.0));
+	return vec3(0.0);
 }
 bool cloudVisibleSurfaceProbeModeMatches(int mode, int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
@@ -1764,6 +1778,16 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			firstVisibleObjectID = hitObjectID;
 			firstVisibleNormal = nl;
 			firstVisiblePosition = x;
+			if (
+				uR739C1ReflectionReferenceMode > 0.5 &&
+				uR739C1ReflectionReferenceMode < 1.5 &&
+				!r739C1AccurateReflectionReplacesTarget(
+					r739C1ReflectionTargetId(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition),
+					firstVisiblePosition
+				)
+			) {
+				break;
+			}
 			if (uR738C1BakeCaptureMode == 1)
 			{
 				accumCol += r738C1SurfaceClassColor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition).rgb;
@@ -1772,10 +1796,11 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			if (uR739C1ReflectionSurfaceMaskMode > 0.5)
 			{
 				int r739TargetId = r739C1ReflectionTargetId(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition);
+				if (!r739C1AccurateReflectionReplacesTarget(r739TargetId, firstVisiblePosition)) r739TargetId = 0;
 				if (uR739C1ReflectionSurfaceMaskMode < 1.5)
 					accumCol += vec3(float(r739TargetId), firstVisibleObjectID, hitRoughness);
 				else if (uR739C1ReflectionSurfaceMaskMode < 2.5)
-					accumCol += firstVisiblePosition;
+					accumCol += firstVisiblePosition * 0.05 + 0.5;
 				else if (uR739C1ReflectionSurfaceMaskMode < 3.5)
 					accumCol += firstVisibleNormal * 0.5 + 0.5;
 				else
@@ -2723,14 +2748,33 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			// Schlick F0=0.04，rand()<F 走鏡面（roughness² blur），否則走下方漫射
 			bool isFloor = (hitObjectID < 1.5 && hitNormal.y > 0.5 && hitBoxMax.y < 0.1);
 			bool r738DiffuseOnlyActive = (uR738C1BakeCaptureMode == 2 && uR738C1BakeDiffuseOnlyMode > 0.5);
+			int r739TargetId = r739C1ReflectionTargetId(hitType, hitObjectID, nl, x);
+			float r739EffectiveFloorRoughness = r739C1CurrentViewFloorRoughness(r739TargetId, x);
 			bool r739ReferenceDisabled = r739C1ReflectionReferenceDisablesTarget(hitType, hitObjectID, nl, x);
-			if (isFloor && !r738DiffuseOnlyActive && !r739ReferenceDisabled && uFloorRoughness < 0.999) {
+			bool r739ReflectionOnlyTarget = uR739C1ReflectionReferenceMode > 0.5 &&
+				uR739C1ReflectionReferenceMode < 1.5 &&
+				r739C1AccurateReflectionReplacesTarget(r739TargetId, x);
+			if (isFloor && r739ReflectionOnlyTarget) {
+				if (r739EffectiveFloorRoughness < 0.999) {
+					float cosI = max(0.0, dot(-rayDirection, nl));
+					float F = 0.04 + 0.96 * pow(1.0 - cosI, 5.0);
+					if (rand() < F) {
+						vec3 reflDir = reflect(rayDirection, nl);
+						vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
+						rayDirection = normalize(mix(reflDir, diffDir, r739EffectiveFloorRoughness * r739EffectiveFloorRoughness));
+						rayOrigin = x + nl * uEPS_intersect;
+						continue;
+					}
+				}
+				break;
+			}
+			if (isFloor && !r738DiffuseOnlyActive && !r739ReferenceDisabled && r739EffectiveFloorRoughness < 0.999) {
 				float cosI = max(0.0, dot(-rayDirection, nl));
 				float F = 0.04 + 0.96 * pow(1.0 - cosI, 5.0);
 				if (rand() < F) {
 					vec3 reflDir = reflect(rayDirection, nl);
 					vec3 diffDir = randomCosWeightedDirectionInHemisphere(nl);
-					rayDirection = normalize(mix(reflDir, diffDir, uFloorRoughness * uFloorRoughness));
+					rayDirection = normalize(mix(reflDir, diffDir, r739EffectiveFloorRoughness * r739EffectiveFloorRoughness));
 					rayOrigin = x + nl * uEPS_intersect;
 					continue;
 				}
@@ -2849,7 +2893,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	if (uR738C1BakeCaptureMode == 0 &&
 		uR738C1BakePastePreviewMode > 0.5 &&
 		uR738C1BakePastePreviewReady > 0.5 &&
-		cloudVisibleSurfaceIsFloor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition))
+		cloudVisibleSurfaceIsFloor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition) &&
+		!r739C1CurrentViewReflectionActiveForTarget(r739C1ReflectionTargetId(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition), firstVisiblePosition))
 	{
 		vec2 r738BakedPatchUv = vec2(0.0);
 		if (r738C1BakePastePreviewUv(firstVisiblePosition, r738BakedPatchUv))

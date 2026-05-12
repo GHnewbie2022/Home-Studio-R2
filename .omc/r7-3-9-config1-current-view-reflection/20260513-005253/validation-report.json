@@ -1,0 +1,930 @@
+{
+  "status": "pass",
+  "report": {
+    "version": "r7-3-9-config1-current-view-reflection",
+    "config": 1,
+    "target": "sprout_reflection_c1",
+    "routeKind": "runtime_path_tracing_current_view",
+    "requestedSamples": 1000,
+    "actualSamples": 1000,
+    "floorRoughnessForReflection": 0.1,
+    "cameraStateVariation": {
+      "stateCount": 14,
+      "minSproutVisiblePixels": 0,
+      "maxSproutVisiblePixels": 15897,
+      "minSproutDeltaMeanLuma": 0,
+      "maxSproutDeltaMeanLuma": 0.07191481697657974,
+      "changedAcrossCameraStates": true
+    },
+    "visibleStateCount": 3,
+    "deltaStateCount": 2,
+    "missingSproutStates": [
+      "left_wide_forward",
+      "center_left_forward",
+      "sweep_00",
+      "sweep_01",
+      "sweep_02",
+      "sweep_03",
+      "sweep_04",
+      "sweep_05",
+      "sweep_06",
+      "sweep_07",
+      "sweep_08"
+    ],
+    "results": [
+      {
+        "cameraState": {
+          "name": "center_forward",
+          "position": {
+            "x": 0,
+            "y": 1.6,
+            "z": 4.5
+          },
+          "yaw": 0,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": 0,
+            "y": 1.6,
+            "z": 4.5
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 3424,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0.07191481697657974,
+          "sproutSignedDeltaMeanLuma": -0.07175759788977851,
+          "sproutDeltaMaxLuma": 0.12126655638122558
+        }
+      },
+      {
+        "cameraState": {
+          "name": "left_forward",
+          "position": {
+            "x": -1.8,
+            "y": 1.6,
+            "z": 4
+          },
+          "yaw": 0.42,
+          "pitch": -0.36,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.8,
+            "y": 1.6,
+            "z": 4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 15897,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0.044632747563507165,
+          "sproutSignedDeltaMeanLuma": -0.044533927673455334,
+          "sproutDeltaMaxLuma": 0.12454255158081055
+        }
+      },
+      {
+        "cameraState": {
+          "name": "left_mid_forward",
+          "position": {
+            "x": -1.2,
+            "y": 1.55,
+            "z": 4
+          },
+          "yaw": 0.2,
+          "pitch": -0.2,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.2,
+            "y": 1.55,
+            "z": 4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 13584,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "left_wide_forward",
+          "position": {
+            "x": -1.6,
+            "y": 1.55,
+            "z": 4.4
+          },
+          "yaw": 0.25,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.6,
+            "y": 1.55,
+            "z": 4.4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "center_left_forward",
+          "position": {
+            "x": -0.6,
+            "y": 1.55,
+            "z": 4.2
+          },
+          "yaw": 0.1,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -0.6,
+            "y": 1.55,
+            "z": 4.2
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_00",
+          "position": {
+            "x": -1.8,
+            "y": 1.6,
+            "z": 4
+          },
+          "yaw": 0.42,
+          "pitch": -0.36,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.8,
+            "y": 1.6,
+            "z": 4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_01",
+          "position": {
+            "x": -1.6,
+            "y": 1.55,
+            "z": 4.4
+          },
+          "yaw": 0.25,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.6,
+            "y": 1.55,
+            "z": 4.4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_02",
+          "position": {
+            "x": -1.4,
+            "y": 1.55,
+            "z": 4.2
+          },
+          "yaw": 0.23,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.4,
+            "y": 1.55,
+            "z": 4.2
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_03",
+          "position": {
+            "x": -1.2,
+            "y": 1.55,
+            "z": 4
+          },
+          "yaw": 0.2,
+          "pitch": -0.2,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1.2,
+            "y": 1.55,
+            "z": 4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_04",
+          "position": {
+            "x": -1,
+            "y": 1.55,
+            "z": 4.1
+          },
+          "yaw": 0.17,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -1,
+            "y": 1.55,
+            "z": 4.1
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_05",
+          "position": {
+            "x": -0.8,
+            "y": 1.55,
+            "z": 4.2
+          },
+          "yaw": 0.14,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -0.8,
+            "y": 1.55,
+            "z": 4.2
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_06",
+          "position": {
+            "x": -0.6,
+            "y": 1.55,
+            "z": 4.2
+          },
+          "yaw": 0.1,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -0.6,
+            "y": 1.55,
+            "z": 4.2
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_07",
+          "position": {
+            "x": -0.3,
+            "y": 1.58,
+            "z": 4.4
+          },
+          "yaw": 0.05,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": -0.3,
+            "y": 1.58,
+            "z": 4.4
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      },
+      {
+        "cameraState": {
+          "name": "sweep_08",
+          "position": {
+            "x": 0,
+            "y": 1.6,
+            "z": 4.5
+          },
+          "yaw": 0,
+          "pitch": -0.18,
+          "fov": 55
+        },
+        "routeReport": {
+          "version": "r7-3-9-config1-current-view-reflection",
+          "previewEnabled": true,
+          "enabled": true,
+          "ready": true,
+          "applied": true,
+          "error": null,
+          "currentPanelConfig": 1,
+          "configAllowed": true,
+          "routeKind": "runtime_path_tracing_current_view",
+          "computeFromCurrentCamera": true,
+          "finiteViewBakeRuntimeEnabled": false,
+          "nearestDirectionLookupEnabled": false,
+          "directionInterpolationEnabled": false,
+          "cubemapRuntimeEnabled": false,
+          "screenCopyFallbackEnabled": false,
+          "zeroFillFallbackEnabled": false,
+          "liveNoiseFallbackEnabled": false,
+          "surfaceTarget": "sprout_reflection_c1",
+          "bounds": {
+            "xMin": -1,
+            "xMax": 1,
+            "zMin": -1,
+            "zMax": 1,
+            "y": 0.01
+          },
+          "routeRoughness": 0.1,
+          "currentSamples": 1000,
+          "cameraPosition": {
+            "x": 0,
+            "y": 1.6,
+            "z": 4.5
+          }
+        },
+        "actualSamples": 1000,
+        "offSamples": 1000,
+        "summary": {
+          "width": 1280,
+          "height": 720,
+          "samples": 1000,
+          "sproutVisiblePixels": 0,
+          "nonFiniteDeltaPixels": 0,
+          "sproutDeltaMeanLuma": 0,
+          "sproutSignedDeltaMeanLuma": 0,
+          "sproutDeltaMaxLuma": 0
+        }
+      }
+    ],
+    "checks": {
+      "version": true,
+      "config": true,
+      "exactSamples": true,
+      "currentViewRouteApplied": true,
+      "rejectsFiniteViewBakeRuntime": true,
+      "rejectsLookupFallbacks": true,
+      "roughness": true,
+      "sproutVisiblePixels": true,
+      "finiteDelta": true,
+      "sproutDeltaMeanLuma": true,
+      "cameraStateVariation": true
+    },
+    "status": "pass"
+  },
+  "checks": {
+    "version": true,
+    "config": true,
+    "exactSamples": true,
+    "currentViewRouteApplied": true,
+    "rejectsFiniteViewBakeRuntime": true,
+    "rejectsLookupFallbacks": true,
+    "roughness": true,
+    "sproutVisiblePixels": true,
+    "finiteDelta": true,
+    "sproutDeltaMeanLuma": true,
+    "cameraStateVariation": true
+  },
+  "cameraStateVariation": {
+    "stateCount": 14,
+    "minSproutVisiblePixels": 0,
+    "maxSproutVisiblePixels": 15897,
+    "minSproutDeltaMeanLuma": 0,
+    "maxSproutDeltaMeanLuma": 0.07191481697657974,
+    "changedAcrossCameraStates": true
+  },
+  "sproutVisiblePixels": [
+    3424,
+    15897,
+    13584,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "sproutDeltaMeanLuma": [
+    0.07191481697657974,
+    0.044632747563507165,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ]
+}

@@ -316,10 +316,14 @@ R7 採樣升級：
   - R7-3.8 C1 floor-center paste preview 已把正式 atlas 貼回 C1 畫面；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-floor-patch-paste-preview`
   - R7-3.8 C1 diffuse-only paste fix 已移除 floor patch 內的 ceiling-lamp reflection spike，補休眠 framePending=false、keyboard idle、snapshot UI、1000SPP 顯示、floor roughness UI 驗證；後續使用者肉眼確認 350SPP 已難見界線、1000SPP 隱形，diffuse bake 架構通過 floor-center patch 驗收，反射另開處理線；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-diffuse-paste-fix1`
   - R7-3.8 C1 嫩芽成功版已覆蓋為「diffuse bake + 可用 floor roughness UI」版本；右緣對齊手動存圖，數字欄不壓住滑桿，成功 tag `r7-3-8-c1-diffuse-bake-success-20260511` 代表這個恢復版；讀 `Debug_Log.md` 的 `R7-3.8-c1-diffuse-bake-sprout-ui-recovery`
-  - R7-3.9 C1 accurate reflection bake 目前最高優先是取得 `sprout_reflection_c1` 專用 0.1 reflection package；舊 `floor_primary_c1` package `.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 只當亮度修正參考與失敗證據，不能當 accepted sprout package；讀 `Debug_Log.md` 的 `R7-3.9-c1-sprout-only-reflection-package-priority`
-  - R7-3.9 C1 surrounding floor roughness 0.1 live reflection fix 已把 replacement gate 改成依 R7-3.8 嫩芽 bounds 裁切；周遭地板在 roughness 0.1 回到 live path tracing，preview helper 驗證 `surroundingLiveFloorReplacementActive=false`；讀 `Debug_Log.md` 的 `R7-3.9-c1-surrounding-floor-roughness-0-1-live-reflection-fix`
-  - R7-3.9 C1 floor reflection roughness gate fix 的後續正確認知：粗糙度相符不能當整片地板 replacement 條件；baked reflection 只能進中央嫩芽區，周遭 0 / 0.05~0.95 / 1 分別走 live mirror / live glossy / live diffuse；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-roughness-gate-fix`
-  - R7-3.9 C1 large-floor reflection cache double-division fix 已修正 0.1 cache 幾乎全黑的問題；產包端移除 samples 二次除法，`.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 仍是 `floor_primary_c1` 大地板 package，下一步要重產 `sprout_reflection_c1` 並驗 `outsideSproutPixels = 0`；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-cache-double-division-fix`
+  - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
+  - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`
+  - R7-3.9 C1 舊 sprout-only package `.omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/` 已判定為 camera-space reference，不是 runtime 可接受反射包；後續必須改走 surface position + outgoing direction 或 true planar reflection pass。
+  - R7-3.9 C1 surrounding floor roughness 0.1 live reflection fix 與 roughness gate fix 都已被 reset 收攏成歷史紀錄；目前畫面基準只保留 R7-3.8 C1 嫩芽純漫射 bake。
+  - R7-3.9 C1 large-floor reflection cache double-division fix 只保留為歷史紀錄；`.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 已不可用，後續不得沿用此路線；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-cache-double-division-fix`
+  - R7-3.9 Config 1 current-view sprout reflection route 已形成嫩芽 V2 checkpoint；漫射使用 R7-3.8 成功包，反射使用 R7-3.9 current-view route。讀 `Debug_Log.md` 的 `R7-3.9-config1-sprout-v2-success-checkpoint`。
+  - R7-3.9 Config 1 current-view sprout reflection route 曾只在 validation helper 內啟用，導致手動畫面看不到嫩芽反射；已補 `r739C1CurrentViewReflectionPreviewEnabled = true`，讀 `Debug_Log.md` 的 `R7-3.9-config1-current-view-sprout-reflection-preview-enable-fix`。
+  - R7-3.9 Config 1 current-view preview 預設 true 後仍漏了啟動 uniform 同步，手動畫面會保持 `uR739C1CurrentViewReflectionMode = 0`；已在 `initTHREEjs()` 補同步，讀 `Debug_Log.md` 的 `R7-3.9-config1-current-view-sprout-reflection-startup-uniform-sync-fix`。
 ```
 
 ---

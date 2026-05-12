@@ -1,130 +1,101 @@
 {
-  "version": "r7-3-9-c1-accurate-reflection-bake",
+  "version": "r7-3-9-config1-current-view-reflection",
   "config": 1,
-  "description": "Accuracy-first C1 floor reflection bake. Reflection data is surface-aware and direction-aware. Cubemap is diagnostic only.",
+  "status": "current_view_route_required",
+  "description": "R7-3.9 Config 1 sprout reflection contract. The accepted runtime route must compute reflection from the current camera state while the user moves freely inside Config 1.",
+  "terminology": {
+    "c1Means": "Config 1",
+    "selectedBy": "applyPanelConfig(1)",
+    "cameraPresetMeaning": "Camera presets are validation viewpoints only and cannot define the final reflection answer"
+  },
   "diffuseCheckpoint": {
     "commit": "4bf4297",
     "tag": "r7-3-8-c1-diffuse-bake-success-20260511",
     "acceptedPackagePointer": "docs/data/r7-3-8-c1-bake-accepted-package.json"
   },
-  "accuracyPolicy": {
-    "priority": "accuracy_over_speed",
-    "cubemapRuntimeEnabled": false,
-    "requirePathTracedReference": true,
-    "requireSurfaceSpecificReflection": true,
-    "referencePolicy": "path_traced_or_fail",
-    "missingDirectionPolicy": "reject_package",
-    "requireRotatedObjectTransforms": true,
-    "requiredRuntimeTargets": [
-      "floor_primary_c1"
-    ],
-    "deferredRuntimeTargets": [
-      "iron_door_west",
-      "speaker_stands_rotated_boxes",
-      "speaker_cabinets_rotated_boxes"
-    ]
+  "finalGoal": {
+    "freeCameraMovement": true,
+    "currentCameraStateRequired": true,
+    "finiteViewBakeAllowedAsFinal": false,
+    "nearestDirectionLookupAllowed": false,
+    "directionInterpolationAllowed": false,
+    "cubemapSubstitutionAllowed": false,
+    "screenCopyFallbackAllowed": false,
+    "zeroFillFallbackAllowed": false,
+    "liveNoiseFallbackAllowed": false
   },
-  "cameraReference": {
-    "name": "c1_cam1_reflection_reference",
-    "preset": "cam1",
+  "firstTarget": {
+    "surfaceId": 1,
+    "name": "sprout_reflection_c1",
+    "kind": "planar_floor_patch",
+    "plane": {
+      "axis": "y",
+      "value": 0.01,
+      "normal": [0, 1, 0]
+    },
+    "bounds": {
+      "xMin": -1.0,
+      "xMax": 1.0,
+      "zMin": -1.0,
+      "zMax": 1.0
+    },
+    "routeRoughness": 0.1,
+    "metalness": 0.0
+  },
+  "referenceOnlyProbeContract": {
+    "label": "reference_only",
+    "config": 1,
     "samples": 1000,
-    "width": 1280,
-    "height": 720,
-    "outputs": [
-      "c1-camera-reflection-reference-rgba-f32.bin",
-      "c1-camera-reflection-mask-u8.bin",
-      "c1-camera-reflection-object-id-u16.bin"
-    ]
+    "exactSamplesRequired": true,
+    "acceptBelow1000": false,
+    "acceptAbove1000": false,
+    "roughness": 0.1,
+    "runtimeAcceptanceFromProbeAlone": false
   },
-  "surfaceTargets": [
-    {
-      "surfaceId": 0,
-      "name": "floor_primary_c1",
-      "kind": "planar",
-      "plane": {
-        "axis": "y",
-        "value": 0.01,
-        "normal": [0, 1, 0]
-      },
-      "bounds": {
-        "xMin": -1.91,
-        "xMax": 1.91,
-        "zMin": -1.874,
-        "zMax": 3.056
-      },
-      "material": {
-        "class": "dielectric_floor",
-        "acceptedReflectionRoughness": 0.1,
-        "roughnessValues": [0.1],
-        "metalness": 0.0
-      },
-      "firstImplementation": true
-    },
-    {
-      "surfaceId": 1,
-      "name": "iron_door_west",
-      "kind": "planar",
-      "plane": {
-        "axis": "x",
-        "value": -1.96,
-        "normal": [1, 0, 0]
-      },
-      "bounds": {
-        "yMin": 0.09,
-        "yMax": 2.04,
-        "zMin": -1.874,
-        "zMax": -0.984
-      },
-      "material": {
-        "class": "iron_door",
-        "roughnessValues": [0.3],
-        "metalness": 1.0
-      },
-      "firstImplementation": true
-    },
-    {
-      "surfaceId": 2,
-      "name": "speaker_stands_rotated_boxes",
-      "kind": "rotated-box-family",
-      "objectNames": [
-        "uLeftStandBaseInvMatrix",
-        "uLeftStandPillarInvMatrix",
-        "uLeftStandTopInvMatrix",
-        "uRightStandBaseInvMatrix",
-        "uRightStandPillarInvMatrix",
-        "uRightStandTopInvMatrix"
-      ],
-      "material": {
-        "class": "stand_metal",
-        "useRuntimeRoughnessMetalnessScales": true
-      },
-      "firstImplementation": true
-    },
-    {
-      "surfaceId": 3,
-      "name": "speaker_cabinets_rotated_boxes",
-      "kind": "rotated-box-family",
-      "objectNames": [
-        "uLeftSpeakerInvMatrix",
-        "uRightSpeakerInvMatrix"
-      ],
-      "material": {
-        "class": "speaker_dielectric",
-        "roughnessValues": [0.4],
-        "metalness": 0.0
-      },
-      "firstImplementation": true
-    }
+  "acceptedRuntimeRoute": {
+    "requiredRadiance": "current_view_reflection_radiance",
+    "computeFromCurrentCamera": true,
+    "requiredInputs": [
+      "surface_target_id",
+      "surface_world_position",
+      "surface_world_normal",
+      "current_camera_position",
+      "current_outgoing_direction",
+      "roughness"
+    ],
+    "allowedRouteKinds": [
+      "runtime_path_tracing_current_view",
+      "runtime_planar_reflection_current_view"
+    ],
+    "allowFiniteCameraViewLookup": false,
+    "allowNearestDirectionLookup": false,
+    "allowDirectionInterpolation": false,
+    "allowCubemapSubstitution": false,
+    "allowScreenCopyFallback": false,
+    "allowZeroFillFallback": false,
+    "allowLiveNoiseFallback": false
+  },
+  "allowedBakedData": [
+    "target_mask",
+    "surface_position_metadata",
+    "surface_normal_metadata",
+    "roughness_metadata",
+    "diffuse_bake"
   ],
-  "directionCache": {
-    "mode": "c1-visible-outgoing-directions-first",
-    "minimumDirectionsPerSurfaceTexel": 1,
-    "directionEncoding": "octahedral-f32",
-    "fallbackWhenDirectionMissing": "reject_package_before_runtime"
-  },
   "diagnosticOnly": {
+    "cameraReferenceAllowed": true,
+    "cameraReferenceRuntimeEnabled": false,
+    "finiteCameraViewBakeAllowed": true,
+    "finiteCameraViewBakeRuntimeEnabled": false,
     "cubemapProbeAllowed": true,
     "cubemapRuntimeEnabled": false,
-    "reason": "A single probe origin cannot satisfy the accuracy requirement for floor, iron door, speaker stands, and speaker cabinets."
+    "directionBinProbeAllowed": true,
+    "directionBinProbeRuntimeEnabled": false
+  },
+  "validation": {
+    "automatedDomain": "user_accessible_config1_room_camera_movement",
+    "sampledCameraStatesDoNotRedefineGoal": true,
+    "eachSampledStateMustUseCurrentViewRoute": true,
+    "userVisualFreeMovementAcceptanceRequired": true
   }
 }

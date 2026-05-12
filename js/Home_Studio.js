@@ -5439,6 +5439,9 @@ function initSceneData() {
     pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionReady = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionFloorRoughness = { value: 0.1 };
+    pathTracingUniforms.uR739C1CurrentViewReflectionMode = { value: 0.0 };
+    pathTracingUniforms.uR739C1CurrentViewReflectionReady = { value: 0.0 };
+    pathTracingUniforms.uR739C1CurrentViewReflectionRoughness = { value: 0.1 };
     var r739DefaultReflectionSurfaceCacheTexture = new THREE.DataTexture(new Float32Array([0, 0, 0, 1]), 1, 1, THREE.RGBAFormat, THREE.FloatType);
     r739DefaultReflectionSurfaceCacheTexture.minFilter = THREE.NearestFilter;
     r739DefaultReflectionSurfaceCacheTexture.magFilter = THREE.NearestFilter;

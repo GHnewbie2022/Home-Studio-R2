@@ -2,9 +2,208 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前 R7-3 接手重點：R7-3 quick preview terminal v3al 已把 C4 曲線回到原本狀態，C4 保留丟可見 1SPP；先讀 `docs/SOP/R7：採樣演算法升級.md` 與本檔 `R7-3-quick-preview-terminal-v3` 章節。
+> 目前 R7-3 接手重點：R7-3.9 Config 1 current-view 嫩芽反射路線已通過自動驗證與使用者畫面驗收，形成「嫩芽 V2」checkpoint；先讀本檔 `R7-3.9-config1-sprout-v2-success-checkpoint` 與 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`。
 
 ---
+
+## 2026-05-12 R7-3.9 C1 Reflection Bake Reset To Diffuse-Only
+
+```yaml
+- id: R7-3.9-c1-reflection-bake-reset-to-diffuse-only
+  date: 2026-05-12
+  type: reflection_bake_reset_and_sop_rewrite
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_requirement:
+    - Clear the wrong reflection artifacts.
+    - Return C1 runtime to the central sprout diffuse-only bake state.
+    - Rewrite the reflection bake SOP from official rendering references.
+    - Record landmine directions so later work does not repeat the same failure.
+  root_cause:
+    - The failed R7-3.9 runtime sampled a C1 camera-reference texture with gl_FragCoord / canvas coordinates.
+    - The reflection silhouette therefore moved with the camera instead of staying locked to the floor patch.
+    - This is a coordinate-system failure, so 1000 spp did not make the package physically valid.
+  cleared_runtime_state:
+    - docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json now has packageStatus: none.
+    - r739C1AccurateReflectionEnabled defaults to false.
+    - InitCommon no longer auto-loads the R7-3.9 reflection package during startup.
+    - Capture runner writes reference-pointer.json inside .omc packages and does not auto-update the accepted pointer.
+  removed_artifacts:
+    - .omc/r7-3-9-c1-accurate-reflection-bake/
+    - .omc/r7-3-9-c1-accurate-reflection-preview/
+  active_safe_baseline:
+    - R7-3.8 C1 sprout diffuse bake remains the active accepted bake.
+    - pointer: docs/data/r7-3-8-c1-bake-accepted-package.json
+  official_reference_summary:
+    - Unreal Planar Reflections: planar reflection renders from the reflected direction.
+    - Unity HDRP SSR: screen-space reflection uses current screen depth and color buffers.
+    - Unity Ray Tracing: ray-traced reflections can use off-screen data.
+    - three.js CubeCamera: cubemap capture is positioned in 3D space and renders surroundings from that position.
+  new_sop:
+    - docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md
+  blocked_directions:
+    - Do not crop a large-floor reflection package into the sprout patch.
+    - Do not use a C1 camera screenshot or camera-reference layer as runtime reflection data.
+    - Do not sample runtime reflection cache by gl_FragCoord, screen UV, canvas UV, or camera-facing raster coordinates.
+    - Do not promote a package only because it reached 1000 spp.
+    - Do not use cubemap runtime as the accepted R7-3.9 path.
+  required_future_path:
+    - Runtime reflection data must be addressed by surface position plus outgoing direction, or by a true planar reflection pass.
+    - Missing direction coverage must reject the package before runtime.
+```
+
+## R7-3.9｜Config 1 current-view sprout reflection route validation
+
+```yaml
+- id: R7-3.9-config1-current-view-sprout-reflection-validation
+  date: 2026-05-12
+  type: reflection_runtime_validation
+  branch: codex/r7-3-9-c1-reflection-bake
+  scope:
+    - Config 1
+    - sprout_reflection_c1 only
+    - bounds x=-1..1, z=-1..1
+    - route roughness 0.1
+  implementation:
+    - Added current-view reflection uniforms and validation state.
+    - The sprout patch route computes live reflection from the active camera state.
+    - The R7-3.8 diffuse paste is excluded while current-view reflection validation is active.
+    - Legacy R7-3.9 finite-view reflection cache remains disabled as runtime data.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r739-current-view-validation --samples=1000 --angle=metal --timeout-ms=180000
+  runner_result:
+    - status: pass
+    - report: .omc/r7-3-9-config1-current-view-reflection/20260512-234138/validation-report.json
+    - actualSamples: 1000
+    - states: 14
+    - visibleStateCount: 3
+    - deltaStateCount: 2
+    - maxSproutVisiblePixels: 15897
+    - maxSproutDeltaMeanLuma: 0.06994281037232959
+    - cameraStateVariation: true
+  acceptance_status:
+    - automated_validation: pass
+    - user_visual_acceptance: pending
+    - accepted_pointer: disabled
+  note:
+    - missingSproutStates records camera states where the sprout patch was not visible through the surface mask.
+    - Those states are coverage data, not accepted runtime reflection failures.
+    - Runtime promotion still requires user visual approval for free movement inside the room.
+```
+
+## R7-3.9｜Config 1 current-view sprout reflection preview enable fix
+
+```yaml
+- id: R7-3.9-config1-current-view-sprout-reflection-preview-enable-fix
+  date: 2026-05-13
+  type: reflection_runtime_bugfix
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_report:
+    - User opened Config 1 at floor roughness 0.1.
+    - The sprout patch did not show the expected reflection during free movement visual review.
+  root_cause:
+    - The shader route required uR739C1CurrentViewReflectionMode > 0.5.
+    - That uniform was controlled only by r739C1CurrentViewReflectionValidationEnabled.
+    - Automated validation enabled the route temporarily, then disabled it in cleanup.
+    - Normal runtime had no preview enable path, so manual visual review saw the R7-3.8 diffuse paste without the new current-view reflection route.
+  fix:
+    - Added r739C1CurrentViewReflectionPreviewEnabled = true for visual review.
+    - Added window.setR739C1CurrentViewReflectionPreviewEnabled().
+    - updateR739C1CurrentViewReflectionUniforms() now enables the route when preview or validation is enabled.
+    - renderR739CurrentViewExactSamples() temporarily disables preview while running exact 1000 spp off/on validation, then restores preview state.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r739-current-view-validation --samples=1000 --angle=metal --timeout-ms=180000
+  runner_result:
+    - status: pass
+    - report: .omc/r7-3-9-config1-current-view-reflection/20260513-000236/validation-report.json
+    - actualSamples: 1000
+    - states: 14
+    - cameraStateVariation: true
+  acceptance_status:
+    - automated_validation: pass
+    - user_visual_acceptance: pending_after_preview_enable_fix
+    - accepted_pointer: disabled
+```
+
+## R7-3.9｜Config 1 current-view sprout reflection startup uniform sync fix
+
+```yaml
+- id: R7-3.9-config1-current-view-sprout-reflection-startup-uniform-sync-fix
+  date: 2026-05-13
+  type: reflection_runtime_bugfix
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_report:
+    - User hard-refreshed the page after the preview enable fix.
+    - The sprout patch still did not show the expected current-view reflection.
+  root_cause:
+    - r739C1CurrentViewReflectionPreviewEnabled defaulted to true in JS state.
+    - Home_Studio.js still initialized uR739C1CurrentViewReflectionMode to 0.0.
+    - No startup call pushed the preview state into pathTracingUniforms after initSceneData() created the current-view uniforms.
+    - Automated validation and report calls could activate the route later, but a normal manual page load kept the GPU uniform at 0.
+  fix:
+    - initTHREEjs() now calls updateR739C1CurrentViewReflectionUniforms() after initSceneData() and the R7-3.8 package load kick-off.
+    - The contract test now checks that initTHREEjs() performs this startup sync.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r739-current-view-validation --samples=1000 --angle=metal --timeout-ms=180000
+  runner_result:
+    - status: pass
+    - report: .omc/r7-3-9-config1-current-view-reflection/20260513-003133/validation-report.json
+    - actualSamples: 1000
+    - states: 14
+    - cameraStateVariation: true
+  acceptance_status:
+    - automated_validation: pass
+    - user_visual_acceptance: pending_after_startup_sync_fix
+    - accepted_pointer: disabled
+```
+
+## R7-3.9｜Config 1 sprout V2 success checkpoint
+
+```yaml
+- id: R7-3.9-config1-sprout-v2-success-checkpoint
+  date: 2026-05-13
+  type: reflection_visual_acceptance_checkpoint
+  branch: codex/r7-3-9-c1-reflection-bake
+  checkpoint_label: r7-3-9-config1-sprout-v2-success-20260513
+  scope:
+    - Config 1
+    - sprout_reflection_c1 only
+    - bounds x=-1..1, z=-1..1
+    - route roughness 0.1
+  accepted_content:
+    - Existing R7-3.8 Config 1 sprout diffuse bake remains active.
+    - R7-3.9 current-view sprout reflection route is accepted for runtime preview.
+    - No R7-3.9 finite-view reflection cache binary is accepted as runtime data.
+  user_visual_acceptance:
+    - At roughness 1, the floor outside the sprout patch has no reflection, so the visible hard boundary is expected.
+    - At roughness 0.1 and exactly 1000 spp, the sprout patch blends into the surrounding floor as a complete ceiling-lamp reflection.
+  pointer_update:
+    - docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json keeps packageStatus none because no finite reflection package is accepted.
+    - routeStatus is accepted.
+    - runtimeEnabled is true.
+    - acceptedRoute is runtime_path_tracing_current_view.
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r739-current-view-validation --samples=1000 --angle=metal --timeout-ms=180000
+  latest_runner_result:
+    - status: pass
+    - report: .omc/r7-3-9-config1-current-view-reflection/20260513-005253/validation-report.json
+    - actualSamples: 1000
+    - states: 14
+    - cameraStateVariation: true
+```
 
 ## Cloud / GIK 名詞鎖定
 
@@ -105,9 +304,10 @@ Debug note:
   Therefore the current package is a corrected-brightness large-floor cache, not the required sprout-only package.
 
 Current scope:
-  No accepted sprout-only reflection package exists yet.
-  The next package must target sprout_reflection_c1 with the same bounds as the R7-3.8 diffuse sprout patch.
-  The 20260511-235900 package remains useful as a brightness fix reference and failure evidence.
+  Accepted sprout-only reflection package now exists:
+    .omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/
+  The package targets sprout_reflection_c1 with the same bounds as the R7-3.8 diffuse sprout patch.
+  The old 20260511-235900 package was removed from local .omc per user instruction and must not be used as source data.
   The UI floor roughness still controls the surrounding live floor.
   Roughness 0 on the surrounding floor means live mirror reflection.
   Roughness 0.05 to 0.95 on the surrounding floor means live glossy reflection.
@@ -128,6 +328,72 @@ Validation commands:
   node --check js/PathTracingCommon.js
   node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
   git diff --check
+```
+
+## 2026-05-12 R7-3.9 C1 Sprout-Only Reflection Bake Recovery
+
+```yaml
+- id: R7-3.9-c1-sprout-only-reflection-bake-recovery
+  date: 2026-05-12
+  type: reflection_bake_recovery
+  branch: codex/r7-3-9-c1-reflection-bake
+  user_requirement:
+    - Discard .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/.
+    - Re-capture sprout_reflection_c1 at floor roughness 0.1.
+    - Do not crop or reuse the old large-floor OMC package as source data.
+    - Highest priority remains physically accurate optical behavior, not approximation.
+  discarded_package:
+    - .omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/
+  root_cause_found:
+    - The previous capture path used full render minus reflection-disabled render.
+    - For the central sprout patch, that subtraction produced zero reflection samples.
+    - The position metadata readback also encoded raw signed world position into color, causing negative x and z to clamp toward 0.
+    - The first bright sprout-only package wrote accumulated 1000-sample HDR values without dividing by actualSamples.
+  fix:
+    - The shader now supports a true first-visible sprout reflection-only reference mode.
+    - The capture keeps the current floor Fresnel branch behavior and records only the reflected contribution.
+    - The surface mask is clipped to the accepted R7-3.8 sprout bounds before readback.
+    - Position metadata is encoded into 0..1 before readback and decoded back to world space in JS.
+    - Reflection cache radiance is divided by actualSamples before writing artifacts.
+    - The runner only writes the accepted pointer after all sprout-only checks pass.
+  accepted_package:
+    - package: .omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/
+    - pointer: docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json
+    - target: sprout_reflection_c1
+    - floorRoughnessForReflection: 0.1
+    - actualSamples: 1000
+    - insideSproutPixels: 21959
+    - outsideSproutPixels: 0
+    - nonFiniteReflectionSamples: 0
+    - reflectionMaxLuma: 0.3877464949645996
+    - reflectionMeanLuma: 0.28768911887226695
+    - cubemapRuntimeEnabled: false
+  runtime_preview:
+    - report: .omc/r7-3-9-c1-accurate-reflection-preview/20260512-134949/
+    - ready: true
+    - applied: true
+    - package: .omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902
+    - roughnessMatchedSproutReplacement: true
+    - mirrorRoughnessSproutReplacement: true
+    - roughnessOneSproutReplacement: true
+    - roughnessMatchedSurroundingLiveFloorReplacement: false
+    - mirrorRoughnessSurroundingLiveFloorReplacement: false
+    - roughnessOneSurroundingLiveFloorReplacement: false
+    - status: pass
+  validation:
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r6-3-max-samples.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check js/PathTracingCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+  user_visual_acceptance_pending:
+    - roughness 1 should show no reflection outside the sprout patch.
+    - roughness 1 should still show baked ceiling-lamp reflection inside the sprout patch.
+    - roughness 0.1 at 1000SPP should look seamless.
 ```
 
 ## 2026-05-12 R7-3.9 C1 Sprout-Only Reflection Package Priority
