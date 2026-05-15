@@ -613,7 +613,7 @@ row 345 worldY = 1.960 → 應在衣櫃外 5mm  → luma 0.2559 ✓ 一致
 | - [x] | B' | shader 當下數值 probe：量化 H7 觸發面的具體執行路徑。 | **第二刀已完成**。shader probe levels 2~6 + JS readback API 擴充已實作；inside-floor 視角 isRayExiting = TRUE 已量測確認；H7 guard 後 inside-floor L1 short = 0。詳見「## 2026-05-15 Phase 2 第一刀 + 第二刀完成 + 第三刀前共識封口」。 |
 | - [x] | C' | 追查 fixed-X 暗帶外溢與 fixed-Y / fixed-Z 亮 rim 的不對稱來源。 | **第一刀已完成**。根因為 `js/PathTracingCommon.js` bake capture path 的 `+ vec2(0.5)` 半 texel 偏移；移除後重烘 floor / north 1000SPP 已通過實機驗收。OPUS D4 推測 b（bake surface point nudge）方向證實。 |
 | - [x] | H7' | R7-3.8 sprout paste 缺能區分 normal view 與 inside-floor view 的 ray-side / camera-side guard。 | **已修**：H7' readback / follow-up probe 與 camera-y guard（`uCamPos.y >= 0.025`）已由 OPUS 完成（2026-05-15），CODEX 審查接受、使用者肉眼驗收通過（地板內部全黑、烘焙開關不影響）、不回退。後續不得改成單看 `firstVisibleIsRayExiting`。 |
-| - [ ] | H5 / H3' 第二輪 | floor row 131 / north row 344 邊界格 nearest-policy 衝突。 | 待 nearest hit interval + visible-hit runtime probe 封口後再開設計輪；候選：alpha mask / push-pull dilation / runtime fallback 三選一。 |
+| - [x] | H5 / H3' 第二輪 | floor / north 邊界格 nearest-policy 衝突。 | 已以 1024 bake resolution 收斂；使用者肉眼確認兩條黑線看不出來。C runtime fallback 已移除，不列為候選。 |
 
 ## 鎖定禁區（Phase 1 結案版；Phase 2 第三刀前禁區見最末新章節）
 
