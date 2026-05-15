@@ -46,7 +46,11 @@ uniform sampler2D tR738C1BakeAtlasTexture;
 uniform sampler2D tR7310C1FullRoomDiffuseAtlasTexture;
 uniform float uR7310C1FullRoomDiffuseMode;
 uniform float uR7310C1FullRoomDiffuseReady;
+uniform float uR7310C1FloorDiffuseMode;
+uniform float uR7310C1NorthWallDiffuseMode;
 uniform float uR7310C1RuntimeProbeMode;
+uniform float uR7310C1RuntimeAtlasPatchResolution;
+uniform float uR7310C1RuntimeAtlasPatchCount;
 uniform float uR738C1BakePastePreviewMode;
 uniform float uR738C1BakePastePreviewReady;
 uniform float uR738C1BakePastePreviewStrength;
@@ -240,6 +244,8 @@ float hitMeta;
 // R2-18 命中材質
 float hitRoughness;
 float hitMetalness;
+// R7-3-x GIK 橫擺面板旋轉旗標：>0.5 時 UV 順時針 90 度旋轉（北牆 N1/N2/N3）
+float hitRotateUV90;
 
 struct Quad { vec3 normal; vec3 v0; vec3 v1; vec3 v2; vec3 v3; vec3 emission; vec3 color; int type; };
 
@@ -375,6 +381,18 @@ bool r738C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out ve
 	objectID = 0.0;
 	return false;
 }
+bool r7310C1EastWallHiddenByStaticContact(float z, float y)
+{
+	return false;
+}
+bool r7310C1FloorHiddenByStaticContact(float x, float z)
+{
+	return false;
+}
+bool r7310C1NorthWallHiddenByStaticContact(float x, float y)
+{
+	return false;
+}
 bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out vec3 normal, out int hitType, out float objectID)
 {
 	vec2 uv = clamp(texelUv, vec2(0.0), vec2(1.0));
@@ -384,6 +402,28 @@ bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out v
 		float z = mix(uR7310C1BakeFloorWorldBounds.z, uR7310C1BakeFloorWorldBounds.w, uv.y);
 		position = vec3(x, 0.01, z);
 		normal = vec3(0.0, 1.0, 0.0);
+		hitType = 1;
+		objectID = 0.0;
+		return true;
+	}
+	if (patchId == 1002)
+	{
+		float x = mix(-2.11, 2.11, uv.x);
+		float y = mix(0.0, 2.905, uv.y);
+		if (x >= -1.52 && x <= -0.73 && y >= 0.0 && y <= 2.03)
+			return false;
+		position = vec3(x, y, -1.874);
+		normal = vec3(0.0, 0.0, 1.0);
+		hitType = 1;
+		objectID = 0.0;
+		return true;
+	}
+	if (patchId == 1003)
+	{
+		float z = mix(-1.874, 3.056, uv.x);
+		float y = mix(0.0, 2.905, uv.y);
+		position = vec3(1.91, y, z);
+		normal = vec3(-1.0, 0.0, 0.0);
 		hitType = 1;
 		objectID = 0.0;
 		return true;
@@ -436,24 +476,94 @@ vec3 r7310C1FullRoomDiffuseSample(vec2 atlasUv)
 {
 	return max(texture(tR7310C1FullRoomDiffuseAtlasTexture, clamp(atlasUv, vec2(0.0), vec2(1.0))).rgb, vec3(0.0));
 }
+vec2 r7310C1CombinedAtlasUv(vec2 localUv, float patchSlot)
+{
+	float resolution = max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+	float patchCount = max(1.0, uR7310C1RuntimeAtlasPatchCount);
+	vec2 safeUv = (clamp(localUv, vec2(0.0), vec2(1.0)) * (resolution - 1.0) + 0.5) / resolution;
+	return vec2((safeUv.x + patchSlot) / patchCount, safeUv.y);
+}
 bool r7310C1RuntimeSurfaceIsTrueFloor(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
 	return visibleObjectID < 1.5 &&
 		visibleNormal.y > 0.5 &&
 		visiblePosition.y <= 0.025;
 }
+bool r7310C1RuntimeSurfaceIsNorthWall(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return visibleObjectID < 1.5 &&
+		visibleNormal.z > 0.5 &&
+		visiblePosition.z >= -1.88 &&
+		visiblePosition.z <= -1.86 &&
+		visiblePosition.x >= -2.11 &&
+		visiblePosition.x <= 2.11 &&
+		visiblePosition.y >= 0.0 &&
+		visiblePosition.y <= 2.905;
+}
+bool r7310C1RuntimeSurfaceIsEastWall(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return visibleObjectID < 1.5 &&
+		visibleNormal.x < -0.5 &&
+		visiblePosition.x >= 1.90 &&
+		visiblePosition.x <= 1.92 &&
+		visiblePosition.z >= -1.874 &&
+		visiblePosition.z <= 3.056 &&
+		visiblePosition.y >= 0.0 &&
+		visiblePosition.y <= 2.905;
+}
+bool r7310C1NorthWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
+{
+	if (!r7310C1RuntimeSurfaceIsNorthWall(1, 0.0, vec3(0.0, 0.0, 1.0), visiblePosition))
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	if (visiblePosition.x >= -1.52 && visiblePosition.x <= -0.73 && visiblePosition.y >= 0.0 && visiblePosition.y <= 2.03)
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	atlasUv = vec2(
+		(visiblePosition.x + 2.11) / 4.22,
+		visiblePosition.y / 2.905
+	);
+	return true;
+}
+bool r7310C1EastWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
+{
+	if (!r7310C1RuntimeSurfaceIsEastWall(1, 0.0, vec3(-1.0, 0.0, 0.0), visiblePosition))
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	atlasUv = vec2(
+		(visiblePosition.z + 1.874) / 4.93,
+		visiblePosition.y / 2.905
+	);
+	return true;
+}
 bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, out vec3 bakedRadiance)
 {
 	bakedRadiance = vec3(0.0);
 	if (uR7310C1FullRoomDiffuseMode < 0.5 || uR7310C1FullRoomDiffuseReady < 0.5)
 		return false;
-	if (!r7310C1RuntimeSurfaceIsTrueFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition))
-		return false;
 	vec2 atlasUv = vec2(0.0);
-	if (!r7310C1BakePastePreviewUv(visiblePosition, atlasUv))
-		return false;
-	bakedRadiance = r7310C1FullRoomDiffuseSample(atlasUv);
-	return true;
+	if (uR7310C1FloorDiffuseMode > 0.5 &&
+		r7310C1RuntimeSurfaceIsTrueFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		r7310C1BakePastePreviewUv(visiblePosition, atlasUv))
+	{
+		bakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 0.0));
+		return true;
+	}
+	if (uR7310C1NorthWallDiffuseMode > 0.5 &&
+		r7310C1RuntimeSurfaceIsNorthWall(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		r7310C1NorthWallDiffuseUv(visiblePosition, atlasUv))
+	{
+		vec3 r7310NorthWallBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 1.0));
+		bakedRadiance = r7310NorthWallBakedRadiance;
+		return true;
+	}
+	return false;
 }
 int r739C1ReflectionTargetId(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
@@ -1328,7 +1438,7 @@ void fetchBVHNode(int idx, out float idPrimitive, out vec3 minC, out float idRig
 // pixel 5i+3: [max.xyz, fixtureGroup]  R2-14：新增 fixtureGroup 於末位
 // pixel 5i+4: [roughness, metalness, 0, 0]  R2-18：scalar roughness mix + metalness
 
-void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out float meta, out vec3 bMin, out vec3 bMax, out float cullable, out float fixtureGroup, out float roughness, out float metalness) {
+void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out float meta, out vec3 bMin, out vec3 bMax, out float cullable, out float fixtureGroup, out float roughness, out float metalness, out float rotateUV90) {
 	int base = idx * 5;
 	vec4 p0 = texelFetch(tBoxDataTexture, ivec2(base, 0), 0);
 	vec4 p1 = texelFetch(tBoxDataTexture, ivec2(base + 1, 0), 0);
@@ -1345,6 +1455,7 @@ void fetchBoxData(int idx, out vec3 emission, out int type, out vec3 color, out 
 	fixtureGroup = p3.w;
 	roughness    = p4.x;
 	metalness    = p4.y;
+	rotateUV90   = p4.z;
 }
 
 // R2-14：裝置開關 gating。關閉時 primary 與 secondary ray 皆跳過該 box，自動無陰影
@@ -1419,6 +1530,7 @@ float SceneIntersect( )
 	// R2-18 防漏寫預設：hitRoughness/hitMetalness 若某 hit site 未明確寫入，不得 leak 自前一個更遠的 hit
 	hitRoughness = 1.0;
 	hitMetalness = 0.0;
+	hitRotateUV90 = 0.0;
 
 	// R2-11 光源幾何由圓柱承載（見下方區塊 5），ceilingLampQuad 僅作為 importance sampling PDF 目標
 
@@ -1447,8 +1559,8 @@ float SceneIntersect( )
 			int boxIdx = int(idPrimitive);
 			vec3 boxEmission, boxColor, boxMin, boxMax;
 			int boxType;
-			float boxMeta, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness;
-			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness);
+			float boxMeta, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness, boxRotateUV90;
+			fetchBoxData(boxIdx, boxEmission, boxType, boxColor, boxMeta, boxMin, boxMax, boxCullable, boxFixtureGroup, boxRoughness, boxMetalness, boxRotateUV90);
 
 			// R2-14：裝置關閉時 primary/secondary ray 皆跳過（自動無陰影）；R2-13 X-ray 剝離沿用
 			if (!isFixtureDisabled(boxFixtureGroup) && !isBoxCulled(boxMin, boxMax, boxCullable) && boxType != CLOUD_LIGHT)
@@ -1467,6 +1579,7 @@ float SceneIntersect( )
 					hitMeta = boxMeta;
 					hitRoughness = boxRoughness;
 					hitMetalness = boxMetalness;
+					hitRotateUV90 = boxRotateUV90;
 					hitBoxMin = boxMin;
 					hitBoxMax = boxMax;
 					// fix20：結構性 box（索引 0..31：地板/天花板/牆/樑/柱）統一 objectID=1，使邊界間 fwidth(objectID)=0，
@@ -2427,6 +2540,15 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				uv.y = 0.5 + lp.y / uyDen;
 			}
 
+			// R7-3-x：rotateUV90 box（北牆橫擺 N1/N2/N3）將三個面共用的 UV 整體順時針 90° 旋轉，
+			//        讓 1440×2912 直擺貼圖映射到 X 長 / Y 短的橫擺面板上不被拉寬壓扁，
+			//        正面與上下側、左右側同步旋轉，維持 R2-LOGO-FIX 接縫關係不變
+			if (hitRotateUV90 > 0.5)
+			{
+				vec2 rel = uv - vec2(0.5);
+				uv = vec2(0.5 - rel.y, 0.5 + rel.x);
+			}
+
 			vec3 rawTexCol;
 			if (hitMeta < 0.5)
 				rawTexCol = texture(uGikGrayTex, uv).rgb;
@@ -2856,7 +2978,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			if (r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, r7310BakedRadiance))
 			{
 				if (uR7310C1RuntimeProbeMode > 0.5)
-					accumCol += vec3(0.0, 1.0, 0.0);
+					accumCol += r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0));
 				else
 					accumCol += mask * r7310BakedRadiance;
 				break;

@@ -14,9 +14,9 @@
 
 日期：2026-05-14 起草；2026-05-15 CODEX / OPUS 第 3 輪審查後成立；2026-05-15 CODEX 完成第一刀。
 狀態：第一刀 H8 + C' 已實作、1000SPP floor / north 已重烘、runtime pointer 已更新；同視角實機驗收待使用者確認。
-範圍：H8 per-surface gate、C' bake UV 半 texel 修正、重烘 floor / north、第一階段同視角驗收。  
-暫緩：B' shader 數值 probe、H7 inside-geometry / ray-side guard、H5 / H3' alpha mask、East wall runtime。  
-協作邊界：OPUS 正在處理北牆 GIK 貼圖旋轉問題，本計畫不碰 GIK 貼圖、材質 UV 或板件旋轉邏輯。
+範圍：H8 per-surface gate、C' bake UV 半 texel 修正、重烘 floor / north、第一階段同視角驗收。
+暫緩：B' shader 數值 probe、H7 inside-geometry / ray-side guard、H5 / H3' alpha mask、East wall runtime。
+協作邊界：OPUS 北牆 GIK 貼圖旋轉與貼圖頂底偽影已於 2026-05-15 完成（gik-north-rotate-uv-r4，使用者四個 Config 全數實機驗收通過）。CODEX 第二刀（B' probe / H7 guard 等）解除 GIK 邊界；惟 ACOUSTIC_PANEL 分支與 textures/gik244_*.jpeg 已成定論，第二刀無須再動。改動清單詳見本檔下方「## 2026-05-15 OPUS GIK 修復完成回報」。
 
 ---
 
@@ -133,6 +133,44 @@ Systematic debugging 結論：
 3.  不直接做 alpha mask，先把 fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題。
 4.  待 B' 數字回來後，再決定 H7 guard 與 H5 / H3' 是否拆成兩刀。
 ```
+
+---
+
+## 2026-05-15 OPUS GIK 修復完成回報
+
+> CODEX 接手第二刀（B' probe / H7 guard 等）時，請把以下內容當作既定事實；本段為 OPUS 留給 CODEX 的 hand-off 訊息。
+
+**狀態**：北牆橫擺 GIK LOGO 變形 + 貼圖頂底邊緣白線 / 暗線兩件事已合併修復為 `gik-north-rotate-uv-r4`，使用者 Config 1 / 2 / 3 / 4 全部實機驗收通過。
+
+**根因兩條線（皆已修）**：
+
+1. **shader UV 未對應橫擺旋轉**：R2-LOGO-FIX 為直擺面板寫死，R6-3 改三片橫擺 N1/N2/N3 後 1440×2912 直立貼圖被 X 長 Y 短映射 → 拉寬壓扁。
+2. **貼圖檔頂底 padding 偽影**：`gik244_grey.jpeg` 頂部 row 0~4 fade `237→136`、底部 row 2907~2911 跳變；`gik244_white.jpeg` 頂部 row 0~8 fade `241→208`、底部 row 2907~2911 跳變。R2-LOGO-FIX 採整條 0~1 必然碰到。
+
+**改動清單（CODEX 第二刀避免重複動這些位置）**：
+
+| 檔案 | 動到的範圍 |
+|---|---|
+| `js/Home_Studio.js` | `addBox` 新增 `rotateUV90` 參數、`panelConfig2` N1/N2/N3 加 `rotateUV90: 1`、`applyPanelConfig` 兩條 forEach 透傳、`buildSceneBVH` 與 `updateBoxDataTexture` 寫入 box data pixel 4 的 `.b` 槽位（R2-18 保留欄位之一）、shader cache-buster 升至 `gik-north-rotate-uv-r4` |
+| `shaders/Home_Studio_Fragment.glsl` | 全域 `hitRotateUV90` 宣告、`fetchBoxData` out `rotateUV90` 讀 `p4.z`、`SceneIntersect` 防漏寫預設 0 與命中寫入、`ACOUSTIC_PANEL` 三個 hitNormal 子分支結束後加入整體 90° UV 旋轉 `vec2 rel = uv - 0.5; uv = vec2(0.5 - rel.y, 0.5 + rel.x);` |
+| `Home_Studio.html` | cache-buster 三處同步升至 `gik-north-rotate-uv-r4` |
+| `textures/gik244_grey.jpeg` | 頂部 row 0~4 / 底部 row 2907~2911 mirror 修補（JPEG quality=95, subsampling=0），原檔備份於 `.bak-pre-padding-fix` |
+| `textures/gik244_white.jpeg` | 同上策略，頂部 row 0~8 / 底部 row 2907~2911 mirror 修補，原檔備份於 `.bak-pre-padding-fix` |
+| `docs/SOP/Debug_Log.md` | 新增章節「GIK｜北牆橫擺面板 UV 旋轉 + 貼圖頂底偽影修補」（id `gik-north-rotate-uv-r4`） |
+
+**對 CODEX 第二刀的非衝突保證**：
+
+- `box data texture pixel 4 .b` 此次被 OPUS 佔用（R2-18 註解原本標記為「保留槽位」；現用途：rotateUV90 旗標）。`.a` 仍為保留槽位，CODEX 若需第三類 per-box bit 可使用 `.a`。
+- `fetchBoxData` 簽名新增了一個 out 參數，CODEX 修改其呼叫處時需要同步加上對應 receiver 變數（已在 `SceneIntersect` 唯一呼叫點處理；CODEX 若新增呼叫處請補上）。
+- `addBox` 簽名末尾追加了 `rotateUV90` 參數（第 11 個參數），CODEX 若新增 addBox 呼叫不需要傳此參數（預設 `0`）。
+- 貼圖檔本體已改，瀏覽器需要硬重載一次才會 refetch（cache-buster 不含貼圖檔路徑）。
+
+**對 CODEX 第二刀的注意事項**：
+
+- 若需要再針對其他「橫擺」薄板加 90° UV 旋轉，只要在該 box 屬性加 `rotateUV90: 1` 即可。不需要修 shader、不需要碰 ACOUSTIC_PANEL 分支邏輯。
+- 若未來換貼圖，新貼圖檔請預先檢查上下邊緣是否有 padding 偽影（用 PIL 取 row 0~10 / row h-10~h 全寬平均色，跟 row h/2 中央色比對；超出 ±10 RGB 視為偽影需修補）。
+
+**Git 狀態（截至 2026-05-15）**：本次 OPUS 改動全部位於 unstaged 區，未 commit，等使用者裁定如何與 CODEX 第一刀 staged 內容合併入 commit history。
 
 ---
 
@@ -725,7 +763,7 @@ floor enabled 時，R7-3.8 paste preview uniformMode 為 0。
 | 第一刀不引入 alpha / valid fallback。 | 這屬於 H5 / H3' 第二輪；第一刀 H8 只用 mode flag 防取樣。 |
 | 第一刀不實作 H5 / H3' alpha mask。 | 第一階段驗收後再看症狀是否仍存在。 |
 | 第一刀不納入 East wall runtime。 | 現況 east wall 只作 bake / evidence 對照；runtime 沒有第三 slot。 |
-| 第一刀不碰北牆 GIK 貼圖旋轉問題。 | OPUS 正在處理該線，避免互相踩檔。 |
+| 第二刀不再修改 ACOUSTIC_PANEL 分支與 textures/gik244_*.jpeg。 | OPUS 已於 2026-05-15 完成 gik-north-rotate-uv-r4，使用者全 Config 驗收通過；改動清單見「2026-05-15 OPUS GIK 修復完成回報」。 |
 | 不把 C' 修法套到 R7-3.8 既有 sprout atlas 結論。 | R7-3.8 sprout C1 包共用同一 bake UV 計算，需另行視覺判斷。 |
 
 ---

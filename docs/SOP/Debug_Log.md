@@ -6,6 +6,48 @@
 
 ---
 
+## GIK｜北牆橫擺面板 UV 旋轉 + 貼圖頂底偽影修補
+
+```yaml
+- id: gik-north-rotate-uv-r4
+  date: 2026-05-15
+  type: shader_uv_rotation + texture_padding_repair
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  symptom:
+    - Config 2/3/4 北牆三片橫擺 GIK（N1/N2/N3，X 軸 1.2 m × Y 軸 0.6 m）正面 LOGO 與 GEMINI 標誌被水平拉寬、垂直壓縮。
+    - 修旋轉後出現新症狀：橫擺 GIK 上下側面與正面交界、東邊（或旋轉方向反向時的西邊）有白色 / 灰色細邊。
+    - C1 直擺 GIK（E2/W2 東西牆）頂邊也有同類白邊。
+    - C3/C4 天花板 Cloud GIK 北端邊也有白邊。
+  root_cause:
+    - shader UV 邏輯 R2-LOGO-FIX 為「直擺面板」寫死（U→box X 軸、V→box Y 軸、薄軸取貼圖中央細條）；R6-3 將北牆 GIK 從一片直擺 N_v 改成三片橫擺 N1/N2/N3 後，UV 沒對應旋轉，1440×2912 直立貼圖被映射到 X 長 Y 短的橫擺面板上必然變形。
+    - 貼圖 textures/gik244_grey.jpeg 與 gik244_white.jpeg 上下邊緣留有原圖製作時的 padding 偽影：grey 頂部 row 0~4 漸層 237→136、底部 row 2907~2911 跳變 77→47→60→112；white 頂部 row 0~8 漸層 241→208、底部 row 2907~2911 跳變 167→153→167→205→198。R2-LOGO-FIX 採貼圖整條 0~1 時必然碰到這幾 px，旋轉後位置從不易察覺處（直擺時）甩到顯眼處（橫擺與天花板）。
+  implementation:
+    - js/Home_Studio.js addBox 簽名新增 rotateUV90 參數，箱體屬性傳入。
+    - js/Home_Studio.js panelConfig2 N1/N2/N3 三片各加 rotateUV90: 1，其他箱體預設 0。
+    - js/Home_Studio.js applyPanelConfig 兩條 forEach 透傳 p.rotateUV90 || 0。
+    - js/Home_Studio.js buildSceneBVH / updateBoxDataTexture 把 b.rotateUV90 寫入 pixel 4 的 .b 槽位（R2-18 保留欄位）。
+    - shaders/Home_Studio_Fragment.glsl 新增全域 hitRotateUV90，fetchBoxData 多 out 一個 rotateUV90 讀 p4.z，SceneIntersect 防漏寫預設 0、命中時寫入 hit。
+    - shaders/Home_Studio_Fragment.glsl GIK ACOUSTIC_PANEL 分支三個 hitNormal 子分支結束後加入整體 90° 旋轉：vec2 rel = uv - 0.5; uv = vec2(0.5 - rel.y, 0.5 + rel.x); 三個面同步翻轉維持 R2-LOGO-FIX 接縫關係。
+    - textures/gik244_grey.jpeg 頂部 row 0~4 用 row 5~9 mirror、底部 row 2907~2911 用 row 2902~2906 mirror（PIL JPEG quality 95 subsampling 0 重存）。
+    - textures/gik244_white.jpeg 頂部 row 0~8 用 row 9~17 mirror（fade 較寬）、底部 row 2907~2911 用 row 2902~2906 mirror。
+    - 原貼圖各備份於 .bak-pre-padding-fix。
+    - Home_Studio.html + Home_Studio.js cache-buster 升到 gik-north-rotate-uv-r4。
+  verification:
+    - Config 1 (C1)：E2/W2/N_v 三片直擺灰色 GIK 與舊版視覺相同（迴歸），無白邊。
+    - Config 2 (C2)：N1/N2/N3 橫擺灰色 GIK 順時針 90° 旋轉、無拉伸、無白邊；E1-E3/W1-W3 六片白色 GIK 無白邊。
+    - Config 3/4 (C3/C4)：天花板 Cloud C1-C6 灰色 GIK 北端與南端皆無白邊。
+    - 使用者實機四個 Config 全驗收通過。
+  pitfalls:
+    - 第一次嘗試把旋轉只放在 aN.z（正面）分支內：正面修對但側面沒旋轉，造成接縫紋路斷裂。解：旋轉移到三個分支之後做整體 UV 90° 旋轉。
+    - 第一次旋轉方向公式 (x,y) → (y,-x) 是逆時針 90°，使用者要的是順時針；改用 (x,y) → (-y,x) 才對。
+    - 第一次以為白邊是 shader 取樣邏輯造成，實際是貼圖檔的 padding 偽影；修法應在貼圖層而非 shader 層 hack clamp，否則未來換貼圖時 clamp 就成沒意義的疤痕。
+  rules_reinforced:
+    - CLAUDE.md Rule 1：複用 hitType 前必須 Read 完整 shader 分支與相關 box 維度組合，發現 R2-LOGO-FIX 對 hs.x>hs.y 橫擺 box 未處理才能定位根因。
+    - CLAUDE.md Rule 2：rotateUV90 是物件語義屬性（「此 box 需要 UV 旋轉」），不用幾何條件如 hs.x>hs.y 隱式判定，避免未來新增同尺寸但不該旋轉的 box 被誤觸發。
+```
+
+---
+
 ## R7-3.10｜C1 Phase 2 第一刀 H8 + C' 完成
 
 ```yaml
