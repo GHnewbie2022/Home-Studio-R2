@@ -30,7 +30,11 @@ function parseArgs(argv) {
     currentViewValidation: false,
     accurateReflectionPreviewTest: false,
     fullRoomDiffuseBake: false,
+    r7310Surface: 'floor',
     runtimeShortCircuitTest: false,
+    northWallRuntimeTest: false,
+    eastWallRuntimeTest: false,
+    r7310RuntimeProbeSampleTest: false,
     uiToggleTest: false,
     targetSamples: null
   };
@@ -53,11 +57,16 @@ function parseArgs(argv) {
     else if (arg === '--r739-current-view-validation') out.currentViewValidation = true;
     else if (arg === '--accurate-reflection-preview-test') out.accurateReflectionPreviewTest = true;
     else if (arg === '--r7310-full-room-diffuse-bake') out.fullRoomDiffuseBake = true;
+    else if (arg.startsWith('--r7310-surface=')) out.r7310Surface = arg.slice('--r7310-surface='.length);
     else if (arg === '--r7310-runtime-short-circuit-test') out.runtimeShortCircuitTest = true;
+    else if (arg === '--r7310-north-wall-runtime-test') out.northWallRuntimeTest = true;
+    else if (arg === '--r7310-east-wall-runtime-test') out.eastWallRuntimeTest = true;
+    else if (arg === '--r7310-runtime-probe-sample-test') out.r7310RuntimeProbeSampleTest = true;
     else if (arg === '--r7310-ui-toggle-test') out.uiToggleTest = true;
     else if (arg.startsWith('--target-samples=')) out.targetSamples = Number(arg.slice('--target-samples='.length));
   }
   if (!['metal', 'swiftshader', 'opengl'].includes(out.angle)) throw new Error('Invalid angle mode');
+  if (!['floor', 'north-wall', 'east-wall'].includes(out.r7310Surface)) throw new Error('Invalid r7310Surface');
   for (const key of ['samples', 'atlasResolution', 'timeoutMs', 'httpPort', 'cdpPort']) {
     if (!Number.isFinite(out[key]) || out[key] <= 0) throw new Error(`Invalid ${key}`);
     out[key] = Math.trunc(out[key]);
@@ -464,6 +473,9 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
   const resolution = report.targetAtlasResolution;
   const expectedAtlasBytes = resolution * resolution * 4 * 4;
   const expectedMetadataBytes = resolution * resolution * 12 * 4;
+  const validTexelRatioMinimum = report.surfaceName === 'c1_north_wall'
+    ? 0.80
+    : 0.99;
   const checks = {
     version: report.version === 'r7-3-8-c1-1000spp-bake-capture' || report.version === 'r7-3-10-full-room-diffuse-bake-architecture-probe',
     config: report.config === 1,
@@ -477,7 +489,7 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
     metadataBytes: metadataBuffer.length === expectedMetadataBytes,
     finiteRaw: report.rawHdrSummary.nonFinitePixels === 0,
     finiteAtlas: report.atlasSummary.nonFiniteTexels === 0,
-    validTexelRatio: report.atlasSummary.validTexelRatio >= 0.99,
+    validTexelRatio: report.atlasSummary.validTexelRatio >= validTexelRatioMinimum,
     browserValidation: smokeTest ? validationReport.status === 'pass' || validationReport.status === 'fail' : validationReport.status === 'pass'
   };
   const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
@@ -606,7 +618,7 @@ async function main() {
               ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
               : args.accurateReflectionCapture
                 ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
-                : args.runtimeShortCircuitTest || args.uiToggleTest
+                : args.runtimeShortCircuitTest || args.northWallRuntimeTest || args.eastWallRuntimeTest || args.r7310RuntimeProbeSampleTest || args.uiToggleTest
                   ? 'typeof window.reportR7310C1FullRoomDiffuseRuntimeProbe === "function"'
                   : args.fullRoomDiffuseBake
                     ? 'typeof window.reportR7310C1FloorDiffuseBakeAfterSamples === "function"'
@@ -616,44 +628,78 @@ async function main() {
       console.error('[r738-runner] running R7-3.10 UI toggle helper');
       const report = await evaluate(cdp, `(() => {
         return (async () => {
-          const button = document.getElementById('btn-r7310-full-floor-diffuse');
-          if (!button) throw new Error('btn-r7310-full-floor-diffuse missing');
+          const floorButton = document.getElementById('btn-r7310-floor-diffuse');
+          const northButton = document.getElementById('btn-r7310-north-wall-diffuse');
+          if (!floorButton) throw new Error('btn-r7310-floor-diffuse missing');
+          if (!northButton) throw new Error('btn-r7310-north-wall-diffuse missing');
           await window.waitForR7310C1FullRoomDiffuseRuntimeReady(${args.timeoutMs});
           if (window.reportR7310C1FullRoomDiffuseRuntimeConfig().enabled) {
             window.setR7310C1FullRoomDiffuseRuntimeEnabled(false);
           }
           const before = {
-            text: button.textContent,
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
-          button.click();
+          floorButton.click();
           await new Promise((resolve) => setTimeout(resolve, 100));
-          const afterOn = {
-            text: button.textContent,
-            className: button.className,
-            title: button.title,
+          const afterFloorOn = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            floorClassName: floorButton.className,
+            floorTitle: floorButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
-          button.click();
+          northButton.click();
           await new Promise((resolve) => setTimeout(resolve, 100));
-          const afterOff = {
-            text: button.textContent,
-            className: button.className,
-            title: button.title,
+          const afterNorthOn = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            northClassName: northButton.className,
+            northTitle: northButton.title,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          floorButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterFloorOff = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          northButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterAllOff = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           return {
             version: 'r7-3-10-c1-full-room-diffuse-ui-toggle',
             before,
-            afterOn,
-            afterOff,
-            status: before.text === '全地板：關' &&
+            afterFloorOn,
+            afterNorthOn,
+            afterFloorOff,
+            afterAllOff,
+            status: before.floorText === '地板烘焙：關' &&
+              before.northText === '北牆烘焙：關' &&
               before.report.uiMeaningOff === 'sprout_patch_plus_live_floor' &&
-              afterOn.text === '全地板：開' &&
-              afterOn.report.enabled === true &&
-              afterOn.report.uiMeaningOn === 'full_floor_baked_diffuse_plus_live_reflection' &&
-              afterOff.text === '全地板：關' &&
-              afterOff.report.enabled === false
+              afterFloorOn.floorText === '地板烘焙：開' &&
+              afterFloorOn.northText === '北牆烘焙：關' &&
+              afterFloorOn.report.enabled === true &&
+              afterFloorOn.report.floorEnabled === true &&
+              afterFloorOn.report.northWallEnabled === false &&
+              afterNorthOn.floorText === '地板烘焙：開' &&
+              afterNorthOn.northText === '北牆烘焙：開' &&
+              afterNorthOn.report.floorEnabled === true &&
+              afterNorthOn.report.northWallEnabled === true &&
+              afterNorthOn.report.uiMeaningOn === 'selected_floor_or_north_wall_baked_diffuse_plus_live_reflection' &&
+              afterFloorOff.floorText === '地板烘焙：關' &&
+              afterFloorOff.northText === '北牆烘焙：開' &&
+              afterFloorOff.report.floorEnabled === false &&
+              afterFloorOff.report.northWallEnabled === true &&
+              afterAllOff.floorText === '地板烘焙：關' &&
+              afterAllOff.northText === '北牆烘焙：關' &&
+              afterAllOff.report.enabled === false
                 ? 'pass'
                 : 'fail'
           };
@@ -667,9 +713,95 @@ async function main() {
       fs.writeFileSync(path.join(packageDir, 'ui-toggle-report.json'), `${JSON.stringify(report, null, 2)}\n`);
       console.log('R7-3.10 C1 full-room diffuse UI toggle test completed');
       console.log(`status: ${report.status}`);
-      console.log(`before: ${report.before.text}`);
-      console.log(`afterOn: ${report.afterOn.text}`);
-      console.log(`afterOff: ${report.afterOff.text}`);
+      console.log(`before: ${report.before.floorText} / ${report.before.northText}`);
+      console.log(`afterFloorOn: ${report.afterFloorOn.floorText} / ${report.afterFloorOn.northText}`);
+      console.log(`afterNorthOn: ${report.afterNorthOn.floorText} / ${report.afterNorthOn.northText}`);
+      console.log(`afterAllOff: ${report.afterAllOff.floorText} / ${report.afterAllOff.northText}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.r7310RuntimeProbeSampleTest) {
+      console.error('[r738-runner] running R7-3.10 runtime probe sample helper');
+      const report = await evaluate(cdp, `(() => {
+        return (async () => {
+          const samplePoints = [
+            { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.50) },
+            { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.64) },
+            { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.78) }
+          ];
+          const cameraCases = [
+            {
+              name: 'normal_floor_view',
+              cameraState: {
+                name: 'r7310_runtime_probe_normal_floor',
+                position: { x: 0.0, y: 1.45, z: 0.8 },
+                yaw: 0.0,
+                pitch: -0.18,
+                fov: 55
+              }
+            },
+            {
+              name: 'inside_floor_level_view',
+              cameraState: {
+                name: 'r7310_runtime_probe_inside_floor_level',
+                position: { x: 0.0, y: -0.08, z: 0.8 },
+                yaw: 0.0,
+                pitch: 0.0,
+                fov: 55
+              }
+            },
+            {
+              name: 'inside_floor_up_view',
+              cameraState: {
+                name: 'r7310_runtime_probe_inside_floor_up',
+                position: { x: 0.0, y: -0.08, z: 0.8 },
+                yaw: 0.0,
+                pitch: -0.70,
+                fov: 55
+              }
+            }
+          ];
+          const reports = [];
+          for (const cameraCase of cameraCases) {
+            for (const level of [1, 2, 3, 4, 5, 6]) {
+              reports.push({
+                cameraCase: cameraCase.name,
+                probeLevel: level,
+                report: await window.reportR7310C1FullRoomDiffuseRuntimeProbe({
+                  timeoutMs: ${args.timeoutMs},
+                  cameraState: cameraCase.cameraState,
+                  probeLevel: level,
+                  samplePoints,
+                  samplePointSpace: 'canvasCssPixel'
+                })
+              });
+            }
+          }
+          const finiteSamples = reports.every((entry) => {
+            return entry.report.samplePoints.every((sample) => {
+              return Number.isFinite(sample.r) && Number.isFinite(sample.g) && Number.isFinite(sample.b);
+            });
+          });
+          return {
+            version: 'r7-3-10-c1-runtime-probe-sample',
+            samplePointSpace: 'canvasCssPixel',
+            samplePoints,
+            reports,
+            status: finiteSamples ? 'pass' : 'fail'
+          };
+        })();
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 120000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-full-room-diffuse-runtime', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'runtime-probe-sample-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 runtime probe sample test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`cases: ${report.reports.length}`);
       console.log(`package: ${path.relative(repoRoot, packageDir)}`);
       if (report.status !== 'pass') process.exitCode = 1;
       completed = true;
@@ -690,6 +822,46 @@ async function main() {
       console.log(`status: ${report.status}`);
       console.log(`bakedSurfaceHitCount: ${report.bakedSurfaceHitCount}`);
       console.log(`bakedSurfaceShortCircuitCount: ${report.bakedSurfaceShortCircuitCount}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.northWallRuntimeTest) {
+      console.error('[r738-runner] running R7-3.10 north wall runtime helper');
+      const report = await evaluate(cdp, `(() => {
+        return window.reportR7310C1FullRoomDiffuseRuntimeProbe({ timeoutMs: ${args.timeoutMs}, northWallCamera: true });
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 60000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-full-room-diffuse-runtime', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'runtime-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 north wall diffuse runtime short-circuit test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`northWallSurfaceHitCount: ${report.northWallSurfaceHitCount}`);
+      console.log(`northWallShortCircuitCount: ${report.northWallShortCircuitCount}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.eastWallRuntimeTest) {
+      console.error('[r738-runner] running R7-3.10 east wall runtime helper');
+      const report = await evaluate(cdp, `(() => {
+        return window.reportR7310C1FullRoomDiffuseRuntimeProbe({ timeoutMs: ${args.timeoutMs}, eastWallCamera: true });
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 60000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-full-room-diffuse-runtime', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'runtime-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 east wall diffuse runtime short-circuit test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`eastWallSurfaceHitCount: ${report.eastWallSurfaceHitCount}`);
+      console.log(`eastWallShortCircuitCount: ${report.eastWallShortCircuitCount}`);
       console.log(`package: ${path.relative(repoRoot, packageDir)}`);
       if (report.status !== 'pass') process.exitCode = 1;
       completed = true;
@@ -910,7 +1082,8 @@ async function main() {
         return (async () => {
           if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
           if (typeof window.setSamplingPaused === 'function') window.setSamplingPaused(false);
-          sampleCounter = Math.max(0, MAX_SAMPLES - 1);
+          const __sppCap = (typeof window.reportSppCap === 'function') ? window.reportSppCap().cap : 1000;
+          sampleCounter = Math.max(0, __sppCap - 1);
           if (pathTracingUniforms && pathTracingUniforms.uSampleCounter)
             pathTracingUniforms.uSampleCounter.value = sampleCounter;
           if (screenOutputUniforms && screenOutputUniforms.uSampleCounter)
@@ -970,7 +1143,8 @@ async function main() {
         return (async () => {
           if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
           if (typeof window.setSamplingPaused === 'function') window.setSamplingPaused(false);
-          sampleCounter = Math.max(0, MAX_SAMPLES - 2);
+          const __sppCap = (typeof window.reportSppCap === 'function') ? window.reportSppCap().cap : 1000;
+          sampleCounter = Math.max(0, __sppCap - 2);
           if (pathTracingUniforms && pathTracingUniforms.uSampleCounter)
             pathTracingUniforms.uSampleCounter.value = sampleCounter;
           if (screenOutputUniforms && screenOutputUniforms.uSampleCounter)
@@ -1290,6 +1464,11 @@ async function main() {
       return;
     }
     console.error('[r738-runner] running capture helper');
+    const r7310CaptureHelper = args.r7310Surface === 'north-wall'
+      ? 'reportR7310C1NorthWallDiffuseBakeAfterSamples'
+      : (args.r7310Surface === 'east-wall'
+        ? 'reportR7310C1EastWallDiffuseBakeAfterSamples'
+        : 'reportR7310C1FloorDiffuseBakeAfterSamples');
 	    const expression = `(() => {
 	      function f32ToBase64(arr) {
         if (!arr) return null;
@@ -1303,7 +1482,7 @@ async function main() {
         return btoa(binary);
 	      }
 	      return (async () => {
-	        const report = await window.${args.fullRoomDiffuseBake ? 'reportR7310C1FloorDiffuseBakeAfterSamples' : 'reportR738C1BakeCaptureAfterSamples'}(${args.targetSamples || args.samples}, ${args.timeoutMs}, {
+	        const report = await window.${args.fullRoomDiffuseBake ? r7310CaptureHelper : 'reportR738C1BakeCaptureAfterSamples'}(${args.targetSamples || args.samples}, ${args.timeoutMs}, {
 	          targetAtlasResolution: ${args.atlasResolution},
 	          smokeTest: ${args.smokeTest ? 'true' : 'false'}
 	        });

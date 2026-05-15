@@ -5174,7 +5174,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=gik-north-rotate-uv-r4';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-phase2-h7-guard-v1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;

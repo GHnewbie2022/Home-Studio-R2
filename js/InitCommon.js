@@ -3549,9 +3549,72 @@ window.reportR7310C1FullRoomDiffuseRuntimeConfig = function()
 	};
 };
 
+function r7310C1RuntimeProbeDecodeModeForLevel(probeLevel)
+{
+	if (probeLevel === 2) return 'visibleNormal';
+	if (probeLevel === 3) return 'visiblePosY';
+	if (probeLevel === 4) return 'rayDirY';
+	if (probeLevel === 5) return 'isRayExiting';
+	if (probeLevel === 6) return 'cameraPosY';
+	return 'surfaceClass';
+}
+
+function decodeR7310C1RuntimeProbeSample(r, g, b, decodeMode)
+{
+	if (decodeMode === 'visibleNormal')
+		return { x: r * 2 - 1, y: g * 2 - 1, z: b * 2 - 1 };
+	if (decodeMode === 'visiblePosY')
+		return { y: r * 0.10 - 0.05 };
+	if (decodeMode === 'rayDirY')
+		return { y: r * 2 - 1 };
+	if (decodeMode === 'isRayExiting')
+		return { isRayExiting: r > 0.5 };
+	if (decodeMode === 'cameraPosY')
+		return { y: r * 3.0 + 0.5 };
+	return { r: r, g: g, b: b };
+}
+
+function normalizeR7310C1RuntimeProbeSamplePoints(options, width, height)
+{
+	var samplePoints = Array.isArray(options.samplePoints) ? options.samplePoints : [];
+	var samplePointSpace = options.samplePointSpace === 'canvasCssPixel' ? 'canvasCssPixel' : 'renderTargetPixel';
+	var canvas = renderer && renderer.domElement ? renderer.domElement : null;
+	var dpr = window && Number.isFinite(window.devicePixelRatio) ? window.devicePixelRatio : 1;
+	var canvasHeight = canvas && Number.isFinite(canvas.clientHeight) && canvas.clientHeight > 0 ? canvas.clientHeight : height / Math.max(1, dpr);
+	return samplePoints.map(function(point)
+	{
+		var sourceX = Number(point && point.x);
+		var sourceY = Number(point && point.y);
+		if (!Number.isFinite(sourceX) || !Number.isFinite(sourceY))
+			throw new Error('R7-3.10 runtime probe sample point must have finite x/y');
+		var rtX = sourceX;
+		var rtY = sourceY;
+		if (samplePointSpace === 'canvasCssPixel')
+		{
+			rtX = sourceX * dpr;
+			rtY = (canvasHeight - sourceY) * dpr;
+		}
+		rtX = Math.max(0, Math.min(width - 1, Math.round(rtX)));
+		rtY = Math.max(0, Math.min(height - 1, Math.round(rtY)));
+		return {
+			x: sourceX,
+			y: sourceY,
+			rtPixel: { x: rtX, y: rtY }
+		};
+	});
+}
+
 window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 {
 	options = options || {};
+	var requestedProbeLevel = Number(options.probeLevel);
+	var probeLevel = Number.isFinite(requestedProbeLevel)
+		? Math.max(1, Math.min(6, Math.round(requestedProbeLevel)))
+		: 1;
+	var samplePointSpace = options.samplePointSpace === 'canvasCssPixel' ? 'canvasCssPixel' : 'renderTargetPixel';
+	var decodeMode = typeof options.decodeMode === 'string'
+		? options.decodeMode
+		: r7310C1RuntimeProbeDecodeModeForLevel(probeLevel);
 	var timeout = normalizeR738PositiveInt(options.timeoutMs, 60000, 1000, 600000);
 	var savedRuntimeEnabled = r7310C1FullRoomDiffuseRuntimeEnabled;
 	var savedFloorRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled;
@@ -3564,6 +3627,8 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 	{
 		await window.waitForR7310C1FullRoomDiffuseRuntimeReady(timeout);
 		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+		if (options.cameraState && typeof window.setR739Config1ValidationCameraState === 'function')
+			window.setR739Config1ValidationCameraState(options.cameraState);
 		if (options.northWallCamera === true && typeof window.setR739Config1ValidationCameraState === 'function')
 		{
 			window.setR739Config1ValidationCameraState({
@@ -3613,7 +3678,7 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 		cameraIsMoving = false;
 		cameraRecentlyMoving = false;
 		pathTracingUniforms.uR738C1BakeCaptureMode.value = 0;
-		pathTracingUniforms.uR7310C1RuntimeProbeMode.value = 1.0;
+		pathTracingUniforms.uR7310C1RuntimeProbeMode.value = probeLevel;
 		updateR738C1BakePastePreviewUniforms();
 		updateR7310C1FullRoomDiffuseRuntimeUniforms();
 		pathTracingUniforms.tPreviousTexture.value = previous.texture;
@@ -3633,10 +3698,26 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 		renderer.setRenderTarget(target);
 		renderer.render(pathTracingScene, worldCamera);
 		var readback = await readR738RenderTargetFloatPixels(target);
+		var pixels = readback.pixels;
+		var r7310ProbeSamples = normalizeR7310C1RuntimeProbeSamplePoints(options, readback.width, readback.height).map(function(point)
+		{
+			var index = (point.rtPixel.y * readback.width + point.rtPixel.x) * 4;
+			var r = pixels[index];
+			var g = pixels[index + 1];
+			var b = pixels[index + 2];
+			return {
+				x: point.x,
+				y: point.y,
+				rtPixel: point.rtPixel,
+				r: r,
+				g: g,
+				b: b,
+				decoded: decodeR7310C1RuntimeProbeSample(r, g, b, decodeMode)
+			};
+		});
 		var shortCircuitCount = 0;
 		var northWallShortCircuitCount = 0;
 		var eastWallShortCircuitCount = 0;
-		var pixels = readback.pixels;
 		for (var i = 0; i < pixels.length; i += 4)
 		{
 			if (pixels[i] < 0.25 && pixels[i + 1] > 0.75 && pixels[i + 2] < 0.25)
@@ -3654,6 +3735,14 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 			: (options.northWallCamera === true
 			? (northWallHitCount > 0 && northWallShortCircuitCount > 0 ? 'pass' : 'fail')
 			: (hitCount > 0 && shortCircuitCount > 0 ? 'pass' : 'fail'));
+		if (probeLevel > 1)
+		{
+			var finiteProbeSamples = r7310ProbeSamples.every(function(sample)
+			{
+				return Number.isFinite(sample.r) && Number.isFinite(sample.g) && Number.isFinite(sample.b);
+			});
+			status = r7310ProbeSamples.length > 0 && finiteProbeSamples ? 'pass' : 'fail';
+		}
 		return {
 			version: 'r7-3-10-c1-full-room-diffuse-runtime-probe',
 			config: 1,
@@ -3672,9 +3761,14 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 			northWallShortCircuitCount: northWallShortCircuitCount,
 			eastWallSurfaceHitCount: eastWallHitCount,
 			eastWallShortCircuitCount: eastWallShortCircuitCount,
+			probeLevel: probeLevel,
+			samplePointSpace: samplePointSpace,
+			decodeMode: decodeMode,
+			samplePoints: r7310ProbeSamples,
 			status: status,
 			surfaceClassSummary: surfaceClassSummary,
-			probePixels: readback.width * readback.height
+			probePixels: readback.width * readback.height,
+			currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 		};
 	}
 	finally

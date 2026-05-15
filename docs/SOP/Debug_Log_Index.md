@@ -69,12 +69,13 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 
 ## 目前優先路線
 
-### R7-3.10 C1 seam debug Phase 2 first knife
+### R7-3.10 C1 seam debug Phase 2 second knife
 
 ```
 必讀：
   - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`
   - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-second-knife-bprime-h7`
   - `Debug_Log.md` 的 `R7-3.10-c1-phase2-first-knife-h8-cprime`
 
 目前狀態：
@@ -88,8 +89,11 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
   - 使用者同視角回報：floor / north 的 fixed-X 西側黑線已消失。
   - 使用者同視角回報：floor fixed-Z 南側邊界稍深，north fixed-Y 頂部北側邊界新出現黑線。
   - 量化結果：fixed-X 邊界格已由低亮度變亮；fixed-Z / fixed-Y 邊界格由亮變暗，屬於新包 atlas 資料端變化。
-  - 使用者回報：floor 內部發光仍存在，符合 H7 未處理狀態。
-  - 下一步是 B' shader probe；fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題。
+  - B' probe 已完成：pre-guard 內部視角 L5 sample 全部為 isRayExiting true。
+  - H7 guard 已完成：r7310C1FullRoomDiffuseShortCircuit() 排除 exiting hit。
+  - post-guard 內部視角 L1 short 歸零；正常 floor runtime smoke 仍 pass。
+  - 待使用者實機看 floor bake on 時，地板內部是否不再整片發光。
+  - fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題。
 ```
 
 ### R7-3.10 C1 seam debug Phase 1 closeout

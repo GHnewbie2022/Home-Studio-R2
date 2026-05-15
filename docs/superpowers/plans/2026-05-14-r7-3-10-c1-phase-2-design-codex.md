@@ -12,10 +12,10 @@
 
 ## 目前狀態
 
-日期：2026-05-14 起草；2026-05-15 CODEX / OPUS 第 3 輪審查後成立；2026-05-15 CODEX 完成第一刀。
-狀態：第一刀 H8 + C' 已實作、1000SPP floor / north 已重烘、runtime pointer 已更新；同視角實機驗收待使用者確認。
-範圍：H8 per-surface gate、C' bake UV 半 texel 修正、重烘 floor / north、第一階段同視角驗收。
-暫緩：B' shader 數值 probe、H7 inside-geometry / ray-side guard、H5 / H3' alpha mask、East wall runtime。
+日期：2026-05-14 起草；2026-05-15 CODEX / OPUS 第 3 輪審查後成立；2026-05-15 CODEX 完成第一刀；2026-05-15 CODEX 完成第二刀 B' / H7。
+狀態：第一刀 H8 + C' 已實作、1000SPP floor / north 已重烘、runtime pointer 已更新；第二刀已用 B' probe 證實地板內部發光來自 exiting hit，並以 H7 guard 排除。待使用者同視角實機驗收。
+範圍：H8 per-surface gate、C' bake UV 半 texel 修正、重烘 floor / north、B' shader 數值 probe、H7 inside-geometry guard。
+暫緩：H5 / H3' alpha mask、East wall runtime。
 協作邊界：OPUS 北牆 GIK 貼圖旋轉與貼圖頂底偽影已於 2026-05-15 完成（gik-north-rotate-uv-r4，使用者四個 Config 全數實機驗收通過）。CODEX 第二刀（B' probe / H7 guard 等）解除 GIK 邊界；惟 ACOUSTIC_PANEL 分支與 textures/gik244_*.jpeg 已成定論，第二刀無須再動。改動清單詳見本檔下方「## 2026-05-15 OPUS GIK 修復完成回報」。
 
 ---
@@ -39,8 +39,8 @@
 | - [x] | C' 第一輪修法 | 只改 bake capture path：`r738BakeUv = gl_FragCoord.xy / uResolution;`。正常 camera ray 的 `pixelPos` 不動。修完後重烘 floor / north atlas。 |
 | - [x] | H8 修法 | 採方案 a'：保留 combined texture，加入 per-slot ready 與 mode flag 防取樣。未 ready slot 使用 black placeholder；該 slot 對應 mode flag 維持 0，shader 不取樣。第一輪不讀 alpha、不做 valid fallback。 |
 | - [x] | H8 嫩芽互斥 | R7-3.8 嫩芽 paste 只與 floor runtime 互斥。north baked 開啟時，嫩芽仍存在。 |
-| - [x] | B' probe | 暫緩。第一刀先處理 H8 + C'，再決定 B' probe 實作時機。 |
-| - [x] | H7 guard | 暫緩。需等 B' probe 取得 `isRayExiting`、camera position、visibleNormal、visiblePosition、rayDir 等數值後再決定 guard 形狀。 |
+| - [x] | B' probe | 第二刀已補 runtime probe level 2~6 與 sample readback，取得正常視角與地板內部視角數值。 |
+| - [x] | H7 guard | 第二刀採 `hitIsRayExiting` guard。B' 證據顯示地板內部視角 sample 全為 exiting hit，guard 後內部視角短路數歸零。 |
 | - [x] | H5 / H3' | 第一刀不做 alpha mask。第一刀驗收後仍見家具 footprint 暗區異常貼回，才啟動第二輪。 |
 | - [x] | East wall runtime | 第一刀不納入。若後續需要 east runtime，另設計第三 slot、UI 與 package ready。 |
 
@@ -72,8 +72,8 @@
 | - [x] | 1000SPP north | 新 package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-112717/`。 |
 | - [x] | runtime pointer | floor / north pointer 已更新到 2026-05-15 新 package。 |
 | - [x] | smoke | contract、syntax、runtime short-circuit、north-wall runtime、UI toggle 均通過。 |
-| - [ ] | 同視角實機驗收 | 等使用者確認 floor / north 黑線是否退掉，以及 north 開啟時嫩芽是否仍存在。 |
-| - [ ] | 下一刀判斷 | 若實機仍有內部發光或暗區貼回，再進 B' probe 與 H7 guard。 |
+| - [x] | 同視角實機驗收 | 使用者已確認 floor / north fixed-X 黑線退掉；另回報 fixed-Z / fixed-Y 新接縫與地板內部發光。 |
+| - [x] | 下一刀判斷 | 依使用者回報進入第二刀：B' probe 與 H7 guard。 |
 
 ---
 
@@ -128,10 +128,76 @@ Systematic debugging 結論：
 下一步：
 
 ```text
-1.  不回退 H8，因為 north 與嫩芽已分開。
-2.  不先改 shader guard，先補 B' probe，把地板內部發光的 shader 當下數值抓出來。
-3.  不直接做 alpha mask，先把 fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題。
-4.  待 B' 數字回來後，再決定 H7 guard 與 H5 / H3' 是否拆成兩刀。
+1.  保留 H8，因為 north 與嫩芽已分開。
+2.  第二刀先補 B' probe，抓地板內部發光的 shader 當下數值。
+3.  B' 數字若指向 exiting hit，H7 只加 exiting guard。
+4.  fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題，留待下一輪。
+```
+
+---
+
+## 2026-05-15 第二刀 B' / H7 執行結果
+
+新增 probe：
+
+```text
+1.  shader probe level 2：visible normal。
+2.  shader probe level 3：visible position Y。
+3.  shader probe level 4：ray direction Y。
+4.  shader probe level 5：hitIsRayExiting。
+5.  shader probe level 6：camera position Y。
+6.  JS readback：`reportR7310C1FullRoomDiffuseRuntimeProbe({ probeLevel, samplePoints, samplePointSpace })`。
+7.  runner：`--r7310-runtime-probe-sample-test`，同次跑正常地板視角與兩個地板內部視角。
+```
+
+B' 量測包：
+
+```text
+pre-guard:
+  .omc/r7-3-10-full-room-diffuse-runtime/20260515-124123/runtime-probe-sample-report.json
+
+post-guard:
+  .omc/r7-3-10-full-room-diffuse-runtime/20260515-124246/runtime-probe-sample-report.json
+
+normal runtime smoke:
+  .omc/r7-3-10-full-room-diffuse-runtime/20260515-124309/runtime-report.json
+```
+
+關鍵數字：
+
+```text
+pre-guard normal_floor_view:
+  L1 short = 234982
+  L5 sample 2 / 3 = isRayExiting false
+
+pre-guard inside_floor_level_view:
+  L1 short = 879262
+  L5 sample 1 / 2 / 3 = isRayExiting true
+
+pre-guard inside_floor_up_view:
+  L1 short = 921600
+  L5 sample 1 / 2 / 3 = isRayExiting true
+
+post-guard inside_floor_level_view:
+  L1 short = 0
+
+post-guard inside_floor_up_view:
+  L1 short = 0
+
+post-guard normal runtime smoke:
+  status = pass
+  bakedSurfaceHitCount = 96170
+  bakedSurfaceShortCircuitCount = 190559
+```
+
+H7 判斷：
+
+```text
+1.  地板內部發光不是 H8，也不是 north / sprout gate。
+2.  觸發條件是地板內部相機看到 floor top face 時，`hitIsRayExiting == TRUE` 仍通過 R7-3.10 floor 短路。
+3.  最小 guard 是在 `r7310C1FullRoomDiffuseShortCircuit()` 入口排除 `visibleIsRayExiting == TRUE`。
+4.  guard 後，地板內部視角短路數歸零；正常地板 runtime smoke 仍通過。
+5.  fixed-Z / fixed-Y 新黑線仍屬 H5 / H3'，未納入 H7。
 ```
 
 ---
@@ -784,7 +850,7 @@ floor enabled 時，R7-3.8 paste preview uniformMode 為 0。
 | - [x] | Task 6：重烘 floor / north 1000SPP atlas；17000SPP 夜間高 SPP 另跑。 | CODEX / 使用者夜間高 SPP |
 | - [ ] | Task 7：第一階段實機驗收。 | 使用者 + CODEX |
 | - [x] | Task 8：收尾與文件同步。 | CODEX |
-| - [ ] | 下一刀：B' probe。 | 待第一刀結果 |
-| - [ ] | 下一刀：H7 inside-geometry / ray-side guard。 | 待 B' probe |
+| - [x] | 下一刀：B' probe。 | 2026-05-15 完成 |
+| - [x] | 下一刀：H7 inside-geometry / ray-side guard。 | 2026-05-15 完成 |
 | - [ ] | 第二輪：H5 / H3' alpha mask。 | 待第一刀與 H7 結果 |
 | - [ ] | 第二輪：East wall runtime。 | 待使用者裁定 |

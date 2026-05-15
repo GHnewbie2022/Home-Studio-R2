@@ -2,7 +2,7 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前接手重點：R7-3.10 C1 seam debug Phase 2 第一刀已完成。H8 runtime gate 已拆成 per-surface applied，C' bake UV 半 texel 偏移已修正，floor / north 已用新 1000SPP package 更新 runtime pointer。同視角實機驗收仍待使用者確認；若黑線、內部發光或暗區貼回仍存在，下一刀走 B' probe 與 H7 guard。
+> 目前接手重點：R7-3.10 C1 seam debug Phase 2 第二刀已完成。第一刀修 H8 runtime gate 與 C' bake UV；第二刀用 B' probe 證實地板內部發光來自 exiting hit，並以 H7 guard 排除。下一個未處理視覺問題是 fixed-Z / fixed-Y 新黑線，登記為 H5 / H3' 邊界資料政策候選。
 
 ---
 
@@ -128,6 +128,55 @@
     - Do not roll back H8.
     - Do not patch H7 before B' shader probe.
     - Record fixed-Z / fixed-Y dark boundary as H5 / H3' second-round candidate for contact / occluder atlas policy.
+```
+
+## R7-3.10｜C1 Phase 2 第二刀 B' probe + H7 guard
+
+```yaml
+- id: R7-3.10-c1-phase2-second-knife-bprime-h7
+  date: 2026-05-15
+  type: runtime_probe_and_inside_geometry_guard
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  trigger:
+    - User reported that floor bake on still makes the inside-floor view glow.
+    - User also reported floor bake off only leaves the sprout area glowing, and north bake no longer affects the sprout area.
+  implementation:
+    - shaders/Home_Studio_Fragment.glsl now tracks hitIsRayExiting from BVH box hits and rotated object hits.
+    - Runtime probe mode now supports levels 2 through 6: visible normal, visible position Y, ray direction Y, hitIsRayExiting, and camera position Y.
+    - js/InitCommon.js reportR7310C1FullRoomDiffuseRuntimeProbe() accepts probeLevel, samplePoints, samplePointSpace, decodeMode, and cameraState.
+    - docs/tools/r7-3-8-c1-bake-capture-runner.mjs adds --r7310-runtime-probe-sample-test to capture normal floor view and two inside-floor camera cases.
+    - r7310C1FullRoomDiffuseShortCircuit() now receives visibleIsRayExiting and returns false when visibleIsRayExiting == TRUE.
+  pre_guard_evidence:
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260515-124123/runtime-probe-sample-report.json
+    - normal_floor_view L1 short: 234982
+    - normal_floor_view L5 sample 2 / 3: isRayExiting false
+    - inside_floor_level_view L1 short: 879262
+    - inside_floor_level_view L5 sample 1 / 2 / 3: isRayExiting true
+    - inside_floor_up_view L1 short: 921600
+    - inside_floor_up_view L5 sample 1 / 2 / 3: isRayExiting true
+  post_guard_evidence:
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260515-124246/runtime-probe-sample-report.json
+    - inside_floor_level_view L1 short: 0
+    - inside_floor_up_view L1 short: 0
+  normal_runtime_guard_check:
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260515-124309/runtime-report.json
+    - status: pass
+    - bakedSurfaceHitCount: 96170
+    - bakedSurfaceShortCircuitCount: 190559
+  root_cause:
+    - The floor short-circuit accepted hits from inside the floor solid because it only checked objectID, normal, and visible position.
+    - The B' probe showed the inside-floor camera cases were exiting hits.
+    - H7 therefore only needs an exiting-hit guard for this symptom.
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-probe-sample-test --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000
+  remaining:
+    - User visual validation still needed for inside-floor view with floor bake on.
+    - fixed-Z / fixed-Y dark boundary remains H5 / H3' and is not solved by H7.
 ```
 
 ## 2026-05-12 R7-3.9 C1 Reflection Bake Reset To Diffuse-Only

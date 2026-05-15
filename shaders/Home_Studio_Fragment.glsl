@@ -246,6 +246,7 @@ float hitRoughness;
 float hitMetalness;
 // R7-3-x GIK 橫擺面板旋轉旗標：>0.5 時 UV 順時針 90 度旋轉（北牆 N1/N2/N3）
 float hitRotateUV90;
+int hitIsRayExiting;
 
 struct Quad { vec3 normal; vec3 v0; vec3 v1; vec3 v2; vec3 v3; vec3 emission; vec3 color; int type; };
 
@@ -542,10 +543,12 @@ bool r7310C1EastWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
 	);
 	return true;
 }
-bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, out vec3 bakedRadiance)
+bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, int visibleIsRayExiting, out vec3 bakedRadiance)
 {
 	bakedRadiance = vec3(0.0);
 	if (uR7310C1FullRoomDiffuseMode < 0.5 || uR7310C1FullRoomDiffuseReady < 0.5)
+		return false;
+	if (visibleIsRayExiting == TRUE)
 		return false;
 	vec2 atlasUv = vec2(0.0);
 	if (uR7310C1FloorDiffuseMode > 0.5 &&
@@ -1531,6 +1534,7 @@ float SceneIntersect( )
 	hitRoughness = 1.0;
 	hitMetalness = 0.0;
 	hitRotateUV90 = 0.0;
+	hitIsRayExiting = FALSE;
 
 	// R2-11 光源幾何由圓柱承載（見下方區塊 5），ceilingLampQuad 僅作為 importance sampling PDF 目標
 
@@ -1580,6 +1584,7 @@ float SceneIntersect( )
 					hitRoughness = boxRoughness;
 					hitMetalness = boxMetalness;
 					hitRotateUV90 = boxRotateUV90;
+					hitIsRayExiting = isRayExiting;
 					hitBoxMin = boxMin;
 					hitBoxMax = boxMax;
 					// fix20：結構性 box（索引 0..31：地板/天花板/牆/樑/柱）統一 objectID=1，使邊界間 fwidth(objectID)=0，
@@ -1613,6 +1618,7 @@ float SceneIntersect( )
 			hitType = DIFF; \
 			hitRoughness = clamp(rotRoughness[IDX] * uStandRoughnessScale, 0.0, 1.0); \
 			hitMetalness = clamp(rotMetalness[IDX] * uStandMetalnessScale, 0.0, 1.0); \
+			hitIsRayExiting = isRayExiting; \
 			hitObjectID = float(objectCount + 100 + IDX); \
 		} \
 	}
@@ -1633,6 +1639,7 @@ float SceneIntersect( )
 			hitType = SPEAKER; \
 			hitRoughness = rotRoughness[IDX]; \
 			hitMetalness = rotMetalness[IDX]; \
+			hitIsRayExiting = isRayExiting; \
 			hitObjectID = float(objectCount + 100 + IDX); \
 		} \
 	}
@@ -2975,10 +2982,21 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				continue;
 			}
 			vec3 r7310BakedRadiance = vec3(0.0);
-			if (r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, r7310BakedRadiance))
+			if (r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, hitIsRayExiting, r7310BakedRadiance))
 			{
-				if (uR7310C1RuntimeProbeMode > 0.5)
+				float r7310C1RuntimeProbeMode = uR7310C1RuntimeProbeMode;
+				if (r7310C1RuntimeProbeMode > 0.5 && r7310C1RuntimeProbeMode < 1.5)
 					accumCol += r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0));
+				else if (r7310C1RuntimeProbeMode > 1.5 && r7310C1RuntimeProbeMode < 2.5)
+					accumCol += nl * 0.5 + 0.5;
+				else if (r7310C1RuntimeProbeMode > 2.5 && r7310C1RuntimeProbeMode < 3.5)
+					accumCol += vec3(clamp((x.y + 0.05) / 0.10, 0.0, 1.0), 0.0, 0.0);
+				else if (r7310C1RuntimeProbeMode > 3.5 && r7310C1RuntimeProbeMode < 4.5)
+					accumCol += vec3(clamp((rayDirection.y + 1.0) / 2.0, 0.0, 1.0), 0.0, 0.0);
+				else if (r7310C1RuntimeProbeMode > 4.5 && r7310C1RuntimeProbeMode < 5.5)
+					accumCol += hitIsRayExiting == TRUE ? vec3(1.0, 0.0, 0.0) : vec3(0.0);
+				else if (r7310C1RuntimeProbeMode > 5.5 && r7310C1RuntimeProbeMode < 6.5)
+					accumCol += vec3(clamp((uCamPos.y - 0.5) / 3.0, 0.0, 1.0), 0.0, 0.0);
 				else
 					accumCol += mask * r7310BakedRadiance;
 				break;
