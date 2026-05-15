@@ -70,6 +70,7 @@ let homeStudioAnimationFrameId = 0;
 let homeStudioAnimationSleeping = false;
 let TWO_PI = Math.PI * 2;
 let sampleCounter = 0.0; // will get increased by 1 in animation loop before rendering
+let userSppCap = 1000; // 使用者可調整的 SPP 上限。sampleCounter >= userSppCap 時休眠；上限調高即自動續跑
 let frameCounter = 1.0; // 1 instead of 0 because it is used as a rng() seed in pathtracing shader
 let samplingPaused = false;
 let samplingStepOnceRequested = false;
@@ -307,6 +308,30 @@ window.reportSamplingPaused = function()
 		stepOncePending: samplingStepOnceRequested,
 		stepHistoryDepth: Math.max(0, samplingStepHistory.length - 1),
 		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
+	};
+};
+
+window.setSppCap = function(value)
+{
+	var parsed = Math.floor(Number(value));
+	if (!isFinite(parsed) || parsed < 1) parsed = 1;
+	var previousCap = userSppCap;
+	userSppCap = parsed;
+	// 上限調高、且目前已超過舊上限 → 喚醒動畫迴圈繼續累加；不重置 sceneParams、不清累積
+	if (parsed > previousCap && sampleCounter >= previousCap)
+	{
+		if (typeof scheduleHomeStudioAnimationFrame === 'function')
+			scheduleHomeStudioAnimationFrame();
+	}
+	return window.reportSppCap();
+};
+
+window.reportSppCap = function()
+{
+	return {
+		cap: userSppCap,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
+		hibernating: sampleCounter >= userSppCap && !cameraIsMoving
 	};
 };
 
@@ -659,7 +684,7 @@ window.reportR73QuickPreviewFillConfig = function()
 
 function collectHomeStudioFpsProbeSnapshot()
 {
-	var maxSamples = typeof MAX_SAMPLES !== 'undefined' ? MAX_SAMPLES : null;
+	var maxSamples = typeof userSppCap === 'number' ? userSppCap : null;
 	return {
 		devicePixelRatio: window.devicePixelRatio,
 		pixelRatio: typeof pixelRatio === 'number' ? pixelRatio : null,
@@ -1039,6 +1064,42 @@ function summarizeR738RawHdrPixels(readback, samples)
 }
 
 const R738_C1_BAKE_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-8-c1-bake-accepted-package.json';
+const R7310_C1_FLOOR_DIFFUSE_RUNTIME_PACKAGE_URL = 'docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json';
+const R7310_C1_NORTH_WALL_DIFFUSE_RUNTIME_PACKAGE_URL = 'docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json';
+const R7310_C1_EAST_WALL_DIFFUSE_RUNTIME_PACKAGE_URL = 'docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json';
+const R7310_C1_FLOOR_TARGET_ID = 1001;
+const R7310_C1_FLOOR_SURFACE_NAME = 'c1_floor_full_room';
+const R7310_C1_FLOOR_WORLD_BOUNDS = Object.freeze({
+	xMin: -2.11,
+	xMax: 2.11,
+	zMin: -2.074,
+	zMax: 3.256,
+	y: 0.01
+});
+const R7310_C1_NORTH_WALL_TARGET_ID = 1002;
+const R7310_C1_NORTH_WALL_SURFACE_NAME = 'c1_north_wall';
+const R7310_C1_NORTH_WALL_WORLD_BOUNDS = Object.freeze({
+	xMin: -2.11,
+	xMax: 2.11,
+	yMin: 0.0,
+	yMax: 2.905,
+	z: -1.874
+});
+const R7310_C1_NORTH_WALL_DOOR_HOLE = Object.freeze({
+	xMin: -1.52,
+	xMax: -0.73,
+	yMin: 0.0,
+	yMax: 2.03
+});
+const R7310_C1_EAST_WALL_TARGET_ID = 1003;
+const R7310_C1_EAST_WALL_SURFACE_NAME = 'c1_east_wall';
+const R7310_C1_EAST_WALL_WORLD_BOUNDS = Object.freeze({
+	zMin: -1.874,
+	zMax: 3.056,
+	yMin: 0.0,
+	yMax: 2.905,
+	x: 1.91
+});
 const R739_C1_ACCURATE_REFLECTION_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json';
 const R739_C1_SPROUT_REFLECTION_BOUNDS = Object.freeze({ xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 });
 let r738C1BakePastePreviewEnabled = true;
@@ -1048,6 +1109,25 @@ let r738C1BakePastePreviewPackage = null;
 let r738C1BakePastePreviewError = null;
 let r738C1BakePastePreviewTexture = null;
 let r738C1BakePastePreviewStrength = 1.0;
+let r7310C1FullRoomDiffuseRuntimeEnabled = false;
+let r7310C1FullRoomDiffuseRuntimeReady = false;
+let r7310C1FullRoomDiffuseRuntimeLoadPromise = null;
+let r7310C1FullRoomDiffuseRuntimePackage = null;
+let r7310C1FloorDiffuseRuntimePixels = null;
+let r7310C1FullRoomDiffuseRuntimeTexture = null;
+let r7310C1FullRoomDiffuseRuntimeError = null;
+let r7310C1FloorDiffuseRuntimeEnabled = false;
+let r7310C1NorthWallDiffuseRuntimeEnabled = false;
+let r7310C1NorthWallDiffuseRuntimeReady = false;
+let r7310C1NorthWallDiffuseRuntimeLoadPromise = null;
+let r7310C1NorthWallDiffuseRuntimePackage = null;
+let r7310C1NorthWallDiffuseRuntimeTexture = null;
+let r7310C1NorthWallDiffuseRuntimeError = null;
+let r7310C1EastWallDiffuseRuntimeReady = false;
+let r7310C1EastWallDiffuseRuntimeLoadPromise = null;
+let r7310C1EastWallDiffuseRuntimePackage = null;
+let r7310C1EastWallDiffuseRuntimeTexture = null;
+let r7310C1EastWallDiffuseRuntimeError = null;
 let r739C1AccurateReflectionEnabled = false;
 let r739C1AccurateReflectionReady = false;
 let r739C1AccurateReflectionLoadPromise = null;
@@ -1121,10 +1201,15 @@ function updateR738C1BakePastePreviewUniforms()
 {
 	if (!pathTracingUniforms) return false;
 	var captureMode = pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0;
+	var r7310FloorRuntimeApplied = r7310C1FloorDiffuseRuntimeEnabled &&
+		r7310C1FullRoomDiffuseRuntimeReady &&
+		r7310C1FullRoomDiffuseRuntimeConfigAllowed() &&
+		captureMode === 0;
 	var applied = r738C1BakePastePreviewEnabled &&
 		r738C1BakePastePreviewReady &&
 		r738C1BakePastePreviewConfigAllowed() &&
-		captureMode === 0;
+		captureMode === 0 &&
+		!r7310FloorRuntimeApplied;
 	if (pathTracingUniforms.uR738C1BakePastePreviewMode)
 		pathTracingUniforms.uR738C1BakePastePreviewMode.value = applied ? 1.0 : 0.0;
 	if (pathTracingUniforms.uR738C1BakePastePreviewReady)
@@ -1141,6 +1226,124 @@ function updateR738C1BakePastePreviewUniforms()
 	if (pathTracingUniforms.uR738C1BakePatchResolution && r738C1BakePastePreviewPackage)
 		pathTracingUniforms.uR738C1BakePatchResolution.value = r738C1BakePastePreviewPackage.targetAtlasResolution || 512;
 	return applied;
+}
+
+function r7310C1FullRoomDiffuseRuntimeConfigAllowed()
+{
+	var config = (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0;
+	return config === 1;
+}
+
+function updateR7310C1FullRoomDiffuseRuntimeUniforms()
+{
+	if (!pathTracingUniforms) return false;
+	var captureMode = pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0;
+	var configAllowed = r7310C1FullRoomDiffuseRuntimeConfigAllowed();
+	var floorApplied = r7310C1FloorDiffuseRuntimeEnabled &&
+		r7310C1FullRoomDiffuseRuntimeReady &&
+		configAllowed &&
+		captureMode === 0;
+	var northWallApplied = r7310C1NorthWallDiffuseRuntimeEnabled &&
+		r7310C1NorthWallDiffuseRuntimeReady &&
+		configAllowed &&
+		captureMode === 0;
+	var applied = floorApplied || northWallApplied;
+	if (pathTracingUniforms.uR7310C1FullRoomDiffuseMode)
+		pathTracingUniforms.uR7310C1FullRoomDiffuseMode.value = applied ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR7310C1FullRoomDiffuseReady)
+		pathTracingUniforms.uR7310C1FullRoomDiffuseReady.value = applied ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR7310C1FloorDiffuseMode)
+		pathTracingUniforms.uR7310C1FloorDiffuseMode.value = floorApplied ? 1.0 : 0.0;
+	if (pathTracingUniforms.uR7310C1NorthWallDiffuseMode)
+		pathTracingUniforms.uR7310C1NorthWallDiffuseMode.value = northWallApplied ? 1.0 : 0.0;
+	if (r7310C1FullRoomDiffuseRuntimeTexture && pathTracingUniforms.tR7310C1FullRoomDiffuseAtlasTexture)
+		pathTracingUniforms.tR7310C1FullRoomDiffuseAtlasTexture.value = r7310C1FullRoomDiffuseRuntimeTexture;
+	if (pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution)
+		pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution.value = r7310C1RuntimeAtlasResolution();
+	if (pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount)
+		pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount.value = 2.0;
+	if (r7310C1FullRoomDiffuseRuntimePackage && r7310C1FullRoomDiffuseRuntimePackage.worldBounds && pathTracingUniforms.uR7310C1BakeFloorWorldBounds)
+	{
+		var b = r7310C1FullRoomDiffuseRuntimePackage.worldBounds;
+		pathTracingUniforms.uR7310C1BakeFloorWorldBounds.value.set(b.xMin, b.xMax, b.zMin, b.zMax);
+	}
+	return applied;
+}
+
+function r7310C1RuntimeAtlasResolution()
+{
+	if (r7310C1FullRoomDiffuseRuntimePackage && r7310C1FullRoomDiffuseRuntimePackage.targetAtlasResolution)
+		return r7310C1FullRoomDiffuseRuntimePackage.targetAtlasResolution;
+	if (r7310C1NorthWallDiffuseRuntimePackage && r7310C1NorthWallDiffuseRuntimePackage.targetAtlasResolution)
+		return r7310C1NorthWallDiffuseRuntimePackage.targetAtlasResolution;
+	return 512;
+}
+
+function createR7310C1BlackRuntimeSlot(resolution)
+{
+	var safeResolution = Math.max(1, Math.trunc(Number(resolution) || 1));
+	return new Float32Array(safeResolution * safeResolution * 4);
+}
+
+function buildR7310C1CombinedDiffuseRuntimeTexture(floorPixels, northWallPixels, resolution)
+{
+	var combined = new Float32Array(resolution * resolution * 8);
+	for (var y = 0; y < resolution; y += 1)
+	{
+		for (var x = 0; x < resolution; x += 1)
+		{
+			var src = (y * resolution + x) * 4;
+			var floorDst = (y * resolution * 2 + x) * 4;
+			var northWallDst = (y * resolution * 2 + resolution + x) * 4;
+			combined[floorDst] = floorPixels[src];
+			combined[floorDst + 1] = floorPixels[src + 1];
+			combined[floorDst + 2] = floorPixels[src + 2];
+			combined[floorDst + 3] = floorPixels[src + 3];
+			combined[northWallDst] = northWallPixels[src];
+			combined[northWallDst + 1] = northWallPixels[src + 1];
+			combined[northWallDst + 2] = northWallPixels[src + 2];
+			combined[northWallDst + 3] = northWallPixels[src + 3];
+		}
+	}
+	var texture = new THREE.DataTexture(
+		combined,
+		resolution * 2,
+		resolution,
+		THREE.RGBAFormat,
+		THREE.FloatType
+	);
+	texture.minFilter = THREE.NearestFilter;
+	texture.magFilter = THREE.NearestFilter;
+	texture.wrapS = THREE.ClampToEdgeWrapping;
+	texture.wrapT = THREE.ClampToEdgeWrapping;
+	texture.flipY = false;
+	texture.generateMipmaps = false;
+	texture.needsUpdate = true;
+	return texture;
+}
+
+function refreshR7310C1CombinedDiffuseRuntimeTexture()
+{
+	if (!THREE)
+		return false;
+	var resolution = r7310C1RuntimeAtlasResolution();
+	var expectedLength = resolution * resolution * 4;
+	var floorPixels = r7310C1FloorDiffuseRuntimePixels instanceof Float32Array
+		? r7310C1FloorDiffuseRuntimePixels
+		: createR7310C1BlackRuntimeSlot(resolution);
+	var northWallPixels = r7310C1NorthWallDiffuseRuntimeTexture instanceof Float32Array
+		? r7310C1NorthWallDiffuseRuntimeTexture
+		: createR7310C1BlackRuntimeSlot(resolution);
+	if (floorPixels.length !== expectedLength)
+		floorPixels = createR7310C1BlackRuntimeSlot(resolution);
+	if (northWallPixels.length !== expectedLength)
+		northWallPixels = createR7310C1BlackRuntimeSlot(resolution);
+	r7310C1FullRoomDiffuseRuntimeTexture = buildR7310C1CombinedDiffuseRuntimeTexture(
+		floorPixels,
+		northWallPixels,
+		resolution
+	);
+	return true;
 }
 
 function r739C1AccurateReflectionConfigAllowed()
@@ -1261,15 +1464,169 @@ async function loadR738C1BakePastePreviewPackage()
 	return r738C1BakePastePreviewLoadPromise;
 }
 
+async function loadR7310C1FullRoomDiffuseRuntimePackage()
+{
+	if (r7310C1FullRoomDiffuseRuntimeLoadPromise) return r7310C1FullRoomDiffuseRuntimeLoadPromise;
+	r7310C1FullRoomDiffuseRuntimeLoadPromise = (async function()
+	{
+		try
+		{
+			r7310C1FullRoomDiffuseRuntimeError = null;
+			var pointerResponse = await fetch(R7310_C1_FLOOR_DIFFUSE_RUNTIME_PACKAGE_URL, { cache: 'no-store' });
+			if (!pointerResponse.ok)
+				throw new Error('R7-3.10 full floor diffuse runtime pointer not found');
+			var pointer = await pointerResponse.json();
+			if (pointer.packageStatus !== 'architecture_probe' || pointer.runtimeScope !== 'c1_floor_full_room_diffuse_short_circuit')
+				throw new Error('R7-3.10 full floor diffuse runtime pointer failed contract');
+			if (pointer.targetId !== R7310_C1_FLOOR_TARGET_ID || pointer.requestedSamples !== 1000 || pointer.diffuseOnly !== true || pointer.upscaled !== false)
+				throw new Error('R7-3.10 full floor diffuse runtime package metadata mismatch');
+			var validationResponse = await fetch(pointer.packageDir + '/' + pointer.artifacts.validationReport, { cache: 'no-store' });
+			if (!validationResponse.ok)
+				throw new Error('R7-3.10 full floor diffuse validation report not found');
+			var validation = await validationResponse.json();
+			if (validation.runnerStatus !== 'pass')
+				throw new Error('R7-3.10 full floor diffuse runner validation is not pass');
+			var atlasResponse = await fetch(pointer.packageDir + '/' + pointer.artifacts.atlasPatch0, { cache: 'no-store' });
+			if (!atlasResponse.ok)
+				throw new Error('R7-3.10 full floor diffuse atlas binary not found');
+			var atlasBuffer = await atlasResponse.arrayBuffer();
+			var expectedBytes = pointer.targetAtlasResolution * pointer.targetAtlasResolution * 4 * 4;
+			if (atlasBuffer.byteLength !== expectedBytes)
+				throw new Error('R7-3.10 full floor diffuse atlas binary length mismatch');
+			r7310C1FullRoomDiffuseRuntimePackage = pointer;
+			r7310C1FloorDiffuseRuntimePixels = new Float32Array(atlasBuffer);
+			if (r7310C1NorthWallDiffuseRuntimePackage &&
+				r7310C1NorthWallDiffuseRuntimePackage.targetAtlasResolution !== pointer.targetAtlasResolution)
+				throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
+			refreshR7310C1CombinedDiffuseRuntimeTexture();
+			r7310C1FullRoomDiffuseRuntimeReady = true;
+			updateR7310C1FullRoomDiffuseRuntimeUniforms();
+			resetR738MainAccumulation();
+			if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-full-room-diffuse-runtime-ready');
+			return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+		}
+		catch (error)
+		{
+			r7310C1FullRoomDiffuseRuntimeReady = false;
+			r7310C1FullRoomDiffuseRuntimeError = error && error.message ? error.message : String(error);
+			updateR7310C1FullRoomDiffuseRuntimeUniforms();
+			throw error;
+		}
+	})();
+	return r7310C1FullRoomDiffuseRuntimeLoadPromise;
+}
+
+async function loadR7310C1NorthWallDiffuseRuntimePackage()
+{
+	if (r7310C1NorthWallDiffuseRuntimeLoadPromise) return r7310C1NorthWallDiffuseRuntimeLoadPromise;
+	r7310C1NorthWallDiffuseRuntimeLoadPromise = (async function()
+	{
+		try
+		{
+			r7310C1NorthWallDiffuseRuntimeError = null;
+			var pointerResponse = await fetch(R7310_C1_NORTH_WALL_DIFFUSE_RUNTIME_PACKAGE_URL, { cache: 'no-store' });
+			if (!pointerResponse.ok)
+				throw new Error('R7-3.10 north wall diffuse runtime pointer not found');
+			var pointer = await pointerResponse.json();
+			if (pointer.packageStatus !== 'architecture_probe' || pointer.runtimeScope !== 'c1_north_wall_diffuse_short_circuit')
+				throw new Error('R7-3.10 north wall diffuse runtime pointer failed contract');
+			if (pointer.targetId !== R7310_C1_NORTH_WALL_TARGET_ID || pointer.requestedSamples !== 1000 || pointer.diffuseOnly !== true || pointer.upscaled !== false)
+				throw new Error('R7-3.10 north wall diffuse runtime package metadata mismatch');
+			var validationResponse = await fetch(pointer.packageDir + '/' + pointer.artifacts.validationReport, { cache: 'no-store' });
+			if (!validationResponse.ok)
+				throw new Error('R7-3.10 north wall diffuse validation report not found');
+			var validation = await validationResponse.json();
+			if (validation.runnerStatus !== 'pass')
+				throw new Error('R7-3.10 north wall diffuse runner validation is not pass');
+			var atlasResponse = await fetch(pointer.packageDir + '/' + pointer.artifacts.atlasPatch0, { cache: 'no-store' });
+			if (!atlasResponse.ok)
+				throw new Error('R7-3.10 north wall diffuse atlas binary not found');
+			var atlasBuffer = await atlasResponse.arrayBuffer();
+			var expectedBytes = pointer.targetAtlasResolution * pointer.targetAtlasResolution * 4 * 4;
+			if (atlasBuffer.byteLength !== expectedBytes)
+				throw new Error('R7-3.10 north wall diffuse atlas binary length mismatch');
+			if (r7310C1FullRoomDiffuseRuntimePackage &&
+				r7310C1FullRoomDiffuseRuntimePackage.targetAtlasResolution !== pointer.targetAtlasResolution)
+				throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
+			r7310C1NorthWallDiffuseRuntimePackage = pointer;
+			r7310C1NorthWallDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
+			refreshR7310C1CombinedDiffuseRuntimeTexture();
+			r7310C1NorthWallDiffuseRuntimeReady = true;
+			updateR7310C1FullRoomDiffuseRuntimeUniforms();
+			return pointer;
+		}
+		catch (error)
+		{
+			r7310C1NorthWallDiffuseRuntimeReady = false;
+			r7310C1NorthWallDiffuseRuntimeError = error && error.message ? error.message : String(error);
+			updateR7310C1FullRoomDiffuseRuntimeUniforms();
+			throw error;
+		}
+	})();
+	return r7310C1NorthWallDiffuseRuntimeLoadPromise;
+}
+
+async function loadR7310C1EastWallDiffuseRuntimePackage()
+{
+	if (r7310C1EastWallDiffuseRuntimeLoadPromise) return r7310C1EastWallDiffuseRuntimeLoadPromise;
+	r7310C1EastWallDiffuseRuntimeLoadPromise = (async function()
+	{
+		try
+		{
+			r7310C1EastWallDiffuseRuntimeError = null;
+			var pointerResponse = await fetch(R7310_C1_EAST_WALL_DIFFUSE_RUNTIME_PACKAGE_URL, { cache: 'no-store' });
+			if (!pointerResponse.ok)
+				throw new Error('R7-3.10 east wall diffuse runtime pointer not found');
+			var pointer = await pointerResponse.json();
+			if (pointer.packageStatus !== 'architecture_probe' || pointer.runtimeScope !== 'c1_east_wall_diffuse_short_circuit')
+				throw new Error('R7-3.10 east wall diffuse runtime pointer failed contract');
+			if (pointer.targetId !== R7310_C1_EAST_WALL_TARGET_ID || pointer.requestedSamples !== 1000 || pointer.diffuseOnly !== true || pointer.upscaled !== false)
+				throw new Error('R7-3.10 east wall diffuse runtime package metadata mismatch');
+			var validationResponse = await fetch(pointer.packageDir + '/' + pointer.artifacts.validationReport, { cache: 'no-store' });
+			if (!validationResponse.ok)
+				throw new Error('R7-3.10 east wall diffuse validation report not found');
+			var validation = await validationResponse.json();
+			if (validation.runnerStatus !== 'pass')
+				throw new Error('R7-3.10 east wall diffuse runner validation is not pass');
+			var atlasResponse = await fetch(pointer.packageDir + '/' + pointer.artifacts.atlasPatch0, { cache: 'no-store' });
+			if (!atlasResponse.ok)
+				throw new Error('R7-3.10 east wall diffuse atlas binary not found');
+			var atlasBuffer = await atlasResponse.arrayBuffer();
+			var expectedBytes = pointer.targetAtlasResolution * pointer.targetAtlasResolution * 4 * 4;
+			if (atlasBuffer.byteLength !== expectedBytes)
+				throw new Error('R7-3.10 east wall diffuse atlas binary length mismatch');
+			r7310C1EastWallDiffuseRuntimePackage = pointer;
+			r7310C1EastWallDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
+			r7310C1EastWallDiffuseRuntimeReady = true;
+			updateR7310C1FullRoomDiffuseRuntimeUniforms();
+			return pointer;
+		}
+		catch (error)
+		{
+			r7310C1EastWallDiffuseRuntimeReady = false;
+			r7310C1EastWallDiffuseRuntimeError = error && error.message ? error.message : String(error);
+			updateR7310C1FullRoomDiffuseRuntimeUniforms();
+			throw error;
+		}
+	})();
+	return r7310C1EastWallDiffuseRuntimeLoadPromise;
+}
+
 function captureR738BakeState()
 {
 	return {
 		config: (typeof currentPanelConfig === 'number') ? currentPanelConfig : 0,
 		mode: pathTracingUniforms && pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0,
-		patchId: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchId ? pathTracingUniforms.uR738C1BakePatchId.value : 0,
-		patchResolution: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution ? pathTracingUniforms.uR738C1BakePatchResolution.value : 512,
-		diffuseOnlyMode: pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode ? pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value : 0.0,
-		r739AccurateReflectionMode: pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode ? pathTracingUniforms.uR739C1AccurateReflectionMode.value : 0.0,
+			patchId: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchId ? pathTracingUniforms.uR738C1BakePatchId.value : 0,
+			patchResolution: pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution ? pathTracingUniforms.uR738C1BakePatchResolution.value : 512,
+			diffuseOnlyMode: pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode ? pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value : 0.0,
+			r7310FloorWorldBounds: pathTracingUniforms && pathTracingUniforms.uR7310C1BakeFloorWorldBounds ? pathTracingUniforms.uR7310C1BakeFloorWorldBounds.value.clone() : null,
+			r7310FullRoomDiffuseMode: pathTracingUniforms && pathTracingUniforms.uR7310C1FullRoomDiffuseMode ? pathTracingUniforms.uR7310C1FullRoomDiffuseMode.value : 0.0,
+			r7310FullRoomDiffuseReady: pathTracingUniforms && pathTracingUniforms.uR7310C1FullRoomDiffuseReady ? pathTracingUniforms.uR7310C1FullRoomDiffuseReady.value : 0.0,
+			r7310FloorDiffuseMode: pathTracingUniforms && pathTracingUniforms.uR7310C1FloorDiffuseMode ? pathTracingUniforms.uR7310C1FloorDiffuseMode.value : 0.0,
+			r7310NorthWallDiffuseMode: pathTracingUniforms && pathTracingUniforms.uR7310C1NorthWallDiffuseMode ? pathTracingUniforms.uR7310C1NorthWallDiffuseMode.value : 0.0,
+			r7310RuntimeProbeMode: pathTracingUniforms && pathTracingUniforms.uR7310C1RuntimeProbeMode ? pathTracingUniforms.uR7310C1RuntimeProbeMode.value : 0.0,
+			r739AccurateReflectionMode: pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode ? pathTracingUniforms.uR739C1AccurateReflectionMode.value : 0.0,
 		r739CurrentViewReflectionMode: pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionMode ? pathTracingUniforms.uR739C1CurrentViewReflectionMode.value : 0.0,
 		r739CurrentViewReflectionReady: pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionReady ? pathTracingUniforms.uR739C1CurrentViewReflectionReady.value : 0.0,
 		r739ReflectionReferenceMode: pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReferenceMode ? pathTracingUniforms.uR739C1ReflectionReferenceMode.value : 0.0,
@@ -1294,10 +1651,16 @@ function restoreR738BakeState(state)
 {
 	if (!state) return;
 	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakeCaptureMode) pathTracingUniforms.uR738C1BakeCaptureMode.value = state.mode;
-	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchId) pathTracingUniforms.uR738C1BakePatchId.value = state.patchId;
-	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution) pathTracingUniforms.uR738C1BakePatchResolution.value = state.patchResolution;
-	if (pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode) pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value = state.diffuseOnlyMode;
-	if (pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = state.r739AccurateReflectionMode;
+		if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchId) pathTracingUniforms.uR738C1BakePatchId.value = state.patchId;
+		if (pathTracingUniforms && pathTracingUniforms.uR738C1BakePatchResolution) pathTracingUniforms.uR738C1BakePatchResolution.value = state.patchResolution;
+		if (pathTracingUniforms && pathTracingUniforms.uR738C1BakeDiffuseOnlyMode) pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value = state.diffuseOnlyMode;
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1BakeFloorWorldBounds && state.r7310FloorWorldBounds) pathTracingUniforms.uR7310C1BakeFloorWorldBounds.value.copy(state.r7310FloorWorldBounds);
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1FullRoomDiffuseMode) pathTracingUniforms.uR7310C1FullRoomDiffuseMode.value = state.r7310FullRoomDiffuseMode;
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1FullRoomDiffuseReady) pathTracingUniforms.uR7310C1FullRoomDiffuseReady.value = state.r7310FullRoomDiffuseReady;
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1FloorDiffuseMode) pathTracingUniforms.uR7310C1FloorDiffuseMode.value = state.r7310FloorDiffuseMode;
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1NorthWallDiffuseMode) pathTracingUniforms.uR7310C1NorthWallDiffuseMode.value = state.r7310NorthWallDiffuseMode;
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1RuntimeProbeMode) pathTracingUniforms.uR7310C1RuntimeProbeMode.value = state.r7310RuntimeProbeMode;
+		if (pathTracingUniforms && pathTracingUniforms.uR739C1AccurateReflectionMode) pathTracingUniforms.uR739C1AccurateReflectionMode.value = state.r739AccurateReflectionMode;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionMode) pathTracingUniforms.uR739C1CurrentViewReflectionMode.value = state.r739CurrentViewReflectionMode;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1CurrentViewReflectionReady) pathTracingUniforms.uR739C1CurrentViewReflectionReady.value = state.r739CurrentViewReflectionReady;
 	if (pathTracingUniforms && pathTracingUniforms.uR739C1ReflectionReferenceMode) pathTracingUniforms.uR739C1ReflectionReferenceMode.value = state.r739ReflectionReferenceMode;
@@ -1322,6 +1685,7 @@ function restoreR738BakeState(state)
 	if (typeof applyPanelConfig === 'function' && state.config > 0) applyPanelConfig(state.config);
 	if (typeof updateR73QuickPreviewFillUniforms === 'function') updateR73QuickPreviewFillUniforms();
 	if (typeof updateR738C1BakePastePreviewUniforms === 'function') updateR738C1BakePastePreviewUniforms();
+	if (typeof updateR7310C1FullRoomDiffuseRuntimeUniforms === 'function') updateR7310C1FullRoomDiffuseRuntimeUniforms();
 	if (typeof updateR739C1AccurateReflectionUniforms === 'function') updateR739C1AccurateReflectionUniforms();
 	if (typeof updateR739C1CurrentViewReflectionUniforms === 'function') updateR739C1CurrentViewReflectionUniforms();
 	if (typeof window.updateSamplingControls === 'function') window.updateSamplingControls();
@@ -1508,8 +1872,9 @@ async function captureR738C1SurfaceClassSummary()
 }
 window.captureR738C1SurfaceClassSummary = captureR738C1SurfaceClassSummary;
 
-function buildR738TexelMetadata(size)
+function buildR738TexelMetadata(size, worldBounds)
 {
+	var bounds = worldBounds || { xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 };
 	var metadata = new Float32Array(size * size * 12);
 	var valid = 0;
 	for (var y = 0; y < size; y += 1)
@@ -1518,11 +1883,11 @@ function buildR738TexelMetadata(size)
 		{
 			var u = (x + 0.5) / size;
 			var v = (y + 0.5) / size;
-			var worldX = -1.0 + 2.0 * u;
-			var worldZ = -1.0 + 2.0 * v;
+			var worldX = bounds.xMin + (bounds.xMax - bounds.xMin) * u;
+			var worldZ = bounds.zMin + (bounds.zMax - bounds.zMin) * v;
 			var offset = (y * size + x) * 12;
 			metadata[offset] = worldX;
-			metadata[offset + 1] = 0.01;
+			metadata[offset + 1] = bounds.y;
 			metadata[offset + 2] = worldZ;
 			metadata[offset + 3] = 0.0;
 			metadata[offset + 4] = 1.0;
@@ -1537,6 +1902,99 @@ function buildR738TexelMetadata(size)
 		}
 	}
 	return { metadata: metadata, validTexelRatio: valid / Math.max(1, size * size) };
+}
+
+function buildR7310C1FloorTexelMetadata(size)
+{
+	return buildR738TexelMetadata(size, R7310_C1_FLOOR_WORLD_BOUNDS);
+}
+
+function buildR7310C1NorthWallTexelMetadata(size)
+{
+	var metadata = new Float32Array(size * size * 12);
+	var b = R7310_C1_NORTH_WALL_WORLD_BOUNDS;
+	var hole = R7310_C1_NORTH_WALL_DOOR_HOLE;
+	var valid = 0;
+	for (var y = 0; y < size; y += 1)
+	{
+		for (var x = 0; x < size; x += 1)
+		{
+			var u = (x + 0.5) / size;
+			var v = (y + 0.5) / size;
+			var worldX = b.xMin + (b.xMax - b.xMin) * u;
+			var worldY = b.yMin + (b.yMax - b.yMin) * v;
+			var isDoorHole = worldX >= hole.xMin && worldX <= hole.xMax && worldY >= hole.yMin && worldY <= hole.yMax;
+			var isValid = !isDoorHole;
+			var offset = (y * size + x) * 12;
+			metadata[offset] = worldX;
+			metadata[offset + 1] = worldY;
+			metadata[offset + 2] = b.z;
+			metadata[offset + 3] = 0.0;
+			metadata[offset + 4] = 0.0;
+			metadata[offset + 5] = 1.0;
+			metadata[offset + 6] = 4.0;
+			metadata[offset + 7] = isValid ? 1.0 : 0.0;
+			metadata[offset + 8] = 0.0;
+			metadata[offset + 9] = 0.0;
+			metadata[offset + 10] = u;
+			metadata[offset + 11] = v;
+			if (isValid) valid += 1;
+		}
+	}
+	return { metadata: metadata, validTexelRatio: valid / Math.max(1, size * size) };
+}
+
+function buildR7310C1EastWallTexelMetadata(size)
+{
+	var metadata = new Float32Array(size * size * 12);
+	var b = R7310_C1_EAST_WALL_WORLD_BOUNDS;
+	var valid = 0;
+	for (var y = 0; y < size; y += 1)
+	{
+		for (var x = 0; x < size; x += 1)
+		{
+			var u = (x + 0.5) / size;
+			var v = (y + 0.5) / size;
+			var worldZ = b.zMin + (b.zMax - b.zMin) * u;
+			var worldY = b.yMin + (b.yMax - b.yMin) * v;
+			var offset = (y * size + x) * 12;
+			metadata[offset] = b.x;
+			metadata[offset + 1] = worldY;
+			metadata[offset + 2] = worldZ;
+			metadata[offset + 3] = -1.0;
+			metadata[offset + 4] = 0.0;
+			metadata[offset + 5] = 0.0;
+			metadata[offset + 6] = 4.0;
+			metadata[offset + 7] = 1.0;
+			metadata[offset + 8] = 0.0;
+			metadata[offset + 9] = 0.0;
+			metadata[offset + 10] = u;
+			metadata[offset + 11] = v;
+			valid += 1;
+		}
+	}
+	return { metadata: metadata, validTexelRatio: valid / Math.max(1, size * size) };
+}
+
+function maskR7310C1NorthWallAtlasPixels(pixels, metadata, size)
+{
+	for (var i = 0; i < size * size; i += 1)
+	{
+		var valid = metadata[i * 12 + 7] > 0.5;
+		if (valid) continue;
+		var p = i * 4;
+		pixels[p] = 0.0;
+		pixels[p + 1] = 0.0;
+		pixels[p + 2] = 0.0;
+		pixels[p + 3] = 0.0;
+	}
+}
+
+function r7310C1ValidTexelRatioMinimumForSurface(surfaceName)
+{
+	if (surfaceName === R7310_C1_NORTH_WALL_SURFACE_NAME)
+		return 0.80;
+	return 0.99;
 }
 
 function averageR738AtlasPixels(pixels, samples)
@@ -1612,11 +2070,14 @@ async function captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, op
 {
 	if (!renderer || !THREE || !pathTracingUniforms || !pathTracingScene || !worldCamera || !screenCopyScene || !orthoCamera || !screenCopyUniforms)
 		throw new Error('R7-3.8 atlas capture missing renderer state');
-	options = options || {};
-	var size = normalizeR738PositiveInt(options.targetAtlasResolution, 512, 1, 4096);
-	var targetCount = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
-	var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
-	var target = createR738FloatRenderTarget(size, size);
+		options = options || {};
+		var size = normalizeR738PositiveInt(options.targetAtlasResolution, 512, 1, 4096);
+		var targetCount = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+		var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
+		var patchId = normalizeR738PositiveInt(options.patchId, 0, 0, 999999);
+		var surfaceName = options.surfaceName || 'floor_center_c1_reference';
+		var floorWorldBounds = options.floorWorldBounds || { xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 };
+		var target = createR738FloatRenderTarget(size, size);
 	var previous = createR738FloatRenderTarget(size, size);
 	var state = captureR738BakeState();
 	var savedRenderTarget = renderer.getRenderTarget ? renderer.getRenderTarget() : null;
@@ -1626,13 +2087,15 @@ async function captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, op
 	{
 		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
 		samplingPaused = true;
-		cameraIsMoving = false;
-		cameraRecentlyMoving = false;
-		pathTracingUniforms.uR738C1BakeCaptureMode.value = 2;
-		pathTracingUniforms.uR738C1BakePatchId.value = 0;
-		pathTracingUniforms.uR738C1BakePatchResolution.value = size;
-		if (pathTracingUniforms.uR738C1BakeDiffuseOnlyMode) pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value = 1.0;
-		if (pathTracingUniforms.uXrayEnabled) pathTracingUniforms.uXrayEnabled.value = 0.0;
+			cameraIsMoving = false;
+			cameraRecentlyMoving = false;
+			pathTracingUniforms.uR738C1BakeCaptureMode.value = 2;
+			pathTracingUniforms.uR738C1BakePatchId.value = patchId;
+			pathTracingUniforms.uR738C1BakePatchResolution.value = size;
+			if (pathTracingUniforms.uR738C1BakeDiffuseOnlyMode) pathTracingUniforms.uR738C1BakeDiffuseOnlyMode.value = 1.0;
+			if (pathTracingUniforms.uR7310C1BakeFloorWorldBounds)
+				pathTracingUniforms.uR7310C1BakeFloorWorldBounds.value.set(floorWorldBounds.xMin, floorWorldBounds.xMax, floorWorldBounds.zMin, floorWorldBounds.zMax);
+			if (pathTracingUniforms.uXrayEnabled) pathTracingUniforms.uXrayEnabled.value = 0.0;
 		pathTracingUniforms.uResolution.value.set(size, size);
 		pathTracingUniforms.tPreviousTexture.value = previous.texture;
 		screenCopyUniforms.tPathTracedImageTexture.value = target.texture;
@@ -1659,22 +2122,31 @@ async function captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, op
 			if (sample % 16 === 0)
 				await new Promise(function(resolve) { setTimeout(resolve, 0); });
 		}
-		var readback = await readR738RenderTargetFloatPixels(target);
-		var averaged = averageR738AtlasPixels(readback.pixels, samples);
-		var metadataResult = buildR738TexelMetadata(size);
-		window.__r738C1BakeCaptureLastAtlasPixels = averaged.pixels;
-		window.__r738C1BakeCaptureLastTexelMetadata = metadataResult.metadata;
+			var readback = await readR738RenderTargetFloatPixels(target);
+			var averaged = averageR738AtlasPixels(readback.pixels, samples);
+			var metadataResult = patchId === R7310_C1_FLOOR_TARGET_ID
+				? buildR7310C1FloorTexelMetadata(size)
+				: (patchId === R7310_C1_NORTH_WALL_TARGET_ID
+					? buildR7310C1NorthWallTexelMetadata(size)
+					: (patchId === R7310_C1_EAST_WALL_TARGET_ID
+						? buildR7310C1EastWallTexelMetadata(size)
+						: buildR738TexelMetadata(size, floorWorldBounds)));
+			if (patchId === R7310_C1_NORTH_WALL_TARGET_ID)
+				maskR7310C1NorthWallAtlasPixels(averaged.pixels, metadataResult.metadata, size);
+			window.__r738C1BakeCaptureLastAtlasPixels = averaged.pixels;
+			window.__r738C1BakeCaptureLastTexelMetadata = metadataResult.metadata;
 		return {
 			enabled: true,
 			patchCount: 1,
 			patchSize: size,
 			upscaled: false,
 			requestedSamples: targetCount,
-			actualSamples: samples,
-			actualSamplesByPatch: [
-				{ patchId: 0, surfaceName: 'floor_center_c1_reference', actualSamples: samples }
-			],
-			diffuseOnly: true,
+				actualSamples: samples,
+				actualSamplesByPatch: [
+					{ patchId: patchId, surfaceName: surfaceName, actualSamples: samples }
+				],
+				worldBounds: floorWorldBounds,
+				diffuseOnly: true,
 			nonFiniteTexels: averaged.nonFiniteTexels,
 			validTexelRatio: metadataResult.validTexelRatio,
 			timedOut: samples < targetCount,
@@ -1688,16 +2160,53 @@ async function captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, op
 		target.dispose();
 		previous.dispose();
 	}
+	}
+	window.captureR738C1DirectSurfaceTexelPatch = captureR738C1DirectSurfaceTexelPatch;
+
+async function captureR7310C1FloorDiffuseAtlas(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	return captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, {
+		targetAtlasResolution: options.targetAtlasResolution,
+		patchId: R7310_C1_FLOOR_TARGET_ID,
+		surfaceName: R7310_C1_FLOOR_SURFACE_NAME,
+		floorWorldBounds: R7310_C1_FLOOR_WORLD_BOUNDS
+	});
 }
-window.captureR738C1DirectSurfaceTexelPatch = captureR738C1DirectSurfaceTexelPatch;
+window.captureR7310C1FloorDiffuseAtlas = captureR7310C1FloorDiffuseAtlas;
+
+async function captureR7310C1NorthWallDiffuseAtlas(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	return captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, {
+		targetAtlasResolution: options.targetAtlasResolution,
+		patchId: R7310_C1_NORTH_WALL_TARGET_ID,
+		surfaceName: R7310_C1_NORTH_WALL_SURFACE_NAME,
+		floorWorldBounds: R7310_C1_FLOOR_WORLD_BOUNDS
+	});
+}
+window.captureR7310C1NorthWallDiffuseAtlas = captureR7310C1NorthWallDiffuseAtlas;
+
+async function captureR7310C1EastWallDiffuseAtlas(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	return captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, {
+		targetAtlasResolution: options.targetAtlasResolution,
+		patchId: R7310_C1_EAST_WALL_TARGET_ID,
+		surfaceName: R7310_C1_EAST_WALL_SURFACE_NAME,
+		floorWorldBounds: R7310_C1_FLOOR_WORLD_BOUNDS
+	});
+}
+window.captureR7310C1EastWallDiffuseAtlas = captureR7310C1EastWallDiffuseAtlas;
 
 function buildR738ValidationReport(report, rawHdrReadback, atlasPixels, texelMetadata, reprojection)
 {
 	var targetAtlasResolution = report.targetAtlasResolution;
 	var atlasFloatCount = atlasPixels ? atlasPixels.length : 0;
 	var metadataFloatCount = texelMetadata ? texelMetadata.length : 0;
-	var checks = {
-		version: report.version === 'r7-3-8-c1-1000spp-bake-capture',
+	var validTexelRatioMinimum = r7310C1ValidTexelRatioMinimumForSurface(report.surfaceName);
+		var checks = {
+			version: report.version === 'r7-3-8-c1-1000spp-bake-capture' || report.version === 'r7-3-10-full-room-diffuse-bake-architecture-probe',
 		config: report.config === 1,
 		rawSamples: report.rawHdr && report.rawHdr.actualSamples >= report.requestedSamples,
 		rawFinite: report.rawHdrSummary && report.rawHdrSummary.nonFinitePixels === 0 && report.rawHdrSummary.finitePixels === report.buffer.width * report.buffer.height,
@@ -1707,7 +2216,7 @@ function buildR738ValidationReport(report, rawHdrReadback, atlasPixels, texelMet
 		diffuseOnly: report.diffuseOnly === true && report.atlasSummary && report.atlasSummary.diffuseOnly === true,
 		atlasFloatCount: atlasFloatCount === targetAtlasResolution * targetAtlasResolution * 4,
 		metadataFloatCount: metadataFloatCount === targetAtlasResolution * targetAtlasResolution * 12,
-		validTexelRatio: report.atlasSummary && report.atlasSummary.validTexelRatio >= 0.99,
+		validTexelRatio: report.atlasSummary && report.atlasSummary.validTexelRatio >= validTexelRatioMinimum,
 		atlasSamples: report.atlasSummary && report.atlasSummary.actualSamples >= report.requestedSamples,
 		patchSamples: report.atlasSummary && Array.isArray(report.atlasSummary.actualSamplesByPatch) && report.atlasSummary.actualSamplesByPatch.every(function(entry) { return entry.actualSamples >= report.requestedSamples; }),
 		reprojectionRecorded: !!reprojection
@@ -1777,8 +2286,8 @@ window.reportR738C1BakeCaptureAfterSamples = async function(targetSamples, timeo
 	}
 };
 
-window.getR738C1BakeCaptureArtifacts = function()
-{
+	window.getR738C1BakeCaptureArtifacts = function()
+	{
 	var report = window.__r738C1BakeCaptureLastReport;
 	if (!report)
 		throw new Error('Run reportR738C1BakeCaptureAfterSamples() first');
@@ -1786,10 +2295,235 @@ window.getR738C1BakeCaptureArtifacts = function()
 		report: report,
 		rawHdrSummary: window.__r738C1BakeCaptureLastRawHdrSummary || report.rawHdrSummary,
 		surfaceClassSummary: window.__r738C1BakeCaptureLastSurfaceClassSummary || report.surfaceClassSummary,
-		atlasPixels: window.__r738C1BakeCaptureLastAtlasPixels || null,
-		texelMetadata: window.__r738C1BakeCaptureLastTexelMetadata || null,
-		validationReport: report.validation || null
+			atlasPixels: window.__r738C1BakeCaptureLastAtlasPixels || null,
+			texelMetadata: window.__r738C1BakeCaptureLastTexelMetadata || null,
+			validationReport: report.validation || null
+		};
 	};
+
+window.reportR7310C1FloorDiffuseBakeAfterSamples = async function(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	var target = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+	var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
+	var state = captureR738BakeState();
+	try
+	{
+		var prep = await window.prepareR738C1BakeCapture(options);
+		var actualSamples = await renderR738MainRawHdrSamples(target, timeout);
+		var rawHdr = await readR738RenderTargetFloatPixels(screenCopyRenderTarget);
+		var rawHdrSummary = summarizeR738RawHdrPixels(rawHdr, actualSamples);
+		var surfaceClassSummary = await captureR738C1SurfaceClassSummary();
+		var atlasSummary = await captureR7310C1FloorDiffuseAtlas(target, timeout, {
+			targetAtlasResolution: prep.targetAtlasResolution
+		});
+		var atlasPixels = window.__r738C1BakeCaptureLastAtlasPixels;
+		var texelMetadata = window.__r738C1BakeCaptureLastTexelMetadata;
+		var reprojection = calculateR738ReprojectionSanity(rawHdr, actualSamples, atlasPixels, texelMetadata, prep.targetAtlasResolution);
+		var report = {
+			version: 'r7-3-10-full-room-diffuse-bake-architecture-probe',
+			config: 1,
+			batch: 'floor',
+			targetId: R7310_C1_FLOOR_TARGET_ID,
+			surfaceName: R7310_C1_FLOOR_SURFACE_NAME,
+			requestedSamples: target,
+			actualSamples: actualSamples,
+			rawHdr: { actualSamples: actualSamples },
+			renderTarget: 'screenCopyRenderTarget',
+			buffer: {
+				width: rawHdr.width,
+				height: rawHdr.height,
+				format: 'RGBA',
+				type: 'Float32Array'
+			},
+			targetAtlasResolution: prep.targetAtlasResolution,
+			upscaled: false,
+			diffuseOnly: true,
+			worldBounds: R7310_C1_FLOOR_WORLD_BOUNDS,
+			rawHdrSummary: rawHdrSummary,
+			surfaceClassSummary: surfaceClassSummary,
+			atlasSummary: atlasSummary,
+			coverageReport: {
+				config: 1,
+				batch: 'floor',
+				surfaceTargetCount: 1,
+				coveredSurfaceNames: [R7310_C1_FLOOR_SURFACE_NAME],
+				missingSurfaceNames: [],
+				validTexelRatioBySurface: {
+					c1_floor_full_room: atlasSummary.validTexelRatio
+				},
+				dilationAppliedBySurface: {
+					c1_floor_full_room: false
+				},
+				atlasPathBySurface: {
+					c1_floor_full_room: 'atlas-patch-000-rgba-f32.bin'
+				},
+				allMajorSurfacesCovered: false,
+				allStaticVisibleSurfacesAccountedFor: false,
+				allStaticVisibleSurfacesCovered: false,
+				finalC1Coverage: false
+			}
+		};
+		report.validation = buildR738ValidationReport(report, rawHdr, atlasPixels, texelMetadata, reprojection);
+		window.__r738C1BakeCaptureLastReport = report;
+		window.__r738C1BakeCaptureLastRawHdrSummary = rawHdrSummary;
+		window.__r738C1BakeCaptureLastSurfaceClassSummary = surfaceClassSummary;
+		return report;
+	}
+	finally
+	{
+		restoreR738BakeState(state);
+	}
+};
+
+window.reportR7310C1NorthWallDiffuseBakeAfterSamples = async function(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	var target = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+	var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
+	var state = captureR738BakeState();
+	try
+	{
+		var prep = await window.prepareR738C1BakeCapture(options);
+		var actualSamples = await renderR738MainRawHdrSamples(target, timeout);
+		var rawHdr = await readR738RenderTargetFloatPixels(screenCopyRenderTarget);
+		var rawHdrSummary = summarizeR738RawHdrPixels(rawHdr, actualSamples);
+		var surfaceClassSummary = await captureR738C1SurfaceClassSummary();
+		var atlasSummary = await captureR7310C1NorthWallDiffuseAtlas(target, timeout, {
+			targetAtlasResolution: prep.targetAtlasResolution
+		});
+		var atlasPixels = window.__r738C1BakeCaptureLastAtlasPixels;
+		var texelMetadata = window.__r738C1BakeCaptureLastTexelMetadata;
+		var reprojection = calculateR738ReprojectionSanity(rawHdr, actualSamples, atlasPixels, texelMetadata, prep.targetAtlasResolution);
+		var report = {
+			version: 'r7-3-10-full-room-diffuse-bake-architecture-probe',
+			config: 1,
+			batch: 'north_wall',
+			targetId: R7310_C1_NORTH_WALL_TARGET_ID,
+			surfaceName: R7310_C1_NORTH_WALL_SURFACE_NAME,
+			requestedSamples: target,
+			actualSamples: actualSamples,
+			rawHdr: { actualSamples: actualSamples },
+			renderTarget: 'screenCopyRenderTarget',
+			buffer: {
+				width: rawHdr.width,
+				height: rawHdr.height,
+				format: 'RGBA',
+				type: 'Float32Array'
+			},
+			targetAtlasResolution: prep.targetAtlasResolution,
+			upscaled: false,
+			diffuseOnly: true,
+			worldBounds: R7310_C1_NORTH_WALL_WORLD_BOUNDS,
+			rawHdrSummary: rawHdrSummary,
+			surfaceClassSummary: surfaceClassSummary,
+			atlasSummary: atlasSummary,
+			coverageReport: {
+				config: 1,
+				batch: 'north_wall',
+				surfaceTargetCount: 1,
+				coveredSurfaceNames: [R7310_C1_NORTH_WALL_SURFACE_NAME],
+				missingSurfaceNames: ['c1_south_wall', 'c1_east_wall', 'c1_west_wall'],
+				validTexelRatioBySurface: {
+					c1_north_wall: atlasSummary.validTexelRatio
+				},
+				dilationAppliedBySurface: {
+					c1_north_wall: false
+				},
+				atlasPathBySurface: {
+					c1_north_wall: 'atlas-patch-000-rgba-f32.bin'
+				},
+				allMajorSurfacesCovered: false,
+				allStaticVisibleSurfacesAccountedFor: false,
+				allStaticVisibleSurfacesCovered: false,
+				finalC1Coverage: false
+			}
+		};
+		report.validation = buildR738ValidationReport(report, rawHdr, atlasPixels, texelMetadata, reprojection);
+		window.__r738C1BakeCaptureLastReport = report;
+		window.__r738C1BakeCaptureLastRawHdrSummary = rawHdrSummary;
+		window.__r738C1BakeCaptureLastSurfaceClassSummary = surfaceClassSummary;
+		return report;
+	}
+	finally
+	{
+		restoreR738BakeState(state);
+	}
+};
+
+window.reportR7310C1EastWallDiffuseBakeAfterSamples = async function(targetSamples, timeoutMs, options)
+{
+	options = options || {};
+	var target = normalizeR738PositiveInt(targetSamples, 1000, 1, 1000000);
+	var timeout = normalizeR738PositiveInt(timeoutMs, 180000, 1000, 3600000);
+	var state = captureR738BakeState();
+	try
+	{
+		var prep = await window.prepareR738C1BakeCapture(options);
+		var actualSamples = await renderR738MainRawHdrSamples(target, timeout);
+		var rawHdr = await readR738RenderTargetFloatPixels(screenCopyRenderTarget);
+		var rawHdrSummary = summarizeR738RawHdrPixels(rawHdr, actualSamples);
+		var surfaceClassSummary = await captureR738C1SurfaceClassSummary();
+		var atlasSummary = await captureR7310C1EastWallDiffuseAtlas(target, timeout, {
+			targetAtlasResolution: prep.targetAtlasResolution
+		});
+		var atlasPixels = window.__r738C1BakeCaptureLastAtlasPixels;
+		var texelMetadata = window.__r738C1BakeCaptureLastTexelMetadata;
+		var reprojection = calculateR738ReprojectionSanity(rawHdr, actualSamples, atlasPixels, texelMetadata, prep.targetAtlasResolution);
+		var report = {
+			version: 'r7-3-10-full-room-diffuse-bake-architecture-probe',
+			config: 1,
+			batch: 'east_wall',
+			targetId: R7310_C1_EAST_WALL_TARGET_ID,
+			surfaceName: R7310_C1_EAST_WALL_SURFACE_NAME,
+			requestedSamples: target,
+			actualSamples: actualSamples,
+			rawHdr: { actualSamples: actualSamples },
+			renderTarget: 'screenCopyRenderTarget',
+			buffer: {
+				width: rawHdr.width,
+				height: rawHdr.height,
+				format: 'RGBA',
+				type: 'Float32Array'
+			},
+			targetAtlasResolution: prep.targetAtlasResolution,
+			upscaled: false,
+			diffuseOnly: true,
+			worldBounds: R7310_C1_EAST_WALL_WORLD_BOUNDS,
+			rawHdrSummary: rawHdrSummary,
+			surfaceClassSummary: surfaceClassSummary,
+			atlasSummary: atlasSummary,
+			coverageReport: {
+				config: 1,
+				batch: 'east_wall',
+				surfaceTargetCount: 1,
+				coveredSurfaceNames: [R7310_C1_EAST_WALL_SURFACE_NAME],
+				missingSurfaceNames: ['c1_south_wall', 'c1_west_wall'],
+				validTexelRatioBySurface: {
+					c1_east_wall: atlasSummary.validTexelRatio
+				},
+				dilationAppliedBySurface: {
+					c1_east_wall: false
+				},
+				atlasPathBySurface: {
+					c1_east_wall: 'atlas-patch-000-rgba-f32.bin'
+				},
+				allMajorSurfacesCovered: false,
+				allStaticVisibleSurfacesAccountedFor: false,
+				allStaticVisibleSurfacesCovered: false,
+				finalC1Coverage: false
+			}
+		};
+		report.validation = buildR738ValidationReport(report, rawHdr, atlasPixels, texelMetadata, reprojection);
+		window.__r738C1BakeCaptureLastReport = report;
+		window.__r738C1BakeCaptureLastRawHdrSummary = rawHdrSummary;
+		window.__r738C1BakeCaptureLastSurfaceClassSummary = surfaceClassSummary;
+		return report;
+	}
+	finally
+	{
+		restoreR738BakeState(state);
+	}
 };
 
 function r739DeterministicRandomPair(sample, salt)
@@ -2664,6 +3398,9 @@ window.runR739C1CurrentViewReflectionValidation = async function(options)
 };
 
 window.loadR738C1BakePastePreviewPackage = loadR738C1BakePastePreviewPackage;
+window.loadR7310C1FullRoomDiffuseRuntimePackage = loadR7310C1FullRoomDiffuseRuntimePackage;
+window.loadR7310C1NorthWallDiffuseRuntimePackage = loadR7310C1NorthWallDiffuseRuntimePackage;
+window.loadR7310C1EastWallDiffuseRuntimePackage = loadR7310C1EastWallDiffuseRuntimePackage;
 
 window.waitForR738C1BakePastePreviewReady = async function(timeoutMs)
 {
@@ -2680,6 +3417,23 @@ window.waitForR738C1BakePastePreviewReady = async function(timeoutMs)
 		await new Promise(function(resolve) { setTimeout(resolve, 100); });
 	}
 	throw new Error('R7-3.8 C1 bake paste preview did not become ready');
+};
+
+window.waitForR7310C1FullRoomDiffuseRuntimeReady = async function(timeoutMs)
+{
+	var timeout = normalizeR738PositiveInt(timeoutMs, 60000, 1000, 600000);
+	var start = performance.now();
+	if (!r7310C1FullRoomDiffuseRuntimeLoadPromise)
+		loadR7310C1FullRoomDiffuseRuntimePackage().catch(function() {});
+	while (performance.now() - start < timeout)
+	{
+		if (r7310C1FullRoomDiffuseRuntimeReady)
+			return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+		if (r7310C1FullRoomDiffuseRuntimeError)
+			throw new Error(r7310C1FullRoomDiffuseRuntimeError);
+		await new Promise(function(resolve) { setTimeout(resolve, 100); });
+	}
+	throw new Error('R7-3.10 C1 full room diffuse runtime package did not become ready');
 };
 
 window.setR738C1BakePastePreviewEnabled = function(enabled)
@@ -2717,9 +3471,229 @@ window.reportR738C1BakePastePreviewConfig = function()
 	};
 };
 
+function ensureR7310C1FullRoomDiffuseRuntimeLoading()
+{
+	if (r7310C1FloorDiffuseRuntimeEnabled && !r7310C1FullRoomDiffuseRuntimeReady)
+		loadR7310C1FullRoomDiffuseRuntimePackage().catch(function() {});
+	if (r7310C1NorthWallDiffuseRuntimeEnabled && !r7310C1NorthWallDiffuseRuntimeReady)
+		loadR7310C1NorthWallDiffuseRuntimePackage().catch(function() {});
+	if (!r7310C1FloorDiffuseRuntimeEnabled && !r7310C1NorthWallDiffuseRuntimeEnabled)
+		resetR738MainAccumulation();
+}
+
+window.setR7310C1FullRoomDiffuseRuntimeEnabled = function(enabled)
+{
+	r7310C1FullRoomDiffuseRuntimeEnabled = !!enabled;
+	r7310C1FloorDiffuseRuntimeEnabled = !!enabled;
+	r7310C1NorthWallDiffuseRuntimeEnabled = !!enabled;
+	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	ensureR7310C1FullRoomDiffuseRuntimeLoading();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-full-room-diffuse-runtime-toggle');
+	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+};
+
+window.setR7310C1FloorDiffuseRuntimeEnabled = function(enabled)
+{
+	r7310C1FloorDiffuseRuntimeEnabled = !!enabled;
+	r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled;
+	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	ensureR7310C1FullRoomDiffuseRuntimeLoading();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-floor-diffuse-runtime-toggle');
+	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+};
+
+window.setR7310C1NorthWallDiffuseRuntimeEnabled = function(enabled)
+{
+	r7310C1NorthWallDiffuseRuntimeEnabled = !!enabled;
+	r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled;
+	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	ensureR7310C1FullRoomDiffuseRuntimeLoading();
+	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-north-wall-diffuse-runtime-toggle');
+	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+};
+
+window.reportR7310C1FullRoomDiffuseRuntimeConfig = function()
+{
+	var applied = updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	return {
+		version: 'r7-3-10-c1-full-room-diffuse-runtime',
+		enabled: r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled,
+		floorEnabled: r7310C1FloorDiffuseRuntimeEnabled,
+		northWallEnabled: r7310C1NorthWallDiffuseRuntimeEnabled,
+		ready: r7310C1FullRoomDiffuseRuntimeReady,
+		floorReady: r7310C1FullRoomDiffuseRuntimeReady,
+		northWallReady: r7310C1NorthWallDiffuseRuntimeReady,
+		eastWallReady: false,
+		applied: applied,
+		error: r7310C1FullRoomDiffuseRuntimeError || r7310C1NorthWallDiffuseRuntimeError,
+		configAllowed: r7310C1FullRoomDiffuseRuntimeConfigAllowed(),
+		uiMeaningOff: 'sprout_patch_plus_live_floor',
+		uiMeaningOn: 'selected_floor_or_north_wall_baked_diffuse_plus_live_reflection',
+		packageDir: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.packageDir : null,
+		targetId: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.targetId : null,
+		surfaceName: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.surfaceName : null,
+		targetAtlasResolution: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.targetAtlasResolution : null,
+		requestedSamples: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.requestedSamples : null,
+		diffuseOnly: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.diffuseOnly === true : null,
+		northWallPackageDir: r7310C1NorthWallDiffuseRuntimePackage ? r7310C1NorthWallDiffuseRuntimePackage.packageDir : null,
+		northWallTargetId: r7310C1NorthWallDiffuseRuntimePackage ? r7310C1NorthWallDiffuseRuntimePackage.targetId : null,
+		northWallSurfaceName: r7310C1NorthWallDiffuseRuntimePackage ? r7310C1NorthWallDiffuseRuntimePackage.surfaceName : null,
+		eastWallPackageDir: null,
+		eastWallTargetId: null,
+		eastWallSurfaceName: null,
+		uniformMode: pathTracingUniforms && pathTracingUniforms.uR7310C1FullRoomDiffuseMode ? pathTracingUniforms.uR7310C1FullRoomDiffuseMode.value : null,
+		uniformReady: pathTracingUniforms && pathTracingUniforms.uR7310C1FullRoomDiffuseReady ? pathTracingUniforms.uR7310C1FullRoomDiffuseReady.value : null,
+		uniformFloorMode: pathTracingUniforms && pathTracingUniforms.uR7310C1FloorDiffuseMode ? pathTracingUniforms.uR7310C1FloorDiffuseMode.value : null,
+		uniformNorthWallMode: pathTracingUniforms && pathTracingUniforms.uR7310C1NorthWallDiffuseMode ? pathTracingUniforms.uR7310C1NorthWallDiffuseMode.value : null,
+		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
+	};
+};
+
+window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
+{
+	options = options || {};
+	var timeout = normalizeR738PositiveInt(options.timeoutMs, 60000, 1000, 600000);
+	var savedRuntimeEnabled = r7310C1FullRoomDiffuseRuntimeEnabled;
+	var savedFloorRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled;
+	var savedNorthWallRuntimeEnabled = r7310C1NorthWallDiffuseRuntimeEnabled;
+	var state = captureR738BakeState();
+	var target = null;
+	var previous = null;
+	var savedRenderTarget = renderer && renderer.getRenderTarget ? renderer.getRenderTarget() : null;
+	try
+	{
+		await window.waitForR7310C1FullRoomDiffuseRuntimeReady(timeout);
+		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+		if (options.northWallCamera === true && typeof window.setR739Config1ValidationCameraState === 'function')
+		{
+			window.setR739Config1ValidationCameraState({
+				name: 'r7310_north_wall_runtime_probe',
+				position: { x: 0.0, y: 1.45, z: 0.8 },
+				yaw: 0.0,
+				pitch: 0.0,
+				fov: 55
+			});
+		}
+		if (options.eastWallCamera === true && typeof window.setR739Config1ValidationCameraState === 'function')
+		{
+			window.setR739Config1ValidationCameraState({
+				name: 'r7310_east_wall_runtime_probe',
+				position: { x: 0.25, y: 1.45, z: 0.55 },
+				yaw: -1.57079632679,
+				pitch: 0.0,
+				fov: 55
+			});
+		}
+		r7310C1FloorDiffuseRuntimeEnabled = options.northWallCamera === true ? false : true;
+		r7310C1NorthWallDiffuseRuntimeEnabled = options.northWallCamera === true ? true : false;
+		r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled;
+		ensureR7310C1FullRoomDiffuseRuntimeLoading();
+		var selectedReadyStart = performance.now();
+		while (performance.now() - selectedReadyStart < timeout)
+		{
+			var selectedReady = r7310C1NorthWallDiffuseRuntimeEnabled
+				? r7310C1NorthWallDiffuseRuntimeReady
+				: r7310C1FullRoomDiffuseRuntimeReady;
+			if (selectedReady)
+				break;
+			await new Promise(function(resolve) { setTimeout(resolve, 100); });
+		}
+		if (r7310C1NorthWallDiffuseRuntimeEnabled && !r7310C1NorthWallDiffuseRuntimeReady)
+			throw new Error('R7-3.10 north wall diffuse runtime package did not become ready');
+		if (r7310C1FloorDiffuseRuntimeEnabled && !r7310C1FullRoomDiffuseRuntimeReady)
+			throw new Error('R7-3.10 floor diffuse runtime package did not become ready');
+		updateR738C1BakePastePreviewUniforms();
+		updateR7310C1FullRoomDiffuseRuntimeUniforms();
+		var surfaceClassSummary = await captureR738C1SurfaceClassSummary();
+		var width = pathTracingRenderTarget.width;
+		var height = pathTracingRenderTarget.height;
+		target = createR738FloatRenderTarget(width, height);
+		previous = createR738FloatRenderTarget(width, height);
+		samplingPaused = true;
+		cameraIsMoving = false;
+		cameraRecentlyMoving = false;
+		pathTracingUniforms.uR738C1BakeCaptureMode.value = 0;
+		pathTracingUniforms.uR7310C1RuntimeProbeMode.value = 1.0;
+		updateR738C1BakePastePreviewUniforms();
+		updateR7310C1FullRoomDiffuseRuntimeUniforms();
+		pathTracingUniforms.tPreviousTexture.value = previous.texture;
+		screenCopyUniforms.tPathTracedImageTexture.value = target.texture;
+		renderer.setRenderTarget(target);
+		renderer.clear();
+		renderer.setRenderTarget(previous);
+		renderer.clear();
+		sampleCounter = 1.0;
+		frameCounter = 2.0;
+		pathTracingUniforms.uSampleCounter.value = sampleCounter;
+		pathTracingUniforms.uFrameCounter.value = frameCounter;
+		pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+		pathTracingUniforms.uCameraIsMoving.value = false;
+		pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
+		pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+		renderer.setRenderTarget(target);
+		renderer.render(pathTracingScene, worldCamera);
+		var readback = await readR738RenderTargetFloatPixels(target);
+		var shortCircuitCount = 0;
+		var northWallShortCircuitCount = 0;
+		var eastWallShortCircuitCount = 0;
+		var pixels = readback.pixels;
+		for (var i = 0; i < pixels.length; i += 4)
+		{
+			if (pixels[i] < 0.25 && pixels[i + 1] > 0.75 && pixels[i + 2] < 0.25)
+				shortCircuitCount += 1;
+			if (pixels[i] < 0.25 && pixels[i + 1] > 0.75 && pixels[i + 2] > 0.75)
+				northWallShortCircuitCount += 1;
+			if (pixels[i] > 0.75 && pixels[i + 1] < 0.25 && pixels[i + 2] > 0.75)
+				eastWallShortCircuitCount += 1;
+		}
+		var hitCount = surfaceClassSummary && Number.isFinite(surfaceClassSummary.floor) ? surfaceClassSummary.floor : 0;
+		var northWallHitCount = surfaceClassSummary && Number.isFinite(surfaceClassSummary.wall) ? surfaceClassSummary.wall : 0;
+		var eastWallHitCount = surfaceClassSummary && Number.isFinite(surfaceClassSummary.wall) ? surfaceClassSummary.wall : 0;
+		var status = options.eastWallCamera === true
+			? (eastWallHitCount > 0 && eastWallShortCircuitCount > 0 ? 'pass' : 'fail')
+			: (options.northWallCamera === true
+			? (northWallHitCount > 0 && northWallShortCircuitCount > 0 ? 'pass' : 'fail')
+			: (hitCount > 0 && shortCircuitCount > 0 ? 'pass' : 'fail'));
+		return {
+			version: 'r7-3-10-c1-full-room-diffuse-runtime-probe',
+			config: 1,
+			probeTarget: options.eastWallCamera === true ? 'east_wall' : (options.northWallCamera === true ? 'north_wall' : 'floor'),
+			enabled: true,
+			floorEnabled: r7310C1FloorDiffuseRuntimeEnabled,
+			northWallEnabled: r7310C1NorthWallDiffuseRuntimeEnabled,
+			ready: r7310C1FullRoomDiffuseRuntimeReady,
+			applied: updateR7310C1FullRoomDiffuseRuntimeUniforms(),
+			packageDir: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.packageDir : null,
+			northWallPackageDir: r7310C1NorthWallDiffuseRuntimePackage ? r7310C1NorthWallDiffuseRuntimePackage.packageDir : null,
+			eastWallPackageDir: null,
+			bakedSurfaceHitCount: hitCount,
+			bakedSurfaceShortCircuitCount: shortCircuitCount,
+			northWallSurfaceHitCount: northWallHitCount,
+			northWallShortCircuitCount: northWallShortCircuitCount,
+			eastWallSurfaceHitCount: eastWallHitCount,
+			eastWallShortCircuitCount: eastWallShortCircuitCount,
+			status: status,
+			surfaceClassSummary: surfaceClassSummary,
+			probePixels: readback.width * readback.height
+		};
+	}
+	finally
+	{
+		if (pathTracingUniforms && pathTracingUniforms.uR7310C1RuntimeProbeMode)
+			pathTracingUniforms.uR7310C1RuntimeProbeMode.value = 0.0;
+		r7310C1FullRoomDiffuseRuntimeEnabled = savedRuntimeEnabled;
+		r7310C1FloorDiffuseRuntimeEnabled = savedFloorRuntimeEnabled;
+		r7310C1NorthWallDiffuseRuntimeEnabled = savedNorthWallRuntimeEnabled;
+		restoreR738BakeState(state);
+		if (savedRenderTarget && renderer) renderer.setRenderTarget(savedRenderTarget);
+		if (target) target.dispose();
+		if (previous) previous.dispose();
+	}
+};
+
 window.reportHomeStudioHibernationLoopState = function()
 {
-	var maxSamples = (typeof MAX_SAMPLES === 'number') ? MAX_SAMPLES : null;
+	var maxSamples = (typeof userSppCap === 'number') ? userSppCap : null;
 	var currentSamples = Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0);
 	return {
 		version: 'r7-3-9-c1-floor-reflection-roughness-v1',
@@ -3416,6 +4390,8 @@ function initTHREEjs()
 	pathTracingUniforms.tBorrowTexture = { type: "t", value: borrowPathTracingRenderTarget.texture };
 	if (typeof loadR738C1BakePastePreviewPackage === 'function')
 		loadR738C1BakePastePreviewPackage().catch(function() {});
+	if (typeof loadR7310C1FullRoomDiffuseRuntimePackage === 'function')
+		loadR7310C1FullRoomDiffuseRuntimePackage().catch(function() {});
 	if (typeof updateR739C1CurrentViewReflectionUniforms === 'function')
 		updateR739C1CurrentViewReflectionUniforms();
 
@@ -4060,14 +5036,14 @@ function animate()
 	var wasCameraRecentlyMoving = cameraRecentlyMoving;
 	var samplingStepOnceActive = samplingStepOnceRequested && samplingPaused && !cameraIsMoving;
 	var samplingPausedForFrame = samplingPaused && !samplingStepOnceActive && !cameraIsMoving;
-	var renderLimitWasAlreadyReached = typeof MAX_SAMPLES !== 'undefined' && sampleCounter >= MAX_SAMPLES && !cameraIsMoving;
+	var renderLimitWasAlreadyReached = sampleCounter >= userSppCap && !cameraIsMoving;
 	if (!cameraIsMoving)
 	{
 		if (!samplingPausedForFrame && !renderLimitWasAlreadyReached)
 		{
 			if (sceneIsDynamic)
 				sampleCounter = 1.0; // reset for continuous updating of image
-			else if (typeof MAX_SAMPLES === 'undefined' || sampleCounter < MAX_SAMPLES)
+			else if (sampleCounter < userSppCap)
 				sampleCounter += 1.0; // for progressive refinement of image
 
 			frameCounter += 1.0;
@@ -4100,6 +5076,7 @@ function animate()
 	pathTracingUniforms.uFrameCounter.value = frameCounter;
 	pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
 	updateR738C1BakePastePreviewUniforms();
+	updateR7310C1FullRoomDiffuseRuntimeUniforms();
 
 	// CAMERA
 
@@ -4145,7 +5122,7 @@ function animate()
 	}
 
 	// RENDERING in 3 steps
-	// 到達 MAX_SAMPLES 後跳過 STEP 1/2，凍結累加 buffer，只保留 STEP 3 顯示
+	// 到達 userSppCap 後跳過 STEP 1/2，凍結累加 buffer，只保留 STEP 3 顯示
 	var renderingStopped = samplingPausedForFrame || renderLimitWasAlreadyReached;
 	var firstFrameRecoveryWasCleared = accumulationWasClearedForThisFrame;
 	var firstFrameRecoveryPassTarget = sampleCounter;
@@ -4358,6 +5335,7 @@ function animate()
 		updateMovementProtectionUniforms(cameraIsMoving);
 		updateR73QuickPreviewFillUniforms();
 		updateR738C1BakePastePreviewUniforms();
+		updateR7310C1FullRoomDiffuseRuntimeUniforms();
 		renderer.setRenderTarget(null);
 		renderer.render(screenOutputScene, orthoCamera);
 		if (!cameraIsMoving)

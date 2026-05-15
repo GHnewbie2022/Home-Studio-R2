@@ -1,0 +1,88 @@
+{
+  "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
+  "phase": "quick_preview_architecture_probe",
+  "configs": [1],
+  "nextConfigs": [2],
+  "deferredConfigs": [3, 4],
+  "bakeMode": "quick_preview",
+  "quickPreviewSamples": 1000,
+  "comparisonMode": "sample_milestones",
+  "comparisonSampleMilestones": [100, 200, 500, 1000],
+  "exactSamplesRequired": true,
+  "acceptBelow1000": false,
+  "acceptAbove1000": false,
+  "finalTruthModeBake": false,
+  "runtimeReflection": "live_path_tracing",
+  "bakedRadianceKind": "full_diffuse_radiance",
+  "indirectOnly": false,
+  "directLightAlreadyIncluded": true,
+  "addDirectLightAfterBakeLookup": false,
+  "floorRoughnessPrimary": 0.1,
+  "floorRoughnessFallback": 1.0,
+  "floorRoughnessFallbackMeaning": "iteration_usability_fallback",
+  "truthModeMaterialParametersMutable": false,
+  "renderingModes": {
+    "quickPreviewMode": {
+      "displayName": "快速預覽模式",
+      "floorRoughnessPrimary": 0.1,
+      "floorRoughnessFallback": 1.0,
+      "fallbackMeaning": "iteration_usability_fallback",
+      "fallbackTrigger": "r7-3-10 架構 probe 無法降低快速預覽模式反射噪點"
+    },
+    "approachingTruthMode": {
+      "displayName": "趨近真實模式",
+      "floorRoughness": 0.1,
+      "parametersFrozen": true,
+      "fallbackAllowed": false,
+      "purpose": "approaching_truth_reference",
+      "purposeDisplayName": "採購決策以趨近真實模式為準",
+      "accelerationOnly": "denoising or accumulation may be added; material parameters must not change"
+    }
+  },
+  "surfaceRolloutStrategy": {
+    "oneShotFullRoomBake": false,
+    "orderBy": "roi_descending",
+    "finalC1CoverageRequired": true,
+    "finalMissingSurfaceNamesMustBeEmpty": true,
+    "batches": [
+      ["floor"],
+      ["walls"],
+      ["ceiling"],
+      ["large_acoustic_panels", "door", "large_boxes", "large_static_furniture"],
+      ["speaker_diffuse_shells", "speaker_stand_diffuse_components", "fixture_housings", "small_static_surfaces", "edges_and_corners"],
+      ["reflective_surface_diffuse_components"]
+    ]
+  },
+  "c1FloorBatch": {
+    "targetId": 1001,
+    "surfaceName": "c1_floor_full_room",
+    "surfaceClass": "floor",
+    "worldBounds": {
+      "xMin": -2.11,
+      "xMax": 2.11,
+      "zMin": -2.074,
+      "zMax": 3.256,
+      "y": 0.01
+    }
+  },
+  "acceptedSproutBaseline": {
+    "pointer": "docs/data/r7-3-8-c1-bake-accepted-package.json",
+    "kind": "full_diffuse_radiance",
+    "diffuseOnly": true
+  },
+  "invalidatedReflectionBake": {
+    "pointer": "docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json",
+    "runtimeEnabled": false
+  },
+  "successDecision": {
+    "keepRoughnessPointOneWhen": [
+      "c1_full_room_diffuse_paste_is_stable",
+      "live_reflection_still_tracks_current_camera",
+      "low_spp_noise_is_visibly_lower_than_unbaked_baseline"
+    ],
+    "useRoughnessOneFallbackWhen": [
+      "full_room_diffuse_bake_does_not_reduce_noise_enough",
+      "floor_reflection_remains_unusable_for_quick_preview_iteration"
+    ]
+  }
+}

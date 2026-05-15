@@ -99,7 +99,7 @@ assert.match(homeStudio, /scheduleHomeStudioAnimationFrame/);
 assert.doesNotMatch(homeStudio, /keydown', function \(e\) \{ keys\[e\.code\] = true; wakeRender\(\); \}/);
 assert.match(homeStudio, /var snapshotControlsEl = document\.getElementById\('snapshot-controls'\);/);
 assert.match(homeStudio, /if \(snapshotControlsEl\) snapshotControlsEl\.style\.display = d;/);
-assert.match(homeStudio, /'snapshot-controls', 'floor-roughness-actions', 'r739-sprout-ab-actions', 'snapshot-bar', 'snapshot-actions'/);
+assert.match(homeStudio, /'snapshot-controls', 'floor-roughness-actions', 'r7310-full-floor-actions', 'snapshot-bar', 'snapshot-actions'/);
 assert.match(homeStudio, /function syncFloorRoughnessActionWidth\(\)/);
 assert.match(homeStudio, /manualRect\.right - controlsRect\.left/);
 assert.match(homeStudio, /window\.addEventListener\('resize', syncFloorRoughnessActionWidth\)/);

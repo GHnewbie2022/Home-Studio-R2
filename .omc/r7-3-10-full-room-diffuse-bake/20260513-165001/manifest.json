@@ -1,0 +1,30 @@
+{
+  "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
+  "config": 1,
+  "batch": "floor",
+  "targetId": 1001,
+  "surfaceName": "c1_floor_full_room",
+  "worldBounds": {
+    "xMin": -2.11,
+    "xMax": 2.11,
+    "zMin": -2.074,
+    "zMax": 3.256,
+    "y": 0.01
+  },
+  "createdAt": "2026-05-13T08:50:01.269Z",
+  "branch": "codex/r7-3-10-reflection-expansion",
+  "commit": "WORKTREE_DIRTY",
+  "smokeTest": true,
+  "targetAtlasResolution": 16,
+  "requestedSamples": 1,
+  "diffuseOnly": true,
+  "upscaled": false,
+  "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260513-165001",
+  "artifacts": {
+    "rawHdrSummary": "raw-hdr-summary.json",
+    "surfaceClassSummary": "surface-class-summary.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "texelMetadataPatch0": "texel-metadata-patch-000-f32.bin",
+    "validationReport": "validation-report.json"
+  }
+}

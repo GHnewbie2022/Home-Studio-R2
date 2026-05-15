@@ -1,0 +1,74 @@
+{
+  "version": "r7-3-10-c1-full-room-diffuse-ui-toggle",
+  "before": {
+    "text": "全地板：關",
+    "report": {
+      "version": "r7-3-10-c1-full-room-diffuse-runtime",
+      "enabled": false,
+      "ready": true,
+      "applied": false,
+      "error": null,
+      "configAllowed": true,
+      "uiMeaningOff": "sprout_patch_plus_live_floor",
+      "uiMeaningOn": "full_floor_baked_diffuse_plus_live_reflection",
+      "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260513-165203",
+      "targetId": 1001,
+      "surfaceName": "c1_floor_full_room",
+      "targetAtlasResolution": 512,
+      "requestedSamples": 1000,
+      "diffuseOnly": true,
+      "uniformMode": 0,
+      "uniformReady": 1,
+      "currentSamples": 3
+    }
+  },
+  "afterOn": {
+    "text": "全地板：開",
+    "className": "snapshot-action-btn glow-white",
+    "title": "全地板漫射使用 1000SPP 烘焙，地板反射仍即時計算",
+    "report": {
+      "version": "r7-3-10-c1-full-room-diffuse-runtime",
+      "enabled": true,
+      "ready": true,
+      "applied": true,
+      "error": null,
+      "configAllowed": true,
+      "uiMeaningOff": "sprout_patch_plus_live_floor",
+      "uiMeaningOn": "full_floor_baked_diffuse_plus_live_reflection",
+      "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260513-165203",
+      "targetId": 1001,
+      "surfaceName": "c1_floor_full_room",
+      "targetAtlasResolution": 512,
+      "requestedSamples": 1000,
+      "diffuseOnly": true,
+      "uniformMode": 1,
+      "uniformReady": 1,
+      "currentSamples": 0
+    }
+  },
+  "afterOff": {
+    "text": "全地板：關",
+    "className": "snapshot-action-btn",
+    "title": "維持一小塊嫩芽區貼回，其餘地板 live",
+    "report": {
+      "version": "r7-3-10-c1-full-room-diffuse-runtime",
+      "enabled": false,
+      "ready": true,
+      "applied": false,
+      "error": null,
+      "configAllowed": true,
+      "uiMeaningOff": "sprout_patch_plus_live_floor",
+      "uiMeaningOn": "full_floor_baked_diffuse_plus_live_reflection",
+      "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260513-165203",
+      "targetId": 1001,
+      "surfaceName": "c1_floor_full_room",
+      "targetAtlasResolution": 512,
+      "requestedSamples": 1000,
+      "diffuseOnly": true,
+      "uniformMode": 0,
+      "uniformReady": 1,
+      "currentSamples": 0
+    }
+  },
+  "status": "pass"
+}

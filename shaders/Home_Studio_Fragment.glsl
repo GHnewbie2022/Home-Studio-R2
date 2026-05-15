@@ -43,10 +43,15 @@ uniform int uR738C1BakePatchId;
 uniform float uR738C1BakePatchResolution;
 uniform float uR738C1BakeDiffuseOnlyMode;
 uniform sampler2D tR738C1BakeAtlasTexture;
+uniform sampler2D tR7310C1FullRoomDiffuseAtlasTexture;
+uniform float uR7310C1FullRoomDiffuseMode;
+uniform float uR7310C1FullRoomDiffuseReady;
+uniform float uR7310C1RuntimeProbeMode;
 uniform float uR738C1BakePastePreviewMode;
 uniform float uR738C1BakePastePreviewReady;
 uniform float uR738C1BakePastePreviewStrength;
 uniform vec4 uR738C1BakePatchWorldBounds;
+uniform vec4 uR7310C1BakeFloorWorldBounds;
 uniform float uR739C1AccurateReflectionMode;
 uniform float uR739C1ReflectionReferenceMode;
 uniform float uR739C1ReflectionSurfaceMaskMode;
@@ -370,6 +375,25 @@ bool r738C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out ve
 	objectID = 0.0;
 	return false;
 }
+bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out vec3 normal, out int hitType, out float objectID)
+{
+	vec2 uv = clamp(texelUv, vec2(0.0), vec2(1.0));
+	if (patchId == 1001)
+	{
+		float x = mix(uR7310C1BakeFloorWorldBounds.x, uR7310C1BakeFloorWorldBounds.y, uv.x);
+		float z = mix(uR7310C1BakeFloorWorldBounds.z, uR7310C1BakeFloorWorldBounds.w, uv.y);
+		position = vec3(x, 0.01, z);
+		normal = vec3(0.0, 1.0, 0.0);
+		hitType = 1;
+		objectID = 0.0;
+		return true;
+	}
+	position = vec3(0.0);
+	normal = vec3(0.0, 1.0, 0.0);
+	hitType = 0;
+	objectID = 0.0;
+	return false;
+}
 bool r738C1BakePastePreviewUv(vec3 visiblePosition, out vec2 atlasUv)
 {
 	float xMin = uR738C1BakePatchWorldBounds.x;
@@ -387,9 +411,49 @@ bool r738C1BakePastePreviewUv(vec3 visiblePosition, out vec2 atlasUv)
 	);
 	return true;
 }
+bool r7310C1BakePastePreviewUv(vec3 visiblePosition, out vec2 atlasUv)
+{
+	float xMin = uR7310C1BakeFloorWorldBounds.x;
+	float xMax = uR7310C1BakeFloorWorldBounds.y;
+	float zMin = uR7310C1BakeFloorWorldBounds.z;
+	float zMax = uR7310C1BakeFloorWorldBounds.w;
+	if (visiblePosition.x < xMin || visiblePosition.x > xMax || visiblePosition.z < zMin || visiblePosition.z > zMax)
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	atlasUv = vec2(
+		(visiblePosition.x - xMin) / max(0.00001, xMax - xMin),
+		(visiblePosition.z - zMin) / max(0.00001, zMax - zMin)
+	);
+	return true;
+}
 vec3 r738C1BakePastePreviewSample(vec2 atlasUv)
 {
 	return max(texture(tR738C1BakeAtlasTexture, clamp(atlasUv, vec2(0.0), vec2(1.0))).rgb, vec3(0.0));
+}
+vec3 r7310C1FullRoomDiffuseSample(vec2 atlasUv)
+{
+	return max(texture(tR7310C1FullRoomDiffuseAtlasTexture, clamp(atlasUv, vec2(0.0), vec2(1.0))).rgb, vec3(0.0));
+}
+bool r7310C1RuntimeSurfaceIsTrueFloor(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return visibleObjectID < 1.5 &&
+		visibleNormal.y > 0.5 &&
+		visiblePosition.y <= 0.025;
+}
+bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, out vec3 bakedRadiance)
+{
+	bakedRadiance = vec3(0.0);
+	if (uR7310C1FullRoomDiffuseMode < 0.5 || uR7310C1FullRoomDiffuseReady < 0.5)
+		return false;
+	if (!r7310C1RuntimeSurfaceIsTrueFloor(visibleHitType, visibleObjectID, visibleNormal, visiblePosition))
+		return false;
+	vec2 atlasUv = vec2(0.0);
+	if (!r7310C1BakePastePreviewUv(visiblePosition, atlasUv))
+		return false;
+	bakedRadiance = r7310C1FullRoomDiffuseSample(atlasUv);
+	return true;
 }
 int r739C1ReflectionTargetId(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
 {
@@ -2787,6 +2851,15 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				rayDirection = normalize(mix(reflDir, diffDir, hitRoughness * hitRoughness));
 				rayOrigin = x + nl * uEPS_intersect;
 				continue;
+			}
+			vec3 r7310BakedRadiance = vec3(0.0);
+			if (r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, r7310BakedRadiance))
+			{
+				if (uR7310C1RuntimeProbeMode > 0.5)
+					accumCol += vec3(0.0, 1.0, 0.0);
+				else
+					accumCol += mask * r7310BakedRadiance;
+				break;
 			}
 			diffuseCount++;
 

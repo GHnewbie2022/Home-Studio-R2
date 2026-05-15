@@ -1,0 +1,30 @@
+{
+  "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
+  "config": 1,
+  "batch": "north_wall",
+  "targetId": 1002,
+  "surfaceName": "c1_north_wall",
+  "worldBounds": {
+    "xMin": -2.11,
+    "xMax": 2.11,
+    "yMin": 0,
+    "yMax": 2.905,
+    "z": -1.874
+  },
+  "createdAt": "2026-05-15T03:27:17.878Z",
+  "branch": "codex/r7-3-10-c1-full-floor-diffuse-bake",
+  "commit": "WORKTREE_DIRTY",
+  "smokeTest": false,
+  "targetAtlasResolution": 512,
+  "requestedSamples": 1000,
+  "diffuseOnly": true,
+  "upscaled": false,
+  "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112717",
+  "artifacts": {
+    "rawHdrSummary": "raw-hdr-summary.json",
+    "surfaceClassSummary": "surface-class-summary.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "texelMetadataPatch0": "texel-metadata-patch-000-f32.bin",
+    "validationReport": "validation-report.json"
+  }
+}

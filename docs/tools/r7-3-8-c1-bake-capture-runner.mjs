@@ -28,7 +28,11 @@ function parseArgs(argv) {
     referenceOnly: false,
     surfaceCache: false,
     currentViewValidation: false,
-    accurateReflectionPreviewTest: false
+    accurateReflectionPreviewTest: false,
+    fullRoomDiffuseBake: false,
+    runtimeShortCircuitTest: false,
+    uiToggleTest: false,
+    targetSamples: null
   };
   for (const arg of argv) {
     if (arg.startsWith('--samples=')) out.samples = Number(arg.slice('--samples='.length));
@@ -48,11 +52,19 @@ function parseArgs(argv) {
     else if (arg === '--surface-cache') out.surfaceCache = true;
     else if (arg === '--r739-current-view-validation') out.currentViewValidation = true;
     else if (arg === '--accurate-reflection-preview-test') out.accurateReflectionPreviewTest = true;
+    else if (arg === '--r7310-full-room-diffuse-bake') out.fullRoomDiffuseBake = true;
+    else if (arg === '--r7310-runtime-short-circuit-test') out.runtimeShortCircuitTest = true;
+    else if (arg === '--r7310-ui-toggle-test') out.uiToggleTest = true;
+    else if (arg.startsWith('--target-samples=')) out.targetSamples = Number(arg.slice('--target-samples='.length));
   }
   if (!['metal', 'swiftshader', 'opengl'].includes(out.angle)) throw new Error('Invalid angle mode');
   for (const key of ['samples', 'atlasResolution', 'timeoutMs', 'httpPort', 'cdpPort']) {
     if (!Number.isFinite(out[key]) || out[key] <= 0) throw new Error(`Invalid ${key}`);
     out[key] = Math.trunc(out[key]);
+  }
+  if (out.targetSamples !== null) {
+    if (!Number.isFinite(out.targetSamples) || out.targetSamples <= 0) throw new Error('Invalid targetSamples');
+    out.targetSamples = Math.trunc(out.targetSamples);
   }
   return out;
 }
@@ -423,8 +435,12 @@ function buildManifest({ report, packageDir, smokeTest }) {
   const dirty = getGitValue(['status', '--porcelain'], '');
   const commit = dirty ? 'WORKTREE_DIRTY' : getGitValue(['rev-parse', 'HEAD'], 'UNKNOWN_COMMIT');
   return {
-    version: 'r7-3-8-c1-1000spp-bake-capture',
+    version: report.version || 'r7-3-8-c1-1000spp-bake-capture',
     config: 1,
+    batch: report.batch || null,
+    targetId: report.targetId || null,
+    surfaceName: report.surfaceName || 'floor_center_c1_reference',
+    worldBounds: report.worldBounds || null,
     createdAt: new Date().toISOString(),
     branch,
     commit,
@@ -449,7 +465,7 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
   const expectedAtlasBytes = resolution * resolution * 4 * 4;
   const expectedMetadataBytes = resolution * resolution * 12 * 4;
   const checks = {
-    version: report.version === 'r7-3-8-c1-1000spp-bake-capture',
+    version: report.version === 'r7-3-8-c1-1000spp-bake-capture' || report.version === 'r7-3-10-full-room-diffuse-bake-architecture-probe',
     config: report.config === 1,
     rawSamples: smokeTest ? report.rawHdr.actualSamples >= report.requestedSamples : report.rawHdr.actualSamples >= 1000,
     atlasSamples: smokeTest ? report.atlasSummary.actualSamples >= report.requestedSamples : report.atlasSummary.actualSamples >= 1000,
@@ -590,8 +606,95 @@ async function main() {
               ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
               : args.accurateReflectionCapture
                 ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
-                : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"';
+                : args.runtimeShortCircuitTest || args.uiToggleTest
+                  ? 'typeof window.reportR7310C1FullRoomDiffuseRuntimeProbe === "function"'
+                  : args.fullRoomDiffuseBake
+                    ? 'typeof window.reportR7310C1FloorDiffuseBakeAfterSamples === "function"'
+                    : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"';
     await waitForExpression(cdp, helperExpression, 60000);
+    if (args.uiToggleTest) {
+      console.error('[r738-runner] running R7-3.10 UI toggle helper');
+      const report = await evaluate(cdp, `(() => {
+        return (async () => {
+          const button = document.getElementById('btn-r7310-full-floor-diffuse');
+          if (!button) throw new Error('btn-r7310-full-floor-diffuse missing');
+          await window.waitForR7310C1FullRoomDiffuseRuntimeReady(${args.timeoutMs});
+          if (window.reportR7310C1FullRoomDiffuseRuntimeConfig().enabled) {
+            window.setR7310C1FullRoomDiffuseRuntimeEnabled(false);
+          }
+          const before = {
+            text: button.textContent,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          button.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterOn = {
+            text: button.textContent,
+            className: button.className,
+            title: button.title,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          button.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterOff = {
+            text: button.textContent,
+            className: button.className,
+            title: button.title,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          return {
+            version: 'r7-3-10-c1-full-room-diffuse-ui-toggle',
+            before,
+            afterOn,
+            afterOff,
+            status: before.text === '全地板：關' &&
+              before.report.uiMeaningOff === 'sprout_patch_plus_live_floor' &&
+              afterOn.text === '全地板：開' &&
+              afterOn.report.enabled === true &&
+              afterOn.report.uiMeaningOn === 'full_floor_baked_diffuse_plus_live_reflection' &&
+              afterOff.text === '全地板：關' &&
+              afterOff.report.enabled === false
+                ? 'pass'
+                : 'fail'
+          };
+        })();
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 60000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-full-room-diffuse-ui-toggle', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'ui-toggle-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 full-room diffuse UI toggle test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`before: ${report.before.text}`);
+      console.log(`afterOn: ${report.afterOn.text}`);
+      console.log(`afterOff: ${report.afterOff.text}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.runtimeShortCircuitTest) {
+      console.error('[r738-runner] running R7-3.10 runtime short-circuit helper');
+      const report = await evaluate(cdp, `(() => {
+        return window.reportR7310C1FullRoomDiffuseRuntimeProbe({ timeoutMs: ${args.timeoutMs} });
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 60000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-full-room-diffuse-runtime', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'runtime-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 full-room diffuse runtime short-circuit test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`bakedSurfaceHitCount: ${report.bakedSurfaceHitCount}`);
+      console.log(`bakedSurfaceShortCircuitCount: ${report.bakedSurfaceShortCircuitCount}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
     if (args.floorRoughnessTest) {
       console.error('[r738-runner] running floor roughness helper');
       const floorRoughnessReport = await evaluate(cdp, `(() => {
@@ -1187,8 +1290,8 @@ async function main() {
       return;
     }
     console.error('[r738-runner] running capture helper');
-    const expression = `(() => {
-      function f32ToBase64(arr) {
+	    const expression = `(() => {
+	      function f32ToBase64(arr) {
         if (!arr) return null;
         const bytes = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
         let binary = '';
@@ -1198,12 +1301,12 @@ async function main() {
           binary += String.fromCharCode.apply(null, chunk);
         }
         return btoa(binary);
-      }
-      return (async () => {
-        const report = await window.reportR738C1BakeCaptureAfterSamples(${args.samples}, ${args.timeoutMs}, {
-          targetAtlasResolution: ${args.atlasResolution},
-          smokeTest: ${args.smokeTest ? 'true' : 'false'}
-        });
+	      }
+	      return (async () => {
+	        const report = await window.${args.fullRoomDiffuseBake ? 'reportR7310C1FloorDiffuseBakeAfterSamples' : 'reportR738C1BakeCaptureAfterSamples'}(${args.targetSamples || args.samples}, ${args.timeoutMs}, {
+	          targetAtlasResolution: ${args.atlasResolution},
+	          smokeTest: ${args.smokeTest ? 'true' : 'false'}
+	        });
         const artifacts = window.getR738C1BakeCaptureArtifacts();
         return {
           report,
@@ -1229,7 +1332,8 @@ async function main() {
       metadataBuffer,
       smokeTest: args.smokeTest
     });
-    const packageDir = path.join(repoRoot, '.omc', 'r7-3-8-c1-1000spp-bake-capture', timestampForPath());
+	    const packageRoot = args.fullRoomDiffuseBake ? 'r7-3-10-full-room-diffuse-bake' : 'r7-3-8-c1-1000spp-bake-capture';
+	    const packageDir = path.join(repoRoot, '.omc', packageRoot, timestampForPath());
     fs.mkdirSync(packageDir, { recursive: true });
     const manifest = buildManifest({ report: payload.report, packageDir, smokeTest: args.smokeTest });
     const validationReport = {
@@ -1242,8 +1346,9 @@ async function main() {
     if (args.smokeTest && validation.status === 'pass') validationReport.status = 'pass';
     if (validation.status !== 'pass') validationReport.status = 'fail';
     fs.writeFileSync(path.join(packageDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-    fs.writeFileSync(path.join(packageDir, 'raw-hdr-summary.json'), `${JSON.stringify(payload.rawHdrSummary, null, 2)}\n`);
-    fs.writeFileSync(path.join(packageDir, 'surface-class-summary.json'), `${JSON.stringify(payload.surfaceClassSummary, null, 2)}\n`);
+	    fs.writeFileSync(path.join(packageDir, 'raw-hdr-summary.json'), `${JSON.stringify(payload.rawHdrSummary, null, 2)}\n`);
+	    fs.writeFileSync(path.join(packageDir, 'surface-class-summary.json'), `${JSON.stringify(payload.surfaceClassSummary, null, 2)}\n`);
+	    if (payload.report.coverageReport) fs.writeFileSync(path.join(packageDir, 'coverage-report.json'), `${JSON.stringify(payload.report.coverageReport, null, 2)}\n`);
     fs.writeFileSync(path.join(packageDir, 'atlas-patch-000-rgba-f32.bin'), atlasBuffer);
     fs.writeFileSync(path.join(packageDir, 'texel-metadata-patch-000-f32.bin'), metadataBuffer);
     fs.writeFileSync(path.join(packageDir, 'validation-report.json'), `${JSON.stringify(validationReport, null, 2)}\n`);

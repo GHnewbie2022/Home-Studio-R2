@@ -283,12 +283,12 @@ button.action-btn.glow-gradient-bo {
 	position: static; display: flex;
 	gap: 6px; align-items: center; flex-wrap: wrap; pointer-events: auto;
 }
-.r739-sprout-ab-actions {
+.r7310-full-floor-actions {
 	position: static; display: flex;
 	gap: 6px; align-items: center; flex-wrap: wrap; pointer-events: auto;
 	max-width: 90vw;
 }
-.r739-sprout-ab-btn.glow-white {
+.snapshot-action-btn.glow-white {
 	color: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 	border-color: rgba(255, 255, 255, 0.4); background: rgba(255, 255, 255, 0.1);
 }

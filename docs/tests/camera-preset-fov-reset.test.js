@@ -34,5 +34,7 @@ const afterFovReset = switchCameraBody.slice(fovResetStart);
 assert(afterFovReset.includes('pathTracingUniforms.uVLen.value = Math.tan(fovScale);'), 'switchCamera must reset vertical ray length');
 assert(afterFovReset.includes('pathTracingUniforms.uULen.value = pathTracingUniforms.uVLen.value * worldCamera.aspect;'), 'switchCamera must reset horizontal ray length with current aspect');
 assertOrder(afterFovReset, 'pathTracingUniforms.uVLen.value = Math.tan(fovScale);', 'pathTracingUniforms.uULen.value = pathTracingUniforms.uVLen.value * worldCamera.aspect;', 'switchCamera must recompute uULen after uVLen');
+assert(switchCameraBody.includes('scheduleHomeStudioAnimationFrame();'), 'switchCamera must wake the render loop while sampling is paused');
+assertOrder(switchCameraBody, 'needClearAccumulation = true;', 'scheduleHomeStudioAnimationFrame();', 'switchCamera must schedule a frame after marking accumulation clear');
 
 console.log('PASS  camera preset FOV reset contract');

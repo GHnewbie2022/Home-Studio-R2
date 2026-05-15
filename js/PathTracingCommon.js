@@ -3297,12 +3297,16 @@ void main( void )
 
 	if (uR738C1BakeCaptureMode == 2)
 	{
-		vec2 r738BakeUv = (gl_FragCoord.xy + vec2(0.5)) / uResolution;
+		vec2 r738BakeUv = gl_FragCoord.xy / uResolution;
 		vec3 r738BakePoint = vec3(0.0);
 		vec3 r738BakeNormal = vec3(0.0, 1.0, 0.0);
 		int r738BakeHitType = 0;
 		float r738BakeObjectID = 0.0;
-		if (r738C1BakeSurfacePoint(uR738C1BakePatchId, r738BakeUv, r738BakePoint, r738BakeNormal, r738BakeHitType, r738BakeObjectID))
+		bool r7310C1BakePointActive = uR738C1BakePatchId >= 1000;
+		bool r738C1BakePointFound = r7310C1BakePointActive
+			? r7310C1BakeSurfacePoint(uR738C1BakePatchId, r738BakeUv, r738BakePoint, r738BakeNormal, r738BakeHitType, r738BakeObjectID)
+			: r738C1BakeSurfacePoint(uR738C1BakePatchId, r738BakeUv, r738BakePoint, r738BakeNormal, r738BakeHitType, r738BakeObjectID);
+		if (r738C1BakePointFound)
 		{
 			rayOrigin = r738BakePoint + r738BakeNormal * (uEPS_intersect * 8.0);
 			rayDirection = -r738BakeNormal;

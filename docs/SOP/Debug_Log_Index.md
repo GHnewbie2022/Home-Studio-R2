@@ -1,7 +1,7 @@
 # Debug Log Index
 
 > 目的：讓接手代理先用本檔路由，再回 `Debug_Log.md` 讀必要章節。`Debug_Log.md` 保留為完整總帳，不建議每次接手全讀。
-> 更新日：2026-05-08
+> 更新日：2026-05-15
 
 ---
 
@@ -68,6 +68,50 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 ---
 
 ## 目前優先路線
+
+### R7-3.10 C1 seam debug Phase 2 first knife
+
+```
+必讀：
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-first-knife-h8-cprime`
+
+目前狀態：
+  - H8 runtime gate 已拆成 floorApplied / northWallApplied。
+  - north baked 不再關掉 R7-3.8 嫩芽 paste；floor baked 仍依 floor 互斥規則停用嫩芽 paste。
+  - C' bake capture path 已移除多加的 half texel。
+  - 新 floor package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-112620/`
+  - 新 north package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-112717/`
+  - runtime pointer 已更新。
+  - Runtime short-circuit / north-wall runtime / UI toggle smoke passed.
+  - 使用者同視角回報：floor / north 的 fixed-X 西側黑線已消失。
+  - 使用者同視角回報：floor fixed-Z 南側邊界稍深，north fixed-Y 頂部北側邊界新出現黑線。
+  - 量化結果：fixed-X 邊界格已由低亮度變亮；fixed-Z / fixed-Y 邊界格由亮變暗，屬於新包 atlas 資料端變化。
+  - 使用者回報：floor 內部發光仍存在，符合 H7 未處理狀態。
+  - 下一步是 B' shader probe；fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題。
+```
+
+### R7-3.10 C1 seam debug Phase 1 closeout
+
+```
+必讀：
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md`
+  - `Debug_Log.md` 的 `R7-3.10-c1-seam-debug-phase1-step-f-complete`
+
+目前狀態：
+  - Phase 1 A / B / C / D / E / F 已完成。
+  - H8 / H7 / H5 / H3' 成立，H1b 泛化 U 軸撤回，H4 由使用者多視角截圖正式排除。
+  - 地板 package 回到 `.omc/r7-3-10-full-room-diffuse-bake/20260513-165203/`。
+  - 北牆 package 回到 `.omc/r7-3-10-full-room-diffuse-bake/20260513-210338/`。
+  - 東牆 package `.omc/r7-3-10-full-room-diffuse-bake/20260513-214539/` 先保留為歷史產物，runtime 暫不接入。
+  - runtime 合併 atlas 目前只有兩格：地板、北牆。
+  - UI 目前拆成兩顆按鈕：`地板烘焙：關 / 開`、`北牆烘焙：關 / 開`。
+  - contact invalid region + flood-fill dilation 路線已判定退化，後續不要延續。
+  - 失敗證據包：東牆 `20260513-221112`、地板 `20260513-222644`、北牆 `20260513-222958`。
+  - Phase 2 設計已進入第一刀，請優先讀上方 Phase 2 first knife。
+```
 
 ### R7-3 quick preview terminal fixed curve closeout
 
@@ -316,6 +360,7 @@ R7 採樣升級：
   - R7-3.8 C1 floor-center paste preview 已把正式 atlas 貼回 C1 畫面；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-floor-patch-paste-preview`
   - R7-3.8 C1 diffuse-only paste fix 已移除 floor patch 內的 ceiling-lamp reflection spike，補休眠 framePending=false、keyboard idle、snapshot UI、1000SPP 顯示、floor roughness UI 驗證；後續使用者肉眼確認 350SPP 已難見界線、1000SPP 隱形，diffuse bake 架構通過 floor-center patch 驗收，反射另開處理線；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-diffuse-paste-fix1`
   - R7-3.8 C1 嫩芽成功版已覆蓋為「diffuse bake + 可用 floor roughness UI」版本；右緣對齊手動存圖，數字欄不壓住滑桿，成功 tag `r7-3-8-c1-diffuse-bake-success-20260511` 代表這個恢復版；讀 `Debug_Log.md` 的 `R7-3.8-c1-diffuse-bake-sprout-ui-recovery`
+  - R7-3.10 C1 full-room diffuse bake 已完成 Phase 1 接縫根因收證：H8 / H7 / H5 / H3' 成立，H1b 泛化 U 軸撤回，H4 由使用者多視角截圖正式排除；後續先讀 `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`、`docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md` 與 `Debug_Log.md` 的 `R7-3.10-c1-seam-debug-phase1-step-f-complete`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`
   - R7-3.9 C1 舊 sprout-only package `.omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/` 已判定為 camera-space reference，不是 runtime 可接受反射包；後續必須改走 surface position + outgoing direction 或 true planar reflection pass。

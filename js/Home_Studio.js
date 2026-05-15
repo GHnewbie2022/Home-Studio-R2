@@ -5159,6 +5159,8 @@ function switchCamera(preset) {
     cameraIsMoving = true;
     // R2-UI：瞬間清空累加 buffer，消除前視角殘影
     needClearAccumulation = true;
+    if (typeof scheduleHomeStudioAnimationFrame === 'function')
+        scheduleHomeStudioAnimationFrame();
 
 }
 
@@ -5430,10 +5432,15 @@ function initSceneData() {
     r738DefaultBakeAtlasTexture.generateMipmaps = false;
     r738DefaultBakeAtlasTexture.needsUpdate = true;
     pathTracingUniforms.tR738C1BakeAtlasTexture = { value: r738DefaultBakeAtlasTexture };
+    pathTracingUniforms.tR7310C1FullRoomDiffuseAtlasTexture = { value: r738DefaultBakeAtlasTexture };
+    pathTracingUniforms.uR7310C1FullRoomDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1FullRoomDiffuseReady = { value: 0.0 };
+    pathTracingUniforms.uR7310C1RuntimeProbeMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
     pathTracingUniforms.uR738C1BakePatchWorldBounds = { value: new THREE.Vector4(-1.0, 1.0, -1.0, 1.0) };
+    pathTracingUniforms.uR7310C1BakeFloorWorldBounds = { value: new THREE.Vector4(MIN_X, MAX_X, MIN_Z, MAX_Z) };
     pathTracingUniforms.uR739C1AccurateReflectionMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionReferenceMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode = { value: 0.0 };
@@ -5816,30 +5823,31 @@ function syncFloorRoughnessActionWidth() {
         roughness.style.width = width + 'px';
 }
 
-function refreshR739SproutABButtons(report) {
-    var activeMode = report && report.mode ? String(report.mode).toUpperCase() : null;
-    ['A', 'B', 'C', 'D'].forEach(function(mode) {
-        var btn = document.getElementById('btn-r739-ab-' + mode.toLowerCase());
-        if (btn) btn.classList.toggle('glow-white', activeMode === mode);
-    });
+function refreshR7310FullFloorDiffuseButton(report) {
+    var btn = document.getElementById('btn-r7310-full-floor-diffuse');
+    if (!btn) return;
+    var active = !!(report && report.enabled);
+    btn.textContent = active ? '全地板：開' : '全地板：關';
+    btn.classList.toggle('glow-white', active);
+    btn.title = active
+        ? '全地板漫射使用 1000SPP 烘焙，地板反射仍即時計算'
+        : '維持一小塊嫩芽區貼回，其餘地板 live';
 }
 
-function bindR739SproutABControls() {
-    var bar = document.getElementById('r739-sprout-ab-actions');
-    if (!bar) return;
-    ['A', 'B', 'C', 'D'].forEach(function(mode) {
-        var btn = document.getElementById('btn-r739-ab-' + mode.toLowerCase());
-        if (!btn) return;
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            if (typeof window.setR739SproutABMode !== 'function') return;
-            var report = window.setR739SproutABMode(mode);
-            refreshR739SproutABButtons(report);
-            if (typeof window.logR739SproutABMode === 'function') window.logR739SproutABMode();
-        }, false);
-    });
-    if (typeof window.reportR739SproutABMode === 'function')
-        refreshR739SproutABButtons(window.reportR739SproutABMode());
+function bindR7310FullFloorDiffuseControls() {
+    var btn = document.getElementById('btn-r7310-full-floor-diffuse');
+    if (!btn) return;
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig !== 'function' ||
+            typeof window.setR7310C1FullRoomDiffuseRuntimeEnabled !== 'function')
+            return;
+        var current = window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+        var report = window.setR7310C1FullRoomDiffuseRuntimeEnabled(!current.enabled);
+        refreshR7310FullFloorDiffuseButton(report);
+    }, false);
+    if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig === 'function')
+        refreshR7310FullFloorDiffuseButton(window.reportR7310C1FullRoomDiffuseRuntimeConfig());
 }
 
 // 強制重啟累加（即使已進入 1000 SPP 休眠也能即時刷新）
@@ -6907,7 +6915,7 @@ function initUI() {
     }
 
     // Pointer-lock guard for snapshot bar and actions（bug fix：chip 點選會觸發 pointer lock）
-    ['snapshot-controls', 'floor-roughness-actions', 'r739-sprout-ab-actions', 'snapshot-bar', 'snapshot-actions'].forEach(function(id) {
+    ['snapshot-controls', 'floor-roughness-actions', 'r7310-full-floor-actions', 'snapshot-bar', 'snapshot-actions'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);
@@ -6943,7 +6951,7 @@ function initUI() {
         }, false);
     }
 
-    bindR739SproutABControls();
+    bindR7310FullFloorDiffuseControls();
 
     // R4-4：BVH 指針策略綁定（拖動期鎖 + 指針放開 50 ms 防抖）
     // 投射燈間距 / 投射燈軌道 x / 廣角燈距 Cloud 邊距 3 條接 BVH
