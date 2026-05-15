@@ -2,7 +2,7 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前接手重點：R7-3.10 C1 seam debug Phase 2 第二刀已完成。第一刀修 H8 runtime gate 與 C' bake UV；第二刀用 B' probe 證實地板內部發光來自 exiting hit，並以 H7 guard 排除。下一個未處理視覺問題是 fixed-Z / fixed-Y 新黑線，登記為 H5 / H3' 邊界資料政策候選。
+> 目前接手重點：R7-3.10 C1 seam debug Phase 2 的 H7 / H7' 內部視角發光已修；floor / north 的 H5 / H3' 衣櫃邊界黑線已改用 1024 bake atlas 解決，使用者肉眼確認兩條黑線看不出來。floor / north runtime pointer 目前都指向 1024 package。C runtime fallback 實驗已移除，不回退。partial bake 與 LIVE 並存時的局部偏亮已定性為深度相加的過渡假象；後續驗收基準改為「全相關靜態漫射面 bake vs 全 LIVE」。下一步往全相關靜態漫射面烘焙推進。
 
 ---
 
@@ -175,8 +175,148 @@
     - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-probe-sample-test --timeout-ms=180000
     - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000
   remaining:
-    - User visual validation still needed for inside-floor view with floor bake on.
+    - User visually confirmed inside-floor view with floor bake on is now fully black.
     - fixed-Z / fixed-Y dark boundary remains H5 / H3' and is not solved by H7.
+    - inside-floor sprout glow with floor bake off remains H7' and is not solved by H7.
+```
+
+## R7-3.10｜C1 Phase 2 第三刀前 CODEX / OPUS 共識
+
+```yaml
+- id: R7-3.10-c1-phase2-third-knife-preprobe-consensus
+  date: 2026-05-15
+  type: cross_agent_root_cause_consensus
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  current_url: http://127.0.0.1:9002/Home_Studio.html?v=r7310-phase2-h7-guard-v1
+  user_latest_validation:
+    fixed:
+      - "floor bake ON: inside-floor view is now fully black."
+    remaining:
+      - "floor bake ON: northeast wardrobe bottom south edge still has a slight dark line."
+      - "north bake ON: northeast wardrobe top north edge still has a clearer dark line."
+      - "floor bake OFF: inside-floor view still shows the sprout glow area."
+  agreed_done:
+    - H8 runtime gate isolation is valid and must stay.
+    - C' bake UV correction is physically valid and must stay.
+    - H7 exiting-hit guard for R7-3.10 full-room diffuse short-circuit is valid and must stay.
+  issue_1_floor_fixed_z:
+    root_cause_class: "H5 / H3' boundary texel nearest-policy"
+    evidence:
+      - "floor row 131 world z = -0.705064."
+      - "wardrobe zMax = -0.703; row 131 is about 2 mm inside the wardrobe footprint."
+      - "floor row 131 wardrobe X span zero = 68 / 69."
+      - "floor row 132 world z = -0.694654."
+      - "floor row 132 wardrobe X span zero = 0 / 69."
+    conclusion:
+      - "The symptom points to atlas boundary ownership policy, not a C' rollback."
+      - "Bake surface point epsilon is only a fallback check if later fixes leave residue."
+    remaining_probe:
+      - "nearest hit interval for row 131, converted to mm."
+      - "visible-hit runtime row / col readback on the dark-line sample point."
+  issue_2_north_fixed_y:
+    root_cause_class: "H5 / H3' boundary texel nearest-policy"
+    evidence:
+      - "Correct V direction: row index up means world y up."
+      - "row 343 y = 1.948960."
+      - "row 344 y = 1.954634."
+      - "row 345 y = 1.960308."
+      - "row 346 y = 1.965981."
+      - "wardrobe yMax = 1.955; row 344 is about 0.36 mm inside, row 345 is outside."
+      - "north row 344 wardrobe X span zero = 68 / 69."
+      - "north row 345 wardrobe X span zero = 0 / 69."
+    conclusion:
+      - "Same root class as floor fixed-Z."
+      - "OPUS earlier row-direction assumption was corrected and accepted."
+    remaining_probe:
+      - "nearest hit interval for row 344, converted to mm."
+      - "visible-hit runtime row / col readback on the dark-line sample point."
+  issue_3_inside_floor_sprout_glow:
+    name: "H7' / sprout-paste-inside-guard"
+    root_cause_candidate:
+      - "R7-3.8 paste path uses firstVisible* data but does not track firstVisibleIsRayExiting."
+      - "R7-3.8 paste mix lacks an inside-geometry guard."
+      - "H7 second knife only guards r7310C1FullRoomDiffuseShortCircuit(), so it does not cover R7-3.8 paste."
+    intended_behavior:
+      - "R7-3.8 paste visible in normal view with floor bake OFF is intended."
+      - "R7-3.8 paste visible from inside the floor solid is unintended."
+    required_probe:
+      - "Read back how many fragments pass the R7-3.8 paste entrance if inside-floor view is active."
+      - "Quantify firstVisibleNormal and firstVisiblePosition.y."
+      - "Temporarily read back firstVisibleIsRayExiting = hitIsRayExiting; readback only, no guard."
+  locked_constraints:
+    - "Do not roll back H7 guard."
+    - "Do not roll back H8 runtime gate."
+    - "Do not roll back C' bake UV correction."
+    - "Do not rebake floor / north atlas for this probe stage."
+    - "Do not directly copy neighboring texels into boundary texels."
+    - "Do not touch ACOUSTIC_PANEL or textures/gik244_*.jpeg as part of Phase 2 probe work."
+  next:
+    - "Wait for explicit user start before code edits."
+    - "CODEX leads H7' readback probe."
+    - "OPUS or CODEX may run H5 / H3' nearest interval and visible-hit runtime probes."
+    - "H5 / H3' fix design opens only after the probes are sealed."
+```
+
+## R7-3.10｜C1 H5 / H3' 1024 bake resolution closeout
+
+```yaml
+- id: R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout
+  date: 2026-05-15
+  type: seam_phase2_h5_h3_resolution_closeout
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  current_url: http://127.0.0.1:9002/Home_Studio.html?v=r7310-1024-bake-v1
+  user_validation:
+    - "floor bake ON + north bake ON: northeast wardrobe bottom south edge black line is no longer visible."
+    - "north bake ON: northeast wardrobe top north edge black line is no longer visible."
+  decision:
+    - "Lock 1024 as the current accepted floor / north bake resolution candidate."
+    - "Do not advance to 2048 in this round because the nearest-interval phase result predicts north-line regression at 2048."
+    - "C runtime fallback was an abandoned diagnostic experiment; it proved the boundary-texel path but created a live/bake quality seam, and has been removed."
+  packages:
+    floor_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-215727"
+    north_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-212509"
+    contamination_evidence_north_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-225147"
+    pointer_backup_512: ".omc/r7-3-10-1024-pointer-backups/20260515-212327"
+  pointer_state:
+    - "docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json points to floor 1024."
+    - "docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json points to north 1024."
+    - "Both package pointers now share targetAtlasResolution: 1024, so the combined texture resolution guard is satisfied."
+  black_line_evidence:
+    - "User visual validation: both wardrobe boundary black lines are gone at 1024."
+    - "nearest interval: north visible black band 512=3.46mm, 1024=0.125mm, 2048=1.30mm."
+    - "nearest interval: floor and north texel pitch shrink with resolution, but visible black-band width is phase dependent."
+    - "H5 black-line probe after 1024: north dominantRow=682, totalInBand=1494."
+  live_bake_brightness_difference:
+    symptom:
+      - "Partial bake + LIVE comparison can make adjacent LIVE furniture or wall areas look slightly brighter."
+    root_cause:
+      - "R7-3.10 short-circuit splices baked radiance into a LIVE path: accumCol += mask * r7310BakedRadiance; break."
+      - "A LIVE path that reaches a baked surface after k segments then receives that surface's baked multi-bounce value."
+      - "Effective depth becomes k plus the baked solution depth, so partial bake / LIVE boundaries are brighter than all-LIVE reference."
+    conclusion:
+      - "This is a partial-bake transition artifact, not a rejection reason for 1024."
+      - "Official visual comparison should use all relevant static diffuse surfaces baked versus all LIVE, with matching bounce settings."
+  contamination_guard:
+    option_a_snapshot:
+      - "captureR738C1DirectSurfaceTexelPatch now records bakeContaminationGuardSnapshot during capture before uniform restore."
+      - "Evidence package 20260515-225147 recorded uR7310C1FullRoomDiffuseMode=0, uR7310C1FullRoomDiffuseReady=0, uR7310C1FloorDiffuseMode=0, uR7310C1NorthWallDiffuseMode=0, uR738C1BakeCaptureMode=2."
+      - "Conclusion: this 1024 capture did not eat runtime baked short-circuit data."
+    option_b_guard:
+      - "r7310C1FullRoomDiffuseShortCircuit() returns false when uR738C1BakeCaptureMode != 0."
+      - "The guard blocks future bake-capture contamination even if a runtime bake package is already loaded in the page."
+  verification:
+    - "node --check js/InitCommon.js"
+    - "node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs"
+    - "node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js"
+    - "R7-3.10 short-circuit smoke: bakedSurfaceHitCount=96170, bakedSurfaceShortCircuitCount=190559."
+    - "H5 black-line probe: north dominantRow=682, totalInBand=1494."
+  latest_codex_verification:
+    - "runtime_short_circuit: .omc/r7-3-10-full-room-diffuse-runtime/20260515-232259"
+    - "h5_black_line_probe: .omc/r7-3-10-h5-black-line-probe/20260515-232232"
+  next:
+    - "Move next phase toward all relevant static diffuse surface bake, reducing partial bake / LIVE splice artifacts."
+  cache_buster:
+    - "Home_Studio.html and Home_Studio.js updated to r7310-1024-bake-v1."
 ```
 
 ## 2026-05-12 R7-3.9 C1 Reflection Bake Reset To Diffuse-Only

@@ -2122,33 +2122,45 @@ async function captureR738C1DirectSurfaceTexelPatch(targetSamples, timeoutMs, op
 			if (sample % 16 === 0)
 				await new Promise(function(resolve) { setTimeout(resolve, 0); });
 		}
-			var readback = await readR738RenderTargetFloatPixels(target);
-			var averaged = averageR738AtlasPixels(readback.pixels, samples);
-			var metadataResult = patchId === R7310_C1_FLOOR_TARGET_ID
-				? buildR7310C1FloorTexelMetadata(size)
-				: (patchId === R7310_C1_NORTH_WALL_TARGET_ID
-					? buildR7310C1NorthWallTexelMetadata(size)
-					: (patchId === R7310_C1_EAST_WALL_TARGET_ID
-						? buildR7310C1EastWallTexelMetadata(size)
-						: buildR738TexelMetadata(size, floorWorldBounds)));
-			if (patchId === R7310_C1_NORTH_WALL_TARGET_ID)
-				maskR7310C1NorthWallAtlasPixels(averaged.pixels, metadataResult.metadata, size);
-			window.__r738C1BakeCaptureLastAtlasPixels = averaged.pixels;
-			window.__r738C1BakeCaptureLastTexelMetadata = metadataResult.metadata;
+		// CODEX directive #4A：capture 中（render loop 後、finally restore 前）快照
+		// R7-3.10 runtime short-circuit 相關 uniform，偵測「bake 吃 bake」污染。
+		// 乾淨 bake 預期全部為 0（runtime 套件未載入 → short-circuit 不觸發）。
+		var r7310BakeContaminationGuardSnapshot = {
+			phase: 'during_capture',
+			uR7310C1FullRoomDiffuseMode: pathTracingUniforms.uR7310C1FullRoomDiffuseMode ? pathTracingUniforms.uR7310C1FullRoomDiffuseMode.value : null,
+			uR7310C1FullRoomDiffuseReady: pathTracingUniforms.uR7310C1FullRoomDiffuseReady ? pathTracingUniforms.uR7310C1FullRoomDiffuseReady.value : null,
+			uR7310C1FloorDiffuseMode: pathTracingUniforms.uR7310C1FloorDiffuseMode ? pathTracingUniforms.uR7310C1FloorDiffuseMode.value : null,
+			uR7310C1NorthWallDiffuseMode: pathTracingUniforms.uR7310C1NorthWallDiffuseMode ? pathTracingUniforms.uR7310C1NorthWallDiffuseMode.value : null,
+			uR738C1BakeCaptureMode: pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : null
+		};
+		var readback = await readR738RenderTargetFloatPixels(target);
+		var averaged = averageR738AtlasPixels(readback.pixels, samples);
+		var metadataResult = patchId === R7310_C1_FLOOR_TARGET_ID
+			? buildR7310C1FloorTexelMetadata(size)
+			: (patchId === R7310_C1_NORTH_WALL_TARGET_ID
+				? buildR7310C1NorthWallTexelMetadata(size)
+				: (patchId === R7310_C1_EAST_WALL_TARGET_ID
+					? buildR7310C1EastWallTexelMetadata(size)
+					: buildR738TexelMetadata(size, floorWorldBounds)));
+		if (patchId === R7310_C1_NORTH_WALL_TARGET_ID)
+			maskR7310C1NorthWallAtlasPixels(averaged.pixels, metadataResult.metadata, size);
+		window.__r738C1BakeCaptureLastAtlasPixels = averaged.pixels;
+		window.__r738C1BakeCaptureLastTexelMetadata = metadataResult.metadata;
 		return {
 			enabled: true,
 			patchCount: 1,
 			patchSize: size,
 			upscaled: false,
 			requestedSamples: targetCount,
-				actualSamples: samples,
-				actualSamplesByPatch: [
-					{ patchId: patchId, surfaceName: surfaceName, actualSamples: samples }
-				],
-				worldBounds: floorWorldBounds,
-				diffuseOnly: true,
+			actualSamples: samples,
+			actualSamplesByPatch: [
+				{ patchId: patchId, surfaceName: surfaceName, actualSamples: samples }
+			],
+			worldBounds: floorWorldBounds,
+			diffuseOnly: true,
 			nonFiniteTexels: averaged.nonFiniteTexels,
 			validTexelRatio: metadataResult.validTexelRatio,
+			bakeContaminationGuardSnapshot: r7310BakeContaminationGuardSnapshot,
 			timedOut: samples < targetCount,
 			elapsedMs: Math.round(performance.now() - startMs)
 		};
@@ -3556,6 +3568,7 @@ function r7310C1RuntimeProbeDecodeModeForLevel(probeLevel)
 	if (probeLevel === 4) return 'rayDirY';
 	if (probeLevel === 5) return 'isRayExiting';
 	if (probeLevel === 6) return 'cameraPosY';
+	if (probeLevel === 7) return 'atlasRowCol';
 	return 'surfaceClass';
 }
 
@@ -3571,6 +3584,13 @@ function decodeR7310C1RuntimeProbeSample(r, g, b, decodeMode)
 		return { isRayExiting: r > 0.5 };
 	if (decodeMode === 'cameraPosY')
 		return { y: r * 3.0 + 0.5 };
+	if (decodeMode === 'atlasRowCol')
+	{
+		var atlasRes = pathTracingUniforms && pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution
+			? pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution.value
+			: 512;
+		return { row: Math.round(r * atlasRes), col: Math.round(g * atlasRes), world: b };
+	}
 	return { r: r, g: g, b: b };
 }
 
@@ -3609,7 +3629,7 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 	options = options || {};
 	var requestedProbeLevel = Number(options.probeLevel);
 	var probeLevel = Number.isFinite(requestedProbeLevel)
-		? Math.max(1, Math.min(6, Math.round(requestedProbeLevel)))
+		? Math.max(1, Math.min(7, Math.round(requestedProbeLevel)))
 		: 1;
 	var samplePointSpace = options.samplePointSpace === 'canvasCssPixel' ? 'canvasCssPixel' : 'renderTargetPixel';
 	var decodeMode = typeof options.decodeMode === 'string'
@@ -3629,8 +3649,9 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
 		if (options.cameraState && typeof window.setR739Config1ValidationCameraState === 'function')
 			window.setR739Config1ValidationCameraState(options.cameraState);
-		if (options.northWallCamera === true && typeof window.setR739Config1ValidationCameraState === 'function')
+		if (options.northWallCamera === true && !options.cameraState && typeof window.setR739Config1ValidationCameraState === 'function')
 		{
+			// 預設固定北牆相機；若 caller 同時給 options.cameraState（如 H5 黑線 probe 要對準東北衣櫃北牆面）則不覆蓋
 			window.setR739Config1ValidationCameraState({
 				name: 'r7310_north_wall_runtime_probe',
 				position: { x: 0.0, y: 1.45, z: 0.8 },
@@ -3743,6 +3764,70 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 			});
 			status = r7310ProbeSamples.length > 0 && finiteProbeSamples ? 'pass' : 'fail';
 		}
+		// R7-3.10 H5 / H3' 黑線專項 Part 2：level 7 全圖 wardrobe 邊界 row 統計（probe-only，不影響 level 1~6）。
+		// shader level 7：R=row/512、G=col/512、B=hit world 座標 raw（floor=z / north=y）。
+		var h5BlackLineProbe = null;
+		if (probeLevel === 7)
+		{
+			var isNorthProbe = options.northWallCamera === true;
+			var probeRes = pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution
+				? pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution.value : 512;
+			// wardrobe 可見邊界帶：floor zMax≈-0.703 ±12mm；north yMax≈1.955 ±12mm
+			var boundaryCenter = isNorthProbe ? 1.955 : -0.703;
+			var bandLo = boundaryCenter - 0.030;
+			var bandHi = boundaryCenter + 0.030;
+			// wardrobe X 對應 atlas col 帶：floor / north 同 uv (x+2.11)/4.22；x∈[1.35,1.91]→col≈419..487
+			var colLo = 410;
+			var colHi = 495;
+			var rowHist = {};
+			var totalInBand = 0;
+			var worldMinAll = Infinity;
+			var worldMaxAll = -Infinity;
+			for (var p = 0; p < pixels.length; p += 4)
+			{
+				var pr = pixels[p];
+				var pg = pixels[p + 1];
+				var pb = pixels[p + 2];
+				if (!Number.isFinite(pr) || !Number.isFinite(pg) || !Number.isFinite(pb))
+					continue;
+				if (pr === 0 && pg === 0 && pb === 0)
+					continue; // 非 short-circuit 命中像素
+				if (pb < bandLo || pb > bandHi)
+					continue; // 不在 wardrobe 可見邊界帶
+				var rowIdx = Math.round(pr * probeRes);
+				var colIdx = Math.round(pg * probeRes);
+				if (colIdx < colLo || colIdx > colHi)
+					continue; // 不在 wardrobe X 對應 atlas col 帶
+				totalInBand += 1;
+				if (pb < worldMinAll) worldMinAll = pb;
+				if (pb > worldMaxAll) worldMaxAll = pb;
+				if (!rowHist[rowIdx])
+					rowHist[rowIdx] = { count: 0, worldMin: Infinity, worldMax: -Infinity };
+				rowHist[rowIdx].count += 1;
+				if (pb < rowHist[rowIdx].worldMin) rowHist[rowIdx].worldMin = pb;
+				if (pb > rowHist[rowIdx].worldMax) rowHist[rowIdx].worldMax = pb;
+			}
+			var rowEntries = Object.keys(rowHist).map(function(k)
+			{
+				return {
+					row: Number(k),
+					count: rowHist[k].count,
+					worldMin: rowHist[k].worldMin,
+					worldMax: rowHist[k].worldMax
+				};
+			}).sort(function(a, b) { return b.count - a.count; });
+			h5BlackLineProbe = {
+				surface: isNorthProbe ? 'north' : 'floor',
+				boundaryCenter: boundaryCenter,
+				boundaryBand: [bandLo, bandHi],
+				colBand: [colLo, colHi],
+				atlasResolution: probeRes,
+				totalFragmentsInBand: totalInBand,
+				worldRangeInBand: totalInBand > 0 ? [worldMinAll, worldMaxAll] : null,
+				dominantRow: rowEntries.length > 0 ? rowEntries[0].row : null,
+				rowHistogram: rowEntries
+			};
+		}
 		return {
 			version: 'r7-3-10-c1-full-room-diffuse-runtime-probe',
 			config: 1,
@@ -3768,6 +3853,7 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 			status: status,
 			surfaceClassSummary: surfaceClassSummary,
 			probePixels: readback.width * readback.height,
+			h5BlackLineProbe: h5BlackLineProbe,
 			currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 		};
 	}
@@ -3778,6 +3864,190 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 		r7310C1FullRoomDiffuseRuntimeEnabled = savedRuntimeEnabled;
 		r7310C1FloorDiffuseRuntimeEnabled = savedFloorRuntimeEnabled;
 		r7310C1NorthWallDiffuseRuntimeEnabled = savedNorthWallRuntimeEnabled;
+		restoreR738BakeState(state);
+		if (savedRenderTarget && renderer) renderer.setRenderTarget(savedRenderTarget);
+		if (target) target.dispose();
+		if (previous) previous.dispose();
+	}
+};
+
+// R7-3.10 Phase 2 H7' / sprout-paste-inside-guard probe helpers。
+// guard 已落在 shader 外層條件；這裡保留 readback helper 供迴歸檢查。
+function r738C1SproutPasteProbeDecodeModeForLevel(probeLevel)
+{
+	if (probeLevel === 2) return 'firstVisibleNormal';
+	if (probeLevel === 3) return 'firstVisiblePosY';
+	if (probeLevel === 4) return 'firstVisibleIsRayExiting';
+	if (probeLevel === 5) return 'firstVisibleHitObject';
+	if (probeLevel === 6) return 'cameraPosY';
+	return 'pasteSurfaceClass';
+}
+
+function decodeR738C1SproutPasteProbeSample(r, g, b, decodeMode)
+{
+	if (decodeMode === 'firstVisibleNormal')
+		return { x: r * 2 - 1, y: g * 2 - 1, z: b * 2 - 1 };
+	if (decodeMode === 'firstVisiblePosY')
+		return { y: r * 0.10 - 0.05 };
+	if (decodeMode === 'firstVisibleIsRayExiting')
+		return { firstVisibleIsRayExiting: r > 0.5 };
+	if (decodeMode === 'firstVisibleHitObject')
+	{
+		var hitType = Math.round(r * 255);
+		var objectIdLow = Math.round(g * 255);
+		var objectIdHigh = Math.round(b * 255);
+		return { hitType: hitType, objectID: objectIdHigh * 256 + objectIdLow };
+	}
+	if (decodeMode === 'cameraPosY')
+		return { y: r * 5.0 - 1.0 };
+	return { r: r, g: g, b: b };
+}
+
+window.reportR738C1SproutPasteRuntimeProbe = async function(options)
+{
+	options = options || {};
+	var requestedProbeLevel = Number(options.probeLevel);
+	var probeLevel = Number.isFinite(requestedProbeLevel)
+		? Math.max(0, Math.min(6, Math.round(requestedProbeLevel)))
+		: 1;
+	var samplePointSpace = options.samplePointSpace === 'canvasCssPixel' ? 'canvasCssPixel' : 'renderTargetPixel';
+	var decodeMode = typeof options.decodeMode === 'string'
+		? options.decodeMode
+		: r738C1SproutPasteProbeDecodeModeForLevel(probeLevel);
+	var timeout = normalizeR738PositiveInt(options.timeoutMs, 60000, 1000, 600000);
+	var savedFloorRuntime = r7310C1FloorDiffuseRuntimeEnabled;
+	var savedNorthRuntime = r7310C1NorthWallDiffuseRuntimeEnabled;
+	var savedFullRuntime = r7310C1FullRoomDiffuseRuntimeEnabled;
+	var savedSpacePasteEnabled = r738C1BakePastePreviewEnabled;
+	var state = captureR738BakeState();
+	var target = null;
+	var previous = null;
+	var savedRenderTarget = renderer && renderer.getRenderTarget ? renderer.getRenderTarget() : null;
+	try
+	{
+		if (typeof applyPanelConfig === 'function') applyPanelConfig(1);
+		if (options.cameraState && typeof window.setR739Config1ValidationCameraState === 'function')
+			window.setR739Config1ValidationCameraState(options.cameraState);
+		// 強制條件：paste preview 開、floor / north runtime 全關（避免 H8 互斥把 paste 關掉）
+		r7310C1FloorDiffuseRuntimeEnabled = false;
+		r7310C1NorthWallDiffuseRuntimeEnabled = false;
+		r7310C1FullRoomDiffuseRuntimeEnabled = false;
+		r738C1BakePastePreviewEnabled = true;
+		// 等 paste preview ready
+		var spaceReadyStart = performance.now();
+		while (performance.now() - spaceReadyStart < timeout)
+		{
+			if (r738C1BakePastePreviewReady)
+				break;
+			await new Promise(function(resolve) { setTimeout(resolve, 100); });
+		}
+		if (!r738C1BakePastePreviewReady)
+			throw new Error('R7-3.8 sprout paste preview did not become ready');
+		updateR738C1BakePastePreviewUniforms();
+		updateR7310C1FullRoomDiffuseRuntimeUniforms();
+		var width = pathTracingRenderTarget.width;
+		var height = pathTracingRenderTarget.height;
+		target = createR738FloatRenderTarget(width, height);
+		previous = createR738FloatRenderTarget(width, height);
+		samplingPaused = true;
+		cameraIsMoving = false;
+		cameraRecentlyMoving = false;
+		pathTracingUniforms.uR738C1BakeCaptureMode.value = 0;
+		pathTracingUniforms.uR738C1SproutPasteProbeMode.value = probeLevel;
+		updateR738C1BakePastePreviewUniforms();
+		updateR7310C1FullRoomDiffuseRuntimeUniforms();
+		pathTracingUniforms.tPreviousTexture.value = previous.texture;
+		screenCopyUniforms.tPathTracedImageTexture.value = target.texture;
+		renderer.setRenderTarget(target);
+		renderer.clear();
+		renderer.setRenderTarget(previous);
+		renderer.clear();
+		sampleCounter = 1.0;
+		frameCounter = 2.0;
+		pathTracingUniforms.uSampleCounter.value = sampleCounter;
+		pathTracingUniforms.uFrameCounter.value = frameCounter;
+		pathTracingUniforms.uPreviousSampleCount.value = 1.0;
+		pathTracingUniforms.uCameraIsMoving.value = false;
+		pathTracingUniforms.uRandomVec2.value.set(Math.random(), Math.random());
+		pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+		// H7' guard / L6 probe 依賴 uCamPos；render loop 每幀才同步 uCamPos，
+		// 此 single-frame probe render 不經 render loop，需在此主動同步到 worldCamera 世界位置，
+		// 否則 guard 會讀到上一個 probe case 殘留的相機位置。
+		if (pathTracingUniforms.uCamPos && pathTracingUniforms.uCamPos.value && worldCamera)
+		{
+			worldCamera.updateMatrixWorld(true);
+			pathTracingUniforms.uCamPos.value.setFromMatrixPosition(worldCamera.matrixWorld);
+		}
+		renderer.setRenderTarget(target);
+		renderer.render(pathTracingScene, worldCamera);
+		var readback = await readR738RenderTargetFloatPixels(target);
+		var pixels = readback.pixels;
+		var probeSamples = normalizeR7310C1RuntimeProbeSamplePoints(options, readback.width, readback.height).map(function(point)
+		{
+			var index = (point.rtPixel.y * readback.width + point.rtPixel.x) * 4;
+			var r = pixels[index];
+			var g = pixels[index + 1];
+			var b = pixels[index + 2];
+			return {
+				x: point.x,
+				y: point.y,
+				rtPixel: point.rtPixel,
+				r: r,
+				g: g,
+				b: b,
+				decoded: decodeR738C1SproutPasteProbeSample(r, g, b, decodeMode)
+			};
+		});
+		// 統計：L1 surface class — 紅色像素 = 通過 paste 條件的 fragment 數
+		// 統計：L4 isRayExiting — 紅色像素 = paste 路徑中 firstVisibleIsRayExiting=TRUE 的 fragment 數
+		var pastePassCount = 0;
+		var rayExitingTrueCount = 0;
+		if (probeLevel === 1)
+		{
+			for (var i = 0; i < pixels.length; i += 4)
+			{
+				if (pixels[i] > 0.75 && pixels[i + 1] < 0.25 && pixels[i + 2] < 0.25)
+					pastePassCount += 1;
+			}
+		}
+		else if (probeLevel === 4)
+		{
+			for (var j = 0; j < pixels.length; j += 4)
+			{
+				if (pixels[j] > 0.75 && pixels[j + 1] < 0.25 && pixels[j + 2] < 0.25)
+					rayExitingTrueCount += 1;
+			}
+		}
+		var status = probeSamples.length > 0
+			? (probeSamples.every(function(s) { return Number.isFinite(s.r) && Number.isFinite(s.g) && Number.isFinite(s.b); }) ? 'pass' : 'fail')
+			: 'fail';
+		return {
+			version: 'r7-3-8-c1-sprout-paste-probe',
+			config: 1,
+			probeLevel: probeLevel,
+			samplePointSpace: samplePointSpace,
+			decodeMode: decodeMode,
+			samplePoints: probeSamples,
+			pastePassCount: pastePassCount,
+			rayExitingTrueCount: rayExitingTrueCount,
+			probePixels: readback.width * readback.height,
+			spacePasteEnabled: r738C1BakePastePreviewEnabled,
+			spacePasteReady: r738C1BakePastePreviewReady,
+			spacePasteUniformMode: pathTracingUniforms.uR738C1BakePastePreviewMode ? pathTracingUniforms.uR738C1BakePastePreviewMode.value : null,
+			spacePasteUniformReady: pathTracingUniforms.uR738C1BakePastePreviewReady ? pathTracingUniforms.uR738C1BakePastePreviewReady.value : null,
+			sproutPasteProbeMode: pathTracingUniforms.uR738C1SproutPasteProbeMode ? pathTracingUniforms.uR738C1SproutPasteProbeMode.value : null,
+			currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0),
+			status: status
+		};
+	}
+	finally
+	{
+		if (pathTracingUniforms && pathTracingUniforms.uR738C1SproutPasteProbeMode)
+			pathTracingUniforms.uR738C1SproutPasteProbeMode.value = 0.0;
+		r7310C1FloorDiffuseRuntimeEnabled = savedFloorRuntime;
+		r7310C1NorthWallDiffuseRuntimeEnabled = savedNorthRuntime;
+		r7310C1FullRoomDiffuseRuntimeEnabled = savedFullRuntime;
+		r738C1BakePastePreviewEnabled = savedSpacePasteEnabled;
 		restoreR738BakeState(state);
 		if (savedRenderTarget && renderer) renderer.setRenderTarget(savedRenderTarget);
 		if (target) target.dispose();

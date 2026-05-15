@@ -1,10 +1,10 @@
-# R7-3.10 C1 Phase 2 第一刀 Implementation Plan
+# R7-3.10 C1 Phase 2 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 先完成 R7-3.10 C1 接縫線第一刀：H8 runtime gate 隔離與 C' bake UV 半 texel 修正，重烘 floor / north 後用同視角驗證西側黑線、嫩芽共存與開關語意。
+**Goal:** 追完 R7-3.10 C1 接縫線 Phase 2：第一刀修 H8 runtime gate 與 C' bake UV；第二刀修 R7-3.10 floor short-circuit 的 H7 exiting-hit guard；第三刀修 R7-3.8 sprout paste 的 H7' camera-y guard；第二輪 H5 / H3' 以 1024 bake resolution 收斂衣櫃兩條黑線。
 
-**Architecture:** 第一刀只處理已完成根因調查且可形成最小閉環的 H8 與 C'。runtime 保留 combined texture，改成 per-slot ready / mode 控制；bake capture path 移除多加的半 texel，正常 camera ray 不動。B' probe、H7 guard、H5 / H3' alpha mask、East wall runtime 與北牆 GIK 貼圖旋轉問題全部延後。
+**Architecture:** runtime 保留 combined texture，以 per-slot ready / mode 控制分面取樣。bake capture path 已移除多加的半 texel，正常 camera ray 不動。H7 guard 只保護 R7-3.10 full-room diffuse short-circuit；R7-3.8 sprout paste 另列 H7'。H7' 已採 `uCamPos.y >= 0.025` camera-y guard，避免相機進入地板實體時仍套用嫩芽 paste。H5 / H3' 第二輪已改採 1024 atlas resolution；C runtime fallback 已移除，不回退。
 
 **Tech Stack:** JavaScript、GLSL string source in `js/PathTracingCommon.js`、three.js `DataTexture`、Node contract tests、existing CDP smoke runner。
 
@@ -12,10 +12,10 @@
 
 ## 目前狀態
 
-日期：2026-05-14 起草；2026-05-15 CODEX / OPUS 第 3 輪審查後成立；2026-05-15 CODEX 完成第一刀；2026-05-15 CODEX 完成第二刀 B' / H7。
-狀態：第一刀 H8 + C' 已實作、1000SPP floor / north 已重烘、runtime pointer 已更新；第二刀已用 B' probe 證實地板內部發光來自 exiting hit，並以 H7 guard 排除。待使用者同視角實機驗收。
-範圍：H8 per-surface gate、C' bake UV 半 texel 修正、重烘 floor / north、B' shader 數值 probe、H7 inside-geometry guard。
-暫緩：H5 / H3' alpha mask、East wall runtime。
+日期：2026-05-14 起草；2026-05-15 CODEX / OPUS 第 3 輪審查後成立；2026-05-15 CODEX 完成第一刀；2026-05-15 CODEX 完成第二刀 B' / H7；2026-05-15 更新至第三刀前 CODEX / OPUS 共識封口；2026-05-15 OPUS 完成 H7' readback probe 與 follow-up probe，CODEX 審查接受；2026-05-15 OPUS 完成 H7' guard，CODEX 審查接受；2026-05-15 H5 / H3' 第二輪以 1024 bake resolution 收斂，使用者肉眼確認兩條黑線看不出來。
+狀態：第一刀 H8 + C' 已完成；第二刀 H7 guard 已完成；第三刀 H7' guard 已完成；第二輪 H5 / H3' 已用 1024 bake resolution 收斂。floor / north runtime pointer 目前皆指 1024 package。C runtime fallback 已移除。
+範圍：H8 per-surface gate、C' bake UV 半 texel修正、floor / north 1024 bake、B' shader 數值 probe、H7 exiting-hit guard、H7' sprout paste readback probe、H7' follow-up probe、H7' camera-y guard、H5 / H3' nearest-policy probe、bake 防污染 Option A / Option B。
+暫緩：East wall runtime；全相關靜態漫射面烘焙下一階段設計。
 協作邊界：OPUS 北牆 GIK 貼圖旋轉與貼圖頂底偽影已於 2026-05-15 完成（gik-north-rotate-uv-r4，使用者四個 Config 全數實機驗收通過）。CODEX 第二刀（B' probe / H7 guard 等）解除 GIK 邊界；惟 ACOUSTIC_PANEL 分支與 textures/gik244_*.jpeg 已成定論，第二刀無須再動。改動清單詳見本檔下方「## 2026-05-15 OPUS GIK 修復完成回報」。
 
 ---
@@ -25,6 +25,7 @@
 | 檔案 | 角色 |
 |---|---|
 | `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-opus.md` | OPUS 工作副本，含完整三輪修正紀錄。 |
+| `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md` | OPUS 接縫共識副本，保留 Phase 1 推演與第三刀前雙向共識。 |
 | `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md` | CODEX 目前實作導航與 TODO 主檔。 |
 | `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md` | Phase 1 根因共識主檔，提供 H8 / H7 / C' / H5 證據。 |
 
@@ -41,7 +42,8 @@
 | - [x] | H8 嫩芽互斥 | R7-3.8 嫩芽 paste 只與 floor runtime 互斥。north baked 開啟時，嫩芽仍存在。 |
 | - [x] | B' probe | 第二刀已補 runtime probe level 2~6 與 sample readback，取得正常視角與地板內部視角數值。 |
 | - [x] | H7 guard | 第二刀採 `hitIsRayExiting` guard。B' 證據顯示地板內部視角 sample 全為 exiting hit，guard 後內部視角短路數歸零。 |
-| - [x] | H5 / H3' | 第一刀不做 alpha mask。第一刀驗收後仍見家具 footprint 暗區異常貼回，才啟動第二輪。 |
+| - [x] | H7' sprout paste | H7' readback probe、follow-up probe 與 camera-y guard 已由 OPUS 完成，CODEX 審查接受。最終 guard 採 `uCamPos.y >= 0.025`，不依賴 `firstVisibleIsRayExiting` / firstVisibleHitType / firstVisibleObjectID。使用者肉眼確認 inside-floor 已全黑，正常地板視角嫩芽保留。 |
+| - [x] | H5 / H3' | fixed-Z / fixed-Y 新黑邊已歸入邊界格 nearest-policy；第二輪採 1024 bake resolution，使用者肉眼確認兩條黑線看不出來。 |
 | - [x] | East wall runtime | 第一刀不納入。若後續需要 east runtime，另設計第三 slot、UI 與 package ready。 |
 
 ---
@@ -202,6 +204,188 @@ H7 判斷：
 
 ---
 
+## 2026-05-15 第三刀前 CODEX / OPUS 共識封口
+
+使用者第二刀後實機回報：
+
+```text
+1.  地板烘焙 ON：
+      東北衣櫃底部南側邊緣仍有輕微黑邊。
+
+2.  北牆烘焙 ON：
+      東北衣櫃頂部北側邊緣仍有更明顯黑邊。
+
+3.  地板烘焙 OFF：
+      地板內部仍有嫩芽區發光。
+
+4.  地板烘焙 ON：
+      地板內部全黑。此項已修好。
+```
+
+CODEX / OPUS 對齊後的根因分流：
+
+```text
+1.  件 1：floor fixed-Z 南側黑邊
+      根因類別 = H5 / H3' 邊界格 nearest-policy。
+      C' 物理方向正確，不回退、不重烘。
+      floor row 131 world z = -0.705064，在 wardrobe zMax = -0.703 內側約 2 mm。
+      row 131 的 wardrobe X span 統計為 zero = 68 / 69；row 132 zero = 0 / 69。
+      row 132 world z 正確值 = -0.694654。
+
+2.  件 2：north fixed-Y 頂部北側黑邊
+      根因類別同件 1。
+      正確 V 軸方向：row index ↑ → world y ↑。
+      row 343 y = 1.948960
+      row 344 y = 1.954634，在 wardrobe yMax = 1.955 內側約 0.36 mm。
+      row 345 y = 1.960308，在 wardrobe 外。
+      row 346 y = 1.965981，在 wardrobe 外更高。
+      row 344 的 wardrobe X span 統計為 zero = 68 / 69；row 345 zero = 0 / 69。
+
+3.  件 3：floor bake OFF 時地板內部嫩芽區發光
+      命名 = H7' / sprout-paste-inside-guard。
+      R7-3.8 paste 在正常視角可見是預期；在相機進入地板實體內部後仍可見是非預期。
+      根因 = R7-3.8 paste path 缺能區分 normal view 與 inside-floor view 的 ray-side / camera-side guard。
+      firstVisibleIsRayExiting 是 probe 證據之一，但不能單獨作 guard。
+      H7 第二刀只保護 R7-3.10 short-circuit，沒有保護 R7-3.8 paste path。
+```
+
+OPUS Q3 措辭修正紀錄：
+
+```text
+OPUS 原句「bake surface point epsilon 已無殘留偏差」太滿。
+CODEX 修正為：
+  目前症狀不支持 bake surface point epsilon 是主因。
+  根因優先級降至 H6 / 後備檢查層級。
+  若件 1 / 件 2 修法後仍有殘留，再重新翻查。
+
+OPUS 已接受此修正。
+```
+
+H7' readback probe 完成結果：
+
+```text
+1.  OPUS 已完成 probe-only 實作（4 檔案 diff）與 12 cases readback。
+      結果 package:
+      .omc/r7-3-8-sprout-paste-probe/20260515-143914/sprout-paste-probe-sample-report.json
+
+2.  量化結果：
+      normal_floor_view:
+        pastePassCount = 7,295 / 921,600
+        rayExitingTrueCount = 7,295 / 921,600
+
+      inside_floor_level_view:
+        pastePassCount = 393,289 / 921,600
+        rayExitingTrueCount = 393,289 / 921,600
+
+      inside_floor_up_view:
+        pastePassCount = 921,600 / 921,600
+        rayExitingTrueCount = 921,600 / 921,600
+
+3.  CODEX 審查：
+      H7' 根因成立。
+      但 normal view 與 inside-floor view 的 paste-pass fragment 都 100% firstVisibleIsRayExiting=TRUE。
+      所以 firstVisibleIsRayExiting 可作為證據，不能單獨作為 guard 條件。
+```
+
+⚠️ 歷史紀錄：下列「剩餘 probe / 鎖定禁區 / 行動規則」是 H7' guard 完成後、1024 bake resolution 前的狀態快照。H5 / H3' probe 已完成，修法已收斂到 1024 bake resolution；C runtime fallback 已移除。
+
+當時剩餘 probe：
+
+```text
+1.  H5 / H3' nearest hit interval
+      - 反推 floor row 131 可見 world z 命中區間。
+      - 反推 north row 344 可見 world y 命中區間。
+      - 換算成 mm，比對使用者肉眼看到的黑邊寬度。
+
+2.  H5 / H3' visible-hit runtime probe
+      - 在畫面黑線 sample point 直接回讀 runtime atlas row / col。
+      - 確認黑線 pixel 真的命中 floor row 131 / north row 344。
+      - 排除 postprocess 或相鄰 surface 混入。
+```
+
+當時第三刀前鎖定禁區：
+
+```text
+1.  不回退 H7 guard。
+2.  不回退 H8 runtime gate。
+3.  不回退 C' bake UV 修正。
+4.  當時不重烘 floor / north atlas；現況已由使用者裁定採 1024 重烘並驗收通過。
+5.  不直接複製鄰格修補邊界格。
+6.  H7' guard 已落地，不回退；guard 採 camera-y 條件，不得改成單看 firstVisibleIsRayExiting。
+7.  H5 / H3' 第二輪設計當時待 probe 後再展開；現況採 1024 bake resolution，fallback 已移除。
+```
+
+當時行動規則：
+
+```text
+1.  使用者已要求先討論時，不直接改 code。
+2.  H7' readback probe、follow-up probe 與 guard 已完成；使用者肉眼確認 inside-floor 已全黑。
+3.  OPUS / CODEX 任一方可同步做 H5 / H3' nearest interval 與 visible-hit runtime probe；現況已完成。
+```
+
+---
+
+## 2026-05-15 第三刀 H7' guard 實作審查與使用者驗收
+
+執行者：OPUS。
+審查者：CODEX。
+使用者肉眼驗收：已回報。
+
+現況白話：
+
+```text
+這輪把「相機鑽進地板裡還看到嫩芽光」修好了；衣櫃邊緣兩條黑線當時仍是下一刀問題。
+```
+
+CODEX 審查結論：
+
+```text
+1.  接受 H7' guard 實作，無 P0 / P1 阻擋問題。
+2.  guard 位於 R7-3.8 paste path 最外層 if 條件鏈。
+3.  guard 條件採 `uCamPos.y >= 0.025`。
+4.  probe 不 bypass guard，因此 post-guard L1 paste-pass count 可直接證明 guard 是否生效。
+5.  OPUS 修正 reporter harness 的 `uCamPos` 同步缺口；single-frame probe render 前主動同步 worldCamera 世界位置。
+```
+
+驗證數據：
+
+```text
+H7' post-guard probe:
+  normal_floor_view         pastePassCount = 7,295
+  inside_floor_level_view   pastePassCount = 0
+  inside_floor_up_view      pastePassCount = 0
+
+R7-3.10 H7 / H8 / C' smoke:
+  bakedSurfaceHitCount = 96,170
+  bakedSurfaceShortCircuitCount = 190,559
+
+使用者肉眼驗收:
+  1. 地板內部已經成功全黑，烘焙開關不影響。
+  2. 地板烘焙 ON，東北衣櫃底部南側頂邊仍有黑線。
+  3. 北牆烘焙 ON，東北衣櫃頂部北側頂邊仍有黑線。
+```
+
+判讀：
+
+```text
+1.  第 1 點代表 H7' / sprout-paste-inside-guard 已修好。
+2.  第 2 / 3 點不屬 H7'，仍歸入 H5 / H3' nearest-policy / 邊界格取樣問題。
+3.  後續已完成 H5 / H3' probe，並以 1024 bake resolution 收斂，使用者確認黑線看不出來。
+```
+
+CODEX review 殘留建議：
+
+```text
+1.  runner 的 `status: pass` 目前只檢查 sample 是否為有限數值。
+    commit 前建議補成語意檢查：normal = 7,295 保留、inside = 0。
+
+2.  相關註解需從「第三刀前 / 不加 guard / probe 1~4」更新為目前狀態：
+    - H7' guard 已落地。
+    - probe levels 已擴到 1~6。
+```
+
+---
+
 ## 2026-05-15 OPUS GIK 修復完成回報
 
 > CODEX 接手第二刀（B' probe / H7 guard 等）時，請把以下內容當作既定事實；本段為 OPUS 留給 CODEX 的 hand-off 訊息。
@@ -236,7 +420,7 @@ H7 判斷：
 - 若需要再針對其他「橫擺」薄板加 90° UV 旋轉，只要在該 box 屬性加 `rotateUV90: 1` 即可。不需要修 shader、不需要碰 ACOUSTIC_PANEL 分支邏輯。
 - 若未來換貼圖，新貼圖檔請預先檢查上下邊緣是否有 padding 偽影（用 PIL 取 row 0~10 / row h-10~h 全寬平均色，跟 row h/2 中央色比對；超出 ±10 RGB 視為偽影需修補）。
 
-**Git 狀態（截至 2026-05-15）**：本次 OPUS 改動全部位於 unstaged 區，未 commit，等使用者裁定如何與 CODEX 第一刀 staged 內容合併入 commit history。
+**Git 狀態（截至 2026-05-15 更新）**：OPUS GIK 修復已獨立落在 commit `518d3aa fix(gik): rotate north horizontal panel UV and repair texture padding`。本段保留為 GIK handoff 歷史紀錄；後續 Phase 2 probe 不再修改 ACOUSTIC_PANEL 與 `textures/gik244_*.jpeg`。
 
 ---
 
@@ -727,7 +911,7 @@ status: pass
 |---|---|
 | Verify | `http://127.0.0.1:9002/Home_Studio.html?v=r7-3-10-spp-cap-v1` |
 
-- [ ] **Step 7.1: 同視角 A/B 驗 floor**
+- [x] **Step 7.1: 同視角 A/B 驗 floor**
 
 操作：
 
@@ -745,7 +929,7 @@ Expected:
 沒有新增白線、亮格、大片髒貼回。
 ```
 
-- [ ] **Step 7.2: 同視角 A/B 驗 north**
+- [x] **Step 7.2: 同視角 A/B 驗 north**
 
 操作：
 
@@ -763,7 +947,7 @@ north baked 開啟時，嫩芽仍存在。
 北牆西側黑線消失或明顯退掉。
 ```
 
-- [ ] **Step 7.3: Report 檢查**
+- [x] **Step 7.3: Report 檢查（已由 smoke / probe 取代）**
 
 Console:
 
@@ -779,6 +963,14 @@ floorEnabled / northWallEnabled 與 UI 一致。
 uniformFloorMode / uniformNorthWallMode 與 ready 狀態一致。
 north enabled 時，R7-3.8 paste preview uniformMode 仍可為 1。
 floor enabled 時，R7-3.8 paste preview uniformMode 為 0。
+```
+
+狀態：
+
+```text
+本項原本是第一刀後的 console spot-check。
+後續已由 UI toggle smoke、north-wall runtime smoke、B' runtime probe 與使用者同視角驗收覆蓋。
+第三刀起改看 H7' / H5 / H3' 專用 probe，不再把此項當 gate。
 ```
 
 ---
@@ -826,11 +1018,12 @@ floor enabled 時，R7-3.8 paste preview uniformMode 為 0。
 |---|---|
 | 不回到整張 atlas flood-fill。 | 已造成白線與亮值污染。 |
 | 不恢復舊 contact invalid region 修法。 | 先前路線已被使用者視覺回報與 OPUS 審查推翻。 |
-| 第一刀不引入 alpha / valid fallback。 | 這屬於 H5 / H3' 第二輪；第一刀 H8 只用 mode flag 防取樣。 |
-| 第一刀不實作 H5 / H3' alpha mask。 | 第一階段驗收後再看症狀是否仍存在。 |
+| 第三刀前不引入 alpha / valid fallback。 | 這屬於 H5 / H3' 第二輪；需等 nearest interval 與 visible-hit runtime probe 封口。 |
+| 第三刀前不實作 H5 / H3' 修法。 | fixed-Z / fixed-Y 黑邊已歸因於邊界格 nearest-policy，下一步先量化命中區間與 runtime row / col。 |
 | 第一刀不納入 East wall runtime。 | 現況 east wall 只作 bake / evidence 對照；runtime 沒有第三 slot。 |
 | 第二刀不再修改 ACOUSTIC_PANEL 分支與 textures/gik244_*.jpeg。 | OPUS 已於 2026-05-15 完成 gik-north-rotate-uv-r4，使用者全 Config 驗收通過；改動清單見「2026-05-15 OPUS GIK 修復完成回報」。 |
 | 不把 C' 修法套到 R7-3.8 既有 sprout atlas 結論。 | R7-3.8 sprout C1 包共用同一 bake UV 計算，需另行視覺判斷。 |
+| H7' guard 已落地後不回退。 | R7-3.8 paste readback / follow-up probe 已完成；最終 guard 採 `uCamPos.y >= 0.025`，使用者確認 inside-floor 已全黑。後續不得改成單看 firstVisibleIsRayExiting。 |
 
 ---
 
@@ -848,9 +1041,52 @@ floor enabled 時，R7-3.8 paste preview uniformMode 為 0。
 | - [x] | Task 4：靜態驗證。 | CODEX |
 | - [x] | Task 5：最小瀏覽器 smoke 5.1 到 5.3；5.4 留給使用者已開頁面實機 Console。 | CODEX / 使用者 |
 | - [x] | Task 6：重烘 floor / north 1000SPP atlas；17000SPP 夜間高 SPP 另跑。 | CODEX / 使用者夜間高 SPP |
-| - [ ] | Task 7：第一階段實機驗收。 | 使用者 + CODEX |
+| - [x] | Task 7：第一階段實機驗收。 | 使用者已回報第一刀與第二刀視覺結果；後續改走第三刀 probe |
 | - [x] | Task 8：收尾與文件同步。 | CODEX |
 | - [x] | 下一刀：B' probe。 | 2026-05-15 完成 |
 | - [x] | 下一刀：H7 inside-geometry / ray-side guard。 | 2026-05-15 完成 |
-| - [ ] | 第二輪：H5 / H3' alpha mask。 | 待第一刀與 H7 結果 |
+| - [x] | 第三刀前：CODEX / OPUS 根因共識封口。 | 2026-05-15 完成 |
+| - [x] | 第三刀：H7' sprout paste readback probe。 | OPUS 已完成 2026-05-15；CODEX 審查接受根因並指出 P1：guard 不得單看 firstVisibleIsRayExiting。 |
+| - [x] | 第三刀：H7' follow-up probe。 | OPUS 已完成 2026-05-15；CODEX 審查接受，guard 候選收斂到 camera-y。 |
+| - [x] | 第三刀：H7' guard 設計輪。 | OPUS 已完成 2026-05-15；CODEX 審查接受，使用者確認 inside-floor 已全黑。 |
+| - [x] | H5 / H3' probe：nearest hit interval。 | OPUS 已完成；1024 north 可見黑帶收斂到 0.125mm。 |
+| - [x] | H5 / H3' probe：visible-hit runtime row / col。 | OPUS 已完成；H5 probe 1024 north dominantRow=682、totalInBand=1494。 |
+| - [x] | 第二輪：H5 / H3' 修法設計。 | CODEX 裁定改採 1024 bake resolution；使用者肉眼確認兩條黑線看不出來。 |
 | - [ ] | 第二輪：East wall runtime。 | 待使用者裁定 |
+
+## 2026-05-15 R7-3.10 H5 / H3' 第二輪收尾鏡像：1024 bake resolution
+
+> 完整總帳見 `docs/SOP/Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`，OPUS 詳細鏡像見 `2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md` 同日「1024 bake resolution」段。
+
+```text
+件 1 / 件 2 黑線：
+  - 修法改為提高 bake atlas 解析度 512→1024。
+  - floor 1024 package：.omc/r7-3-10-full-room-diffuse-bake/20260515-215727
+  - north 1024 package：.omc/r7-3-10-full-room-diffuse-bake/20260515-212509
+  - 512 pointer 備份：.omc/r7-3-10-1024-pointer-backups/20260515-212327
+  - 使用者肉眼確認：東北衣櫃底部南側、頂部北側黑線在 1024 看不出來。
+  - 1024 鎖為目前正式候選；2048 本輪不推進。
+
+驗證：
+  - contract test pass。
+  - short-circuit smoke 96170 / 190559，H7 / H8 / C' 無退化。
+  - H5 black-line probe 1024 north dominantRow=682、totalInBand=1494。
+
+partial bake 亮差：
+  - LIVE 與 partial bake 並存時，LIVE path 先走 k 段再接 baked radiance。
+  - 有效深度成為 k + baked solution depth，會讓相鄰 LIVE 面偏亮。
+  - 正式驗收基準改為全相關靜態漫射面 bake vs 全 LIVE。
+
+防污染：
+  - Option A bakeContaminationGuardSnapshot 保留為長期遙測。
+  - Option B captureMode guard 已加：uR738C1BakeCaptureMode != 0 時不走 R7-3.10 short-circuit。
+  - C runtime fallback 已移除，不回退。
+```
+
+### 第二輪後續方向
+
+```text
+1.  CODEX 收刀：Debug_Log / Index / cache-buster / commit。
+2.  下一階段往全相關靜態漫射面烘焙推進，降低 partial bake 與 LIVE 的交界。
+3.  East wall runtime 與其他靜態漫射面納入後續使用者裁定。
+```

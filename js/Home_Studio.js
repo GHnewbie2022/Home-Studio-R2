@@ -5174,7 +5174,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-phase2-h7-guard-v1';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-1024-bake-v1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5452,6 +5452,9 @@ function initSceneData() {
     pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
+    // R7-3.10 Phase 2 第三刀前 H7' / sprout-paste-inside-guard probe：
+    // 預設 0 = 完全不影響 paste 視覺；reportR738C1SproutPasteRuntimeProbe() 可暫時設為 1~4 取 readback。
+    pathTracingUniforms.uR738C1SproutPasteProbeMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePatchWorldBounds = { value: new THREE.Vector4(-1.0, 1.0, -1.0, 1.0) };
     pathTracingUniforms.uR7310C1BakeFloorWorldBounds = { value: new THREE.Vector4(MIN_X, MAX_X, MIN_Z, MAX_Z) };
     pathTracingUniforms.uR739C1AccurateReflectionMode = { value: 0.0 };

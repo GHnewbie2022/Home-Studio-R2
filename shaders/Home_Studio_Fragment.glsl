@@ -54,6 +54,8 @@ uniform float uR7310C1RuntimeAtlasPatchCount;
 uniform float uR738C1BakePastePreviewMode;
 uniform float uR738C1BakePastePreviewReady;
 uniform float uR738C1BakePastePreviewStrength;
+// R7-3.10 Phase 2 H7' / sprout-paste-inside-guard probe 用，預設 0：不影響 paste mix 行為
+uniform float uR738C1SproutPasteProbeMode;
 uniform vec4 uR738C1BakePatchWorldBounds;
 uniform vec4 uR7310C1BakeFloorWorldBounds;
 uniform float uR739C1AccurateReflectionMode;
@@ -546,6 +548,8 @@ bool r7310C1EastWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
 bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, int visibleIsRayExiting, out vec3 bakedRadiance)
 {
 	bakedRadiance = vec3(0.0);
+	if (uR738C1BakeCaptureMode != 0)
+		return false;
 	if (uR7310C1FullRoomDiffuseMode < 0.5 || uR7310C1FullRoomDiffuseReady < 0.5)
 		return false;
 	if (visibleIsRayExiting == TRUE)
@@ -1903,6 +1907,9 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 	float firstVisibleObjectID = -INFINITY;
 	vec3 firstVisibleNormal = vec3(0.0);
 	vec3 firstVisiblePosition = vec3(0.0);
+	// R7-3.10 Phase 2 H7' / sprout-paste-inside-guard probe：
+	// 用來量測 inside-floor 視角是否仍把 R7-3.8 paste 套用；實際 guard 採 camera-y 條件。
+	int firstVisibleIsRayExiting = FALSE;
 	vec3 misBsdfBounceNl = vec3(0.0);
 	vec3 misBsdfBounceOrigin = vec3(0.0);
 	float misPBsdfStashed = 0.0;
@@ -1962,6 +1969,9 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			firstVisibleObjectID = hitObjectID;
 			firstVisibleNormal = nl;
 			firstVisiblePosition = x;
+			// R7-3.10 Phase 2 H7' probe：把 BVH 命中的 isRayExiting 升級到 firstVisible* 體系。
+			// 此值僅作 probe 證據，不作 guard 條件。
+			firstVisibleIsRayExiting = hitIsRayExiting;
 			if (
 				uR739C1ReflectionReferenceMode > 0.5 &&
 				uR739C1ReflectionReferenceMode < 1.5 &&
@@ -2997,6 +3007,29 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 					accumCol += hitIsRayExiting == TRUE ? vec3(1.0, 0.0, 0.0) : vec3(0.0);
 				else if (r7310C1RuntimeProbeMode > 5.5 && r7310C1RuntimeProbeMode < 6.5)
 					accumCol += vec3(clamp((uCamPos.y - 0.5) / 3.0, 0.0, 1.0), 0.0, 0.0);
+				else if (r7310C1RuntimeProbeMode > 6.5 && r7310C1RuntimeProbeMode < 7.5)
+				{
+					// R7-3.10 H5 / H3' 黑線專項 Part 2 probe（readback-only，不改 short-circuit）：
+					// 在命中處重算 nearest atlas row / col + hit world 座標。
+					// R = row/res、G = col/res、B = hit world 座標 raw（Float32 readback 直接讀）。
+					// floor 與 north 由相機分兩次 probe（per-surface mode flag 各自開），不需在像素編 kind。
+					vec2 r7310ProbeLuv = vec2(0.0);
+					float r7310ProbeWorld = 0.0;
+					if (uR7310C1FloorDiffuseMode > 0.5 &&
+						r7310C1RuntimeSurfaceIsTrueFloor(hitType, hitObjectID, nl, x) &&
+						r7310C1BakePastePreviewUv(x, r7310ProbeLuv))
+						r7310ProbeWorld = x.z;
+					else if (uR7310C1NorthWallDiffuseMode > 0.5 &&
+						r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) &&
+						r7310C1NorthWallDiffuseUv(x, r7310ProbeLuv))
+						r7310ProbeWorld = x.y;
+					float r7310ProbeRes = max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+					vec2 r7310ProbeSafe = (clamp(r7310ProbeLuv, vec2(0.0), vec2(1.0)) * (r7310ProbeRes - 1.0) + 0.5) / r7310ProbeRes;
+					float r7310ProbeRow = floor(r7310ProbeSafe.y * r7310ProbeRes);
+					float r7310ProbeCol = floor(r7310ProbeSafe.x * r7310ProbeRes);
+					// CODEX P1：診斷覆寫，不可用 += （否則混入前面已累積的 radiance，污染 row/col/world readback）
+					accumCol = vec3(r7310ProbeRow / r7310ProbeRes, r7310ProbeCol / r7310ProbeRes, r7310ProbeWorld);
+				}
 				else
 					accumCol += mask * r7310BakedRadiance;
 				break;
@@ -3103,17 +3136,57 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 		}
 	}
 
+	// R7-3.10 Phase 2 第三刀 H7' / sprout-paste-inside-guard：
+	// uCamPos.y >= 0.025 確保相機在地板上方才套用 R7-3.8 嫩芽 paste。
+	// normal view cam y≈1.45 通過；相機進入地板實體（inside view cam y≈-0.08）被擋。
+	// follow-up probe 已證實此條件可完美區分兩種視角，且不依賴
+	// firstVisibleIsRayExiting / firstVisibleHitType / firstVisibleObjectID。
 	if (uR738C1BakeCaptureMode == 0 &&
 		uR738C1BakePastePreviewMode > 0.5 &&
 		uR738C1BakePastePreviewReady > 0.5 &&
+		uCamPos.y >= 0.025 &&
 		cloudVisibleSurfaceIsFloor(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition) &&
 		!r739C1CurrentViewReflectionActiveForTarget(r739C1ReflectionTargetId(firstVisibleHitType, firstVisibleObjectID, firstVisibleNormal, firstVisiblePosition), firstVisiblePosition))
 	{
 		vec2 r738BakedPatchUv = vec2(0.0);
 		if (r738C1BakePastePreviewUv(firstVisiblePosition, r738BakedPatchUv))
 		{
-			vec3 r738BakedPatchColor = r738C1BakePastePreviewSample(r738BakedPatchUv);
-			accumCol = mix(accumCol, r738BakedPatchColor, clamp(uR738C1BakePastePreviewStrength, 0.0, 1.0));
+			// R7-3.10 Phase 2 H7' / sprout-paste-inside-guard probe：
+			// probe mode > 0 時覆寫 fragment 為 diagnostic 顏色，正常 mix 跳過。
+			// probe mode = 0 時保持原本 100% 行為；外層 camera-y guard 仍正常生效。
+			// 2026-05-15 follow-up probe 擴充 L5（hitType + objectID）/ L6（cameraPos.y）。
+			float r738SproutPasteProbeMode = uR738C1SproutPasteProbeMode;
+			if (r738SproutPasteProbeMode > 0.5 && r738SproutPasteProbeMode < 1.5)
+				accumCol = vec3(1.0, 0.0, 0.0); // L1: paste-pass surface class
+			else if (r738SproutPasteProbeMode > 1.5 && r738SproutPasteProbeMode < 2.5)
+				accumCol = firstVisibleNormal * 0.5 + 0.5; // L2: firstVisibleNormal
+			else if (r738SproutPasteProbeMode > 2.5 && r738SproutPasteProbeMode < 3.5)
+				accumCol = vec3(clamp((firstVisiblePosition.y + 0.05) / 0.10, 0.0, 1.0), 0.0, 0.0); // L3: firstVisiblePosition.y
+			else if (r738SproutPasteProbeMode > 3.5 && r738SproutPasteProbeMode < 4.5)
+				accumCol = firstVisibleIsRayExiting == TRUE ? vec3(1.0, 0.0, 0.0) : vec3(0.0); // L4: firstVisibleIsRayExiting
+			else if (r738SproutPasteProbeMode > 4.5 && r738SproutPasteProbeMode < 5.5)
+			{
+				// L5: firstVisibleHitType (R 通道) + firstVisibleObjectID 高低 8 bit (G/B 通道)
+				// decode：hitType = round(R*255); objectID = round(B*255)*256 + round(G*255)
+				float h = float(firstVisibleHitType);
+				float oid = firstVisibleObjectID;
+				accumCol = vec3(
+					clamp(h / 255.0, 0.0, 1.0),
+					clamp(mod(oid, 256.0) / 255.0, 0.0, 1.0),
+					clamp(floor(oid / 256.0) / 255.0, 0.0, 1.0)
+				);
+			}
+			else if (r738SproutPasteProbeMode > 5.5 && r738SproutPasteProbeMode < 6.5)
+			{
+				// L6: cameraPos.y 編碼到 [0, 1]，範圍 [-1.0, +4.0]
+				// decode：cameraPosY = R * 5.0 - 1.0；normal cam=1.45→R≈0.49；inside cam=-0.08→R≈0.184
+				accumCol = vec3(clamp((uCamPos.y + 1.0) / 5.0, 0.0, 1.0), 0.0, 0.0);
+			}
+			else
+			{
+				vec3 r738BakedPatchColor = r738C1BakePastePreviewSample(r738BakedPatchUv);
+				accumCol = mix(accumCol, r738BakedPatchColor, clamp(uR738C1BakePastePreviewStrength, 0.0, 1.0));
+			}
 		}
 	}
 

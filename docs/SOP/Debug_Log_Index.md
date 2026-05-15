@@ -69,31 +69,30 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 
 ## 目前優先路線
 
-### R7-3.10 C1 seam debug Phase 2 second knife
+### R7-3.10 C1 H5 / H3' 1024 bake resolution closeout
 
 ```
 必讀：
   - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`
   - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`
+  - `docs/superpowers/plans/2026-05-15-r7-3-10-c1-1024-bake-resolution-plan.md`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`
   - `Debug_Log.md` 的 `R7-3.10-c1-phase2-second-knife-bprime-h7`
   - `Debug_Log.md` 的 `R7-3.10-c1-phase2-first-knife-h8-cprime`
 
 目前狀態：
-  - H8 runtime gate 已拆成 floorApplied / northWallApplied。
-  - north baked 不再關掉 R7-3.8 嫩芽 paste；floor baked 仍依 floor 互斥規則停用嫩芽 paste。
-  - C' bake capture path 已移除多加的 half texel。
-  - 新 floor package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-112620/`
-  - 新 north package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-112717/`
-  - runtime pointer 已更新。
-  - Runtime short-circuit / north-wall runtime / UI toggle smoke passed.
-  - 使用者同視角回報：floor / north 的 fixed-X 西側黑線已消失。
-  - 使用者同視角回報：floor fixed-Z 南側邊界稍深，north fixed-Y 頂部北側邊界新出現黑線。
-  - 量化結果：fixed-X 邊界格已由低亮度變亮；fixed-Z / fixed-Y 邊界格由亮變暗，屬於新包 atlas 資料端變化。
-  - B' probe 已完成：pre-guard 內部視角 L5 sample 全部為 isRayExiting true。
-  - H7 guard 已完成：r7310C1FullRoomDiffuseShortCircuit() 排除 exiting hit。
-  - post-guard 內部視角 L1 short 歸零；正常 floor runtime smoke 仍 pass。
-  - 待使用者實機看 floor bake on 時，地板內部是否不再整片發光。
-  - fixed-Z / fixed-Y 新黑線登記為 H5 / H3' 邊界資料政策問題。
+  - H8 runtime gate、C' bake UV、H7 exiting-hit guard、H7' camera-y guard 都已完成且不回退。
+  - C runtime fallback 實驗已移除；不得重啟作為正式修法。
+  - floor / north 皆已烤 1024，runtime pointer 皆指向 1024 package。
+  - floor 1024 package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-215727/`
+  - north 1024 package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-212509/`
+  - 512 pointer 備份：`.omc/r7-3-10-1024-pointer-backups/20260515-212327/`
+  - 使用者肉眼確認：東北衣櫃底部南側、頂部北側兩條黑線在 1024 看不出來。
+  - 1024 鎖為目前 floor / north 正式候選；2048 本輪不推進，因 north nearest interval 預估會相位退化。
+  - partial bake + LIVE 的偏亮現象已定性為深度相加的過渡假象。
+  - 驗收基準改為全相關靜態漫射面 bake vs 全 LIVE。
+  - bake 防污染 Option A snapshot 已保留；Option B captureMode guard 已加，runtime smoke 數值不變。
+  - 後續方向：往全相關靜態漫射面烘焙推進，減少 partial bake 與 LIVE 的交界。
 ```
 
 ### R7-3.10 C1 seam debug Phase 1 closeout
@@ -364,7 +363,7 @@ R7 採樣升級：
   - R7-3.8 C1 floor-center paste preview 已把正式 atlas 貼回 C1 畫面；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-floor-patch-paste-preview`
   - R7-3.8 C1 diffuse-only paste fix 已移除 floor patch 內的 ceiling-lamp reflection spike，補休眠 framePending=false、keyboard idle、snapshot UI、1000SPP 顯示、floor roughness UI 驗證；後續使用者肉眼確認 350SPP 已難見界線、1000SPP 隱形，diffuse bake 架構通過 floor-center patch 驗收，反射另開處理線；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-diffuse-paste-fix1`
   - R7-3.8 C1 嫩芽成功版已覆蓋為「diffuse bake + 可用 floor roughness UI」版本；右緣對齊手動存圖，數字欄不壓住滑桿，成功 tag `r7-3-8-c1-diffuse-bake-success-20260511` 代表這個恢復版；讀 `Debug_Log.md` 的 `R7-3.8-c1-diffuse-bake-sprout-ui-recovery`
-  - R7-3.10 C1 full-room diffuse bake 已完成 Phase 1 接縫根因收證：H8 / H7 / H5 / H3' 成立，H1b 泛化 U 軸撤回，H4 由使用者多視角截圖正式排除；後續先讀 `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`、`docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md` 與 `Debug_Log.md` 的 `R7-3.10-c1-seam-debug-phase1-step-f-complete`。
+  - R7-3.10 C1 full-room diffuse bake 已完成 Phase 2 第一刀 H8 / C' 與第二刀 H7；目前第三刀前共識是 H7' readback probe 加 H5 / H3' nearest-policy probes，後續先讀 `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`、`docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md` 與 `Debug_Log.md` 的 `R7-3.10-c1-phase2-third-knife-preprobe-consensus`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`
   - R7-3.9 C1 舊 sprout-only package `.omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/` 已判定為 camera-space reference，不是 runtime 可接受反射包；後續必須改走 surface position + outgoing direction 或 true planar reflection pass。

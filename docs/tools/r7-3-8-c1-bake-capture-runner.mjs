@@ -35,6 +35,8 @@ function parseArgs(argv) {
     northWallRuntimeTest: false,
     eastWallRuntimeTest: false,
     r7310RuntimeProbeSampleTest: false,
+    r738SproutPasteProbeTest: false,
+    h5BlackLineProbeTest: false,
     uiToggleTest: false,
     targetSamples: null
   };
@@ -62,6 +64,8 @@ function parseArgs(argv) {
     else if (arg === '--r7310-north-wall-runtime-test') out.northWallRuntimeTest = true;
     else if (arg === '--r7310-east-wall-runtime-test') out.eastWallRuntimeTest = true;
     else if (arg === '--r7310-runtime-probe-sample-test') out.r7310RuntimeProbeSampleTest = true;
+    else if (arg === '--r738-sprout-paste-probe-test') out.r738SproutPasteProbeTest = true;
+    else if (arg === '--r7310-h5-black-line-probe') out.h5BlackLineProbeTest = true;
     else if (arg === '--r7310-ui-toggle-test') out.uiToggleTest = true;
     else if (arg.startsWith('--target-samples=')) out.targetSamples = Number(arg.slice('--target-samples='.length));
   }
@@ -618,9 +622,11 @@ async function main() {
               ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
               : args.accurateReflectionCapture
                 ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
-                : args.runtimeShortCircuitTest || args.northWallRuntimeTest || args.eastWallRuntimeTest || args.r7310RuntimeProbeSampleTest || args.uiToggleTest
+                : args.runtimeShortCircuitTest || args.northWallRuntimeTest || args.eastWallRuntimeTest || args.r7310RuntimeProbeSampleTest || args.h5BlackLineProbeTest || args.uiToggleTest
                   ? 'typeof window.reportR7310C1FullRoomDiffuseRuntimeProbe === "function"'
-                  : args.fullRoomDiffuseBake
+                  : args.r738SproutPasteProbeTest
+                    ? 'typeof window.reportR738C1SproutPasteRuntimeProbe === "function"'
+                    : args.fullRoomDiffuseBake
                     ? 'typeof window.reportR7310C1FloorDiffuseBakeAfterSamples === "function"'
                     : 'typeof window.reportR738C1BakeCaptureAfterSamples === "function"';
     await waitForExpression(cdp, helperExpression, 60000);
@@ -802,6 +808,159 @@ async function main() {
       console.log('R7-3.10 C1 runtime probe sample test completed');
       console.log(`status: ${report.status}`);
       console.log(`cases: ${report.reports.length}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.r738SproutPasteProbeTest) {
+      console.error('[r738-runner] running R7-3.8 sprout-paste readback probe (H7-prime / sprout-paste-inside-guard)');
+      const report = await evaluate(cdp, `(() => {
+        return (async () => {
+          const samplePoints = [
+            { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.50) },  // center
+            { x: Math.floor(window.innerWidth * 0.45), y: Math.floor(window.innerHeight * 0.50) },  // center-left
+            { x: Math.floor(window.innerWidth * 0.55), y: Math.floor(window.innerHeight * 0.50) },  // center-right
+            { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.55) },  // center-down
+            { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.45) },  // center-up
+            { x: Math.floor(window.innerWidth * 0.42), y: Math.floor(window.innerHeight * 0.55) },  // bottom-left
+            { x: Math.floor(window.innerWidth * 0.58), y: Math.floor(window.innerHeight * 0.55) }   // bottom-right
+          ];
+          const cameraCases = [
+            {
+              name: 'normal_floor_view',
+              cameraState: {
+                name: 'r738_sprout_paste_probe_normal_floor',
+                position: { x: 0.0, y: 1.45, z: 0.8 },
+                yaw: 0.0,
+                pitch: -0.18,
+                fov: 55
+              }
+            },
+            {
+              name: 'inside_floor_level_view',
+              cameraState: {
+                name: 'r738_sprout_paste_probe_inside_floor_level',
+                position: { x: 0.0, y: -0.08, z: 0.8 },
+                yaw: 0.0,
+                pitch: 0.0,
+                fov: 55
+              }
+            },
+            {
+              name: 'inside_floor_up_view',
+              cameraState: {
+                name: 'r738_sprout_paste_probe_inside_floor_up',
+                position: { x: 0.0, y: -0.08, z: 0.8 },
+                yaw: 0.0,
+                pitch: -0.70,
+                fov: 55
+              }
+            }
+          ];
+          const reports = [];
+          for (const cameraCase of cameraCases) {
+            for (const level of [1, 2, 3, 4, 5, 6]) {
+              reports.push({
+                cameraCase: cameraCase.name,
+                probeLevel: level,
+                report: await window.reportR738C1SproutPasteRuntimeProbe({
+                  timeoutMs: ${args.timeoutMs},
+                  cameraState: cameraCase.cameraState,
+                  probeLevel: level,
+                  samplePoints,
+                  samplePointSpace: 'canvasCssPixel'
+                })
+              });
+            }
+          }
+          const finiteSamples = reports.every((entry) => {
+            return entry.report.samplePoints.every((sample) => {
+              return Number.isFinite(sample.r) && Number.isFinite(sample.g) && Number.isFinite(sample.b);
+            });
+          });
+          return {
+            version: 'r7-3-8-c1-sprout-paste-probe-sample',
+            samplePointSpace: 'canvasCssPixel',
+            samplePoints,
+            reports,
+            status: finiteSamples ? 'pass' : 'fail'
+          };
+        })();
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 120000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-8-sprout-paste-probe', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'sprout-paste-probe-sample-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.8 C1 sprout-paste readback probe test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`cases: ${report.reports.length}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.h5BlackLineProbeTest) {
+      console.error('[r738-runner] running R7-3.10 H5 / H3 black-line probe (Part 2 nearest atlas row/col)');
+      const report = await evaluate(cdp, `(() => {
+        return (async () => {
+          const reports = [];
+          // floor 黑線：東北衣櫃底部南側 z≈-0.703；相機放衣櫃南側上方俯視該地板邊
+          reports.push({
+            surface: 'floor',
+            report: await window.reportR7310C1FullRoomDiffuseRuntimeProbe({
+              timeoutMs: ${args.timeoutMs},
+              probeLevel: 7,
+              cameraState: {
+                name: 'r7310_h5_floor_ne_wardrobe_south',
+                position: { x: 1.6, y: 1.4, z: 0.5 },
+                yaw: 0.0,
+                pitch: -0.86,
+                fov: 60
+              },
+              samplePoints: [
+                { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.55) }
+              ],
+              samplePointSpace: 'canvasCssPixel'
+            })
+          });
+          // north 黑線：東北衣櫃頂部北側 y≈1.955；northWallCamera 固定相機 + level-7 全圖帶統計
+          reports.push({
+            surface: 'north',
+            report: await window.reportR7310C1FullRoomDiffuseRuntimeProbe({
+              timeoutMs: ${args.timeoutMs},
+              probeLevel: 7,
+              northWallCamera: true,
+              samplePoints: [
+                { x: Math.floor(window.innerWidth * 0.50), y: Math.floor(window.innerHeight * 0.50) }
+              ],
+              samplePointSpace: 'canvasCssPixel'
+            })
+          });
+          const ok = reports.every((e) => e.report && e.report.h5BlackLineProbe);
+          return {
+            version: 'r7-3-10-c1-h5-black-line-probe',
+            reports,
+            status: ok ? 'pass' : 'fail'
+          };
+        })();
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 120000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-h5-black-line-probe', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'h5-black-line-probe-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 H5 black-line probe test completed');
+      console.log(`status: ${report.status}`);
+      for (const e of report.reports) {
+        const h = e.report && e.report.h5BlackLineProbe;
+        if (h) {
+          console.log(`${e.surface}: dominantRow=${h.dominantRow} totalInBand=${h.totalFragmentsInBand} worldRange=${JSON.stringify(h.worldRangeInBand)}`);
+        }
+      }
       console.log(`package: ${path.relative(repoRoot, packageDir)}`);
       if (report.status !== 'pass') process.exitCode = 1;
       completed = true;
@@ -1520,7 +1679,8 @@ async function main() {
       browserValidationStatus: payload.validationReport.status,
       runnerStatus: validation.status,
       runnerChecks: validation.checks,
-      runnerFailedChecks: validation.failed
+      runnerFailedChecks: validation.failed,
+      bakeContaminationGuardSnapshot: (payload.report && payload.report.atlasSummary && payload.report.atlasSummary.bakeContaminationGuardSnapshot) || null
     };
     if (args.smokeTest && validation.status === 'pass') validationReport.status = 'pass';
     if (validation.status !== 'pass') validationReport.status = 'fail';
@@ -1533,6 +1693,7 @@ async function main() {
     fs.writeFileSync(path.join(packageDir, 'validation-report.json'), `${JSON.stringify(validationReport, null, 2)}\n`);
     console.log('R7-3.8 C1 bake capture completed');
     console.log(`samples: ${payload.report.atlasSummary.actualSamples}`);
+    console.log(`bakeContaminationGuardSnapshot: ${JSON.stringify((payload.report && payload.report.atlasSummary && payload.report.atlasSummary.bakeContaminationGuardSnapshot) || null)}`);
     console.log(`atlasResolution: ${payload.report.targetAtlasResolution}`);
     console.log(`upscaled: ${payload.report.upscaled}`);
     console.log(`status: ${validationReport.status}`);
