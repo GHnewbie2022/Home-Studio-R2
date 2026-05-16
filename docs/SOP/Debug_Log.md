@@ -8107,3 +8107,44 @@ validation:
   - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
   - git diff --check
 ```
+
+### R7-3.10-south-wall-window-reveal-and-default-on
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-south-wall-only-bake
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Make all R7-3.10 static diffuse bake toggles enabled by default.
+  - Add south wall window reveal faces to the south-wall 1024 bake.
+root_cause:
+  - The previous south wall fix kept a baked rim on the front face, but the window reveal faces were still outside the south atlas mapping.
+  - The HTML and runtime package pointers still described the bake toggles as runtime-off by default.
+change:
+  - Added R7310_C1_SOUTH_WALL_WINDOW_REVEAL and packed four reveal zones into the south wall atlas:
+      leftReveal: 25215 valid texels
+      rightReveal: 25215 valid texels
+      bottomReveal: 26820 valid texels
+      topReveal: 26820 valid texels
+  - Added shader bake/runtime UV mapping for the reveal faces.
+  - Re-baked and promoted the formal south wall package:
+      source_package: .omc/r7-3-10-full-room-diffuse-bake/20260516-224551
+      formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+      samples: 1000
+      atlasResolution: 1024
+      validTexelRatio: 0.7690439224243164
+      nonzeroTexels: 409341
+      meanLuma: 0.10247568845212614
+      maxLuma: 0.9339140256245931
+  - Set floor / north / east / west / south runtimeEnabledDefault to true.
+  - Set the static HTML bake buttons to enabled dark+glow state on first load.
+  - Updated HTML cache-bust token to r7310-south-window-reveal-v1.
+  - Runtime probe setup now saves and restores the south toggle, so default-on south bake does not leak into old floor/north/east/west probe paths.
+validation:
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+  - node -e metadata reveal count check on formal south asset
+```

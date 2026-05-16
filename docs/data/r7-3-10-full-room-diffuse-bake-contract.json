@@ -139,6 +139,32 @@
         "yMin": 1.10,
         "yMax": 2.845
       }
+    },
+    "windowRevealAtlasRegions": {
+      "leftReveal": {
+        "xMin": -1.69,
+        "xMax": -1.52,
+        "yMin": 1.10,
+        "yMax": 2.845
+      },
+      "rightReveal": {
+        "xMin": 0.46,
+        "xMax": 0.63,
+        "yMin": 1.10,
+        "yMax": 2.845
+      },
+      "bottomReveal": {
+        "xMin": -1.45,
+        "xMax": 0.39,
+        "yMin": 1.10,
+        "yMax": 1.27
+      },
+      "topReveal": {
+        "xMin": -1.45,
+        "xMax": 0.39,
+        "yMin": 2.675,
+        "yMax": 2.845
+      }
     }
   },
   "acceptedSproutBaseline": {

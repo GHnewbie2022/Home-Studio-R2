@@ -1159,6 +1159,20 @@ const R7310_C1_SOUTH_WALL_WINDOW_HOLE = Object.freeze({
 	yMin: 1.10,
 	yMax: 2.845
 });
+const R7310_C1_SOUTH_WALL_WINDOW_REVEAL = Object.freeze({
+	xMin: -1.75,
+	xMax: 0.69,
+	yMin: 1.04,
+	yMax: 2.905,
+	zMin: 3.056,
+	zMax: 3.256,
+	atlas: Object.freeze({
+		leftReveal: Object.freeze({ xMin: -1.69, xMax: -1.52, yMin: 1.10, yMax: 2.845 }),
+		rightReveal: Object.freeze({ xMin: 0.46, xMax: 0.63, yMin: 1.10, yMax: 2.845 }),
+		bottomReveal: Object.freeze({ xMin: -1.45, xMax: 0.39, yMin: 1.10, yMax: 1.27 }),
+		topReveal: Object.freeze({ xMin: -1.45, xMax: 0.39, yMin: 2.675, yMax: 2.845 })
+	})
+});
 const R739_C1_ACCURATE_REFLECTION_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json';
 const R739_C1_SPROUT_REFLECTION_BOUNDS = Object.freeze({ xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 });
 let r738C1BakePastePreviewEnabled = true;
@@ -1168,33 +1182,33 @@ let r738C1BakePastePreviewPackage = null;
 let r738C1BakePastePreviewError = null;
 let r738C1BakePastePreviewTexture = null;
 let r738C1BakePastePreviewStrength = 1.0;
-let r7310C1FullRoomDiffuseRuntimeEnabled = false;
+let r7310C1FullRoomDiffuseRuntimeEnabled = true;
 let r7310C1FullRoomDiffuseRuntimeReady = false;
 let r7310C1FullRoomDiffuseRuntimeLoadPromise = null;
 let r7310C1FullRoomDiffuseRuntimePackage = null;
 let r7310C1FloorDiffuseRuntimePixels = null;
 let r7310C1FullRoomDiffuseRuntimeTexture = null;
 let r7310C1FullRoomDiffuseRuntimeError = null;
-let r7310C1FloorDiffuseRuntimeEnabled = false;
-let r7310C1NorthWallDiffuseRuntimeEnabled = false;
+let r7310C1FloorDiffuseRuntimeEnabled = true;
+let r7310C1NorthWallDiffuseRuntimeEnabled = true;
 let r7310C1NorthWallDiffuseRuntimeReady = false;
 let r7310C1NorthWallDiffuseRuntimeLoadPromise = null;
 let r7310C1NorthWallDiffuseRuntimePackage = null;
 let r7310C1NorthWallDiffuseRuntimeTexture = null;
 let r7310C1NorthWallDiffuseRuntimeError = null;
-let r7310C1EastWallDiffuseRuntimeEnabled = false;
+let r7310C1EastWallDiffuseRuntimeEnabled = true;
 let r7310C1EastWallDiffuseRuntimeReady = false;
 let r7310C1EastWallDiffuseRuntimeLoadPromise = null;
 let r7310C1EastWallDiffuseRuntimePackage = null;
 let r7310C1EastWallDiffuseRuntimeTexture = null;
 let r7310C1EastWallDiffuseRuntimeError = null;
-let r7310C1WestWallDiffuseRuntimeEnabled = false;
+let r7310C1WestWallDiffuseRuntimeEnabled = true;
 let r7310C1WestWallDiffuseRuntimeReady = false;
 let r7310C1WestWallDiffuseRuntimeLoadPromise = null;
 let r7310C1WestWallDiffuseRuntimePackage = null;
 let r7310C1WestWallDiffuseRuntimeTexture = null;
 let r7310C1WestWallDiffuseRuntimeError = null;
-let r7310C1SouthWallDiffuseRuntimeEnabled = false;
+let r7310C1SouthWallDiffuseRuntimeEnabled = true;
 let r7310C1SouthWallDiffuseRuntimeReady = false;
 let r7310C1SouthWallDiffuseRuntimeLoadPromise = null;
 let r7310C1SouthWallDiffuseRuntimePackage = null;
@@ -2302,6 +2316,8 @@ function buildR7310C1SouthWallTexelMetadata(size)
 	var metadata = new Float32Array(size * size * 12);
 	var b = R7310_C1_SOUTH_WALL_WORLD_BOUNDS;
 	var hole = R7310_C1_SOUTH_WALL_WINDOW_HOLE;
+	var reveal = R7310_C1_SOUTH_WALL_WINDOW_REVEAL;
+	var revealAtlas = reveal.atlas;
 	var valid = 0;
 	for (var y = 0; y < size; y += 1)
 	{
@@ -2312,14 +2328,59 @@ function buildR7310C1SouthWallTexelMetadata(size)
 			var worldX = b.xMin + (b.xMax - b.xMin) * u;
 			var worldY = b.yMin + (b.yMax - b.yMin) * v;
 			var isWindowHole = worldX >= hole.xMin && worldX <= hole.xMax && worldY >= hole.yMin && worldY <= hole.yMax;
+			var posX = worldX;
+			var posY = worldY;
+			var posZ = b.z;
+			var normalX = 0.0;
+			var normalY = 0.0;
+			var normalZ = -1.0;
 			var isValid = !isWindowHole;
+			if (isWindowHole)
+			{
+				if (worldX >= revealAtlas.leftReveal.xMin && worldX <= revealAtlas.leftReveal.xMax &&
+					worldY >= revealAtlas.leftReveal.yMin && worldY <= revealAtlas.leftReveal.yMax)
+				{
+					posX = reveal.xMin;
+					posY = reveal.yMin + (reveal.yMax - reveal.yMin) * ((worldY - revealAtlas.leftReveal.yMin) / Math.max(0.00001, revealAtlas.leftReveal.yMax - revealAtlas.leftReveal.yMin));
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldX - revealAtlas.leftReveal.xMin) / Math.max(0.00001, revealAtlas.leftReveal.xMax - revealAtlas.leftReveal.xMin));
+					normalX = 1.0; normalY = 0.0; normalZ = 0.0;
+					isValid = true;
+				}
+				else if (worldX >= revealAtlas.rightReveal.xMin && worldX <= revealAtlas.rightReveal.xMax &&
+					worldY >= revealAtlas.rightReveal.yMin && worldY <= revealAtlas.rightReveal.yMax)
+				{
+					posX = reveal.xMax;
+					posY = reveal.yMin + (reveal.yMax - reveal.yMin) * ((worldY - revealAtlas.rightReveal.yMin) / Math.max(0.00001, revealAtlas.rightReveal.yMax - revealAtlas.rightReveal.yMin));
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldX - revealAtlas.rightReveal.xMin) / Math.max(0.00001, revealAtlas.rightReveal.xMax - revealAtlas.rightReveal.xMin));
+					normalX = -1.0; normalY = 0.0; normalZ = 0.0;
+					isValid = true;
+				}
+				else if (worldX >= revealAtlas.bottomReveal.xMin && worldX <= revealAtlas.bottomReveal.xMax &&
+					worldY >= revealAtlas.bottomReveal.yMin && worldY <= revealAtlas.bottomReveal.yMax)
+				{
+					posX = reveal.xMin + (reveal.xMax - reveal.xMin) * ((worldX - revealAtlas.bottomReveal.xMin) / Math.max(0.00001, revealAtlas.bottomReveal.xMax - revealAtlas.bottomReveal.xMin));
+					posY = reveal.yMin;
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldY - revealAtlas.bottomReveal.yMin) / Math.max(0.00001, revealAtlas.bottomReveal.yMax - revealAtlas.bottomReveal.yMin));
+					normalX = 0.0; normalY = 1.0; normalZ = 0.0;
+					isValid = true;
+				}
+				else if (worldX >= revealAtlas.topReveal.xMin && worldX <= revealAtlas.topReveal.xMax &&
+					worldY >= revealAtlas.topReveal.yMin && worldY <= revealAtlas.topReveal.yMax)
+				{
+					posX = reveal.xMin + (reveal.xMax - reveal.xMin) * ((worldX - revealAtlas.topReveal.xMin) / Math.max(0.00001, revealAtlas.topReveal.xMax - revealAtlas.topReveal.xMin));
+					posY = reveal.yMax;
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldY - revealAtlas.topReveal.yMin) / Math.max(0.00001, revealAtlas.topReveal.yMax - revealAtlas.topReveal.yMin));
+					normalX = 0.0; normalY = -1.0; normalZ = 0.0;
+					isValid = true;
+				}
+			}
 			var offset = (y * size + x) * 12;
-			metadata[offset] = worldX;
-			metadata[offset + 1] = worldY;
-			metadata[offset + 2] = b.z;
-			metadata[offset + 3] = 0.0;
-			metadata[offset + 4] = 0.0;
-			metadata[offset + 5] = -1.0;
+			metadata[offset] = posX;
+			metadata[offset + 1] = posY;
+			metadata[offset + 2] = posZ;
+			metadata[offset + 3] = normalX;
+			metadata[offset + 4] = normalY;
+			metadata[offset + 5] = normalZ;
 			metadata[offset + 6] = 4.0;
 			metadata[offset + 7] = isValid ? 1.0 : 0.0;
 			metadata[offset + 8] = 0.0;
@@ -3049,6 +3110,7 @@ window.reportR7310C1SouthWallDiffuseBakeAfterSamples = async function(targetSamp
 			invalidTexelRegions: {
 				windowHole: R7310_C1_SOUTH_WALL_WINDOW_HOLE
 			},
+			windowRevealAtlasRegions: R7310_C1_SOUTH_WALL_WINDOW_REVEAL.atlas,
 			rawHdrSummary: rawHdrSummary,
 			surfaceClassSummary: surfaceClassSummary,
 			atlasSummary: atlasSummary,
@@ -3869,6 +3931,8 @@ window.setR739Config1ValidationCameraState = function(state)
 	worldCamera.updateMatrixWorld(true);
 	pathTracingScene.updateMatrixWorld(true);
 	pathTracingUniforms.uCameraMatrix.value.copy(worldCamera.matrixWorld);
+	if (pathTracingUniforms.uCamPos && pathTracingUniforms.uCamPos.value)
+		pathTracingUniforms.uCamPos.value.setFromMatrixPosition(worldCamera.matrixWorld);
 	resetR738MainAccumulation();
 	if (typeof wakeRender === 'function') wakeRender('r7-3-9-current-view-validation-camera');
 	return window.reportR739C1CurrentViewReflectionConfig();
@@ -4254,6 +4318,7 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 	var savedNorthWallRuntimeEnabled = r7310C1NorthWallDiffuseRuntimeEnabled;
 	var savedEastWallRuntimeEnabled = r7310C1EastWallDiffuseRuntimeEnabled;
 	var savedWestWallRuntimeEnabled = r7310C1WestWallDiffuseRuntimeEnabled;
+	var savedSouthWallRuntimeEnabled = r7310C1SouthWallDiffuseRuntimeEnabled;
 	var state = captureR738BakeState();
 	var target = null;
 	var previous = null;
@@ -4299,7 +4364,8 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 		r7310C1NorthWallDiffuseRuntimeEnabled = options.northWallCamera === true;
 		r7310C1EastWallDiffuseRuntimeEnabled = options.eastWallCamera === true;
 		r7310C1WestWallDiffuseRuntimeEnabled = options.westWallCamera === true;
-		r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled || r7310C1EastWallDiffuseRuntimeEnabled || r7310C1WestWallDiffuseRuntimeEnabled;
+		r7310C1SouthWallDiffuseRuntimeEnabled = false;
+		r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled || r7310C1EastWallDiffuseRuntimeEnabled || r7310C1WestWallDiffuseRuntimeEnabled || r7310C1SouthWallDiffuseRuntimeEnabled;
 		ensureR7310C1FullRoomDiffuseRuntimeLoading();
 		var selectedReadyStart = performance.now();
 		while (performance.now() - selectedReadyStart < timeout)
@@ -4478,12 +4544,14 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 			northWallEnabled: r7310C1NorthWallDiffuseRuntimeEnabled,
 			eastWallEnabled: r7310C1EastWallDiffuseRuntimeEnabled,
 			westWallEnabled: r7310C1WestWallDiffuseRuntimeEnabled,
+			southWallEnabled: r7310C1SouthWallDiffuseRuntimeEnabled,
 			ready: r7310C1FullRoomDiffuseRuntimeReady,
 			applied: updateR7310C1FullRoomDiffuseRuntimeUniforms(),
 			packageDir: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.packageDir : null,
 			northWallPackageDir: r7310C1NorthWallDiffuseRuntimePackage ? r7310C1NorthWallDiffuseRuntimePackage.packageDir : null,
 			eastWallPackageDir: r7310C1EastWallDiffuseRuntimePackage ? r7310C1EastWallDiffuseRuntimePackage.packageDir : null,
 			westWallPackageDir: r7310C1WestWallDiffuseRuntimePackage ? r7310C1WestWallDiffuseRuntimePackage.packageDir : null,
+			southWallPackageDir: r7310C1SouthWallDiffuseRuntimePackage ? r7310C1SouthWallDiffuseRuntimePackage.packageDir : null,
 			bakedSurfaceHitCount: hitCount,
 			bakedSurfaceShortCircuitCount: shortCircuitCount,
 			northWallSurfaceHitCount: northWallHitCount,
@@ -4512,6 +4580,7 @@ window.reportR7310C1FullRoomDiffuseRuntimeProbe = async function(options)
 		r7310C1NorthWallDiffuseRuntimeEnabled = savedNorthWallRuntimeEnabled;
 		r7310C1EastWallDiffuseRuntimeEnabled = savedEastWallRuntimeEnabled;
 		r7310C1WestWallDiffuseRuntimeEnabled = savedWestWallRuntimeEnabled;
+		r7310C1SouthWallDiffuseRuntimeEnabled = savedSouthWallRuntimeEnabled;
 		restoreR738BakeState(state);
 		if (savedRenderTarget && renderer) renderer.setRenderTarget(savedRenderTarget);
 		if (target) target.dispose();
@@ -5410,8 +5479,8 @@ function initTHREEjs()
 	pathTracingUniforms.tBorrowTexture = { type: "t", value: borrowPathTracingRenderTarget.texture };
 	if (typeof loadR738C1BakePastePreviewPackage === 'function')
 		loadR738C1BakePastePreviewPackage().catch(function() {});
-	if (typeof loadR7310C1FullRoomDiffuseRuntimePackage === 'function')
-		loadR7310C1FullRoomDiffuseRuntimePackage().catch(function() {});
+	if (typeof ensureR7310C1FullRoomDiffuseRuntimeLoading === 'function')
+		ensureR7310C1FullRoomDiffuseRuntimeLoading();
 	if (typeof updateR739C1CurrentViewReflectionUniforms === 'function')
 		updateR739C1CurrentViewReflectionUniforms();
 

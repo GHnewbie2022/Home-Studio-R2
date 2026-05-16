@@ -675,9 +675,25 @@ async function main() {
           if (!westButton) throw new Error('btn-r7310-west-wall-diffuse missing');
           if (!southButton) throw new Error('btn-r7310-south-wall-diffuse missing');
           await window.waitForR7310C1FullRoomDiffuseRuntimeReady(${args.timeoutMs});
-          if (window.reportR7310C1FullRoomDiffuseRuntimeConfig().enabled) {
-            window.setR7310C1FullRoomDiffuseRuntimeEnabled(false);
+          const initial = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            eastText: eastButton.textContent,
+            westText: westButton.textContent,
+            southText: southButton.textContent,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          async function clickOffIfEnabled(button, surfaceKey) {
+            if (window.reportR7310C1FullRoomDiffuseRuntimeConfig()[surfaceKey]) {
+              button.click();
+              await new Promise((resolve) => setTimeout(resolve, 100));
+            }
           }
+          await clickOffIfEnabled(floorButton, 'floorEnabled');
+          await clickOffIfEnabled(northButton, 'northWallEnabled');
+          await clickOffIfEnabled(eastButton, 'eastWallEnabled');
+          await clickOffIfEnabled(westButton, 'westWallEnabled');
+          await clickOffIfEnabled(southButton, 'southWallEnabled');
           const before = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
@@ -774,6 +790,7 @@ async function main() {
           };
           return {
             version: 'r7-3-10-c1-full-room-diffuse-ui-toggle',
+            initial,
             before,
             afterFloorOn,
             afterNorthOn,
@@ -782,7 +799,20 @@ async function main() {
             afterSouthOn,
             afterFloorOff,
             afterAllOff,
-            status: before.floorText === '地板烘焙：關' &&
+            status: initial.floorText === '地板烘焙：開' &&
+              initial.northText === '北牆烘焙：開' &&
+              initial.eastText === '東牆烘焙：開' &&
+              initial.westText === '西牆烘焙：開' &&
+              initial.southText === '南牆烘焙：開' &&
+              initial.report.enabled === true &&
+              initial.report.floorEnabled === true &&
+              initial.report.northWallEnabled === true &&
+              initial.report.eastWallEnabled === true &&
+              initial.report.westWallEnabled === true &&
+              initial.report.southWallEnabled === true &&
+              initial.report.sproutPasteApplied === false &&
+              initial.report.sproutPasteUniformMode === 0 &&
+              before.floorText === '地板烘焙：關' &&
               before.northText === '北牆烘焙：關' &&
               before.eastText === '東牆烘焙：關' &&
               before.westText === '西牆烘焙：關' &&

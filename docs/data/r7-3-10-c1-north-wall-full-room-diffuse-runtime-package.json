@@ -2,7 +2,7 @@
   "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
   "packageStatus": "architecture_probe",
   "runtimeScope": "c1_north_wall_diffuse_short_circuit",
-  "runtimeEnabledDefault": false,
+  "runtimeEnabledDefault": true,
   "packageDir": "assets/bakes/r7-3-10/c1-static-diffuse/north-wall-door-hole-1024px-1000spp",
   "batch": "north_wall",
   "targetId": 1002,
