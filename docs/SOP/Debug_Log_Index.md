@@ -1,7 +1,7 @@
 # Debug Log Index
 
 > 目的：讓接手代理先用本檔路由，再回 `Debug_Log.md` 讀必要章節。`Debug_Log.md` 保留為完整總帳，不建議每次接手全讀。
-> 更新日：2026-05-16
+> 更新日：2026-05-17
 
 ---
 
@@ -73,6 +73,7 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 
 ```
 必讀：
+  - `docs/superpowers/plans/2026-05-17-r7-3-10-beam-column-bake-expansion-handoff.md`
   - `docs/superpowers/plans/2026-05-16-r7-3-10-static-bake-expansion-codex-handoff.md`
   - `docs/superpowers/plans/2026-05-16-r7-3-10-static-diffuse-bake-expansion-investigation-opus.md`
   - `docs/superpowers/plans/2026-05-15-r7-3-10-c1-1024-bake-resolution-plan.md`
@@ -81,8 +82,11 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
   - `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`
   - `Debug_Log.md` 的 `R7-3.10-south-wall-reveal-atlas-edge-fix`
   - `Debug_Log.md` 的 `R7-3.10-floor-east-west-contact-edge-fix`
+  - `Debug_Log.md` 的 `R7-3.10-beam-column-bake-expansion-branch-open`
 
 目前狀態：
+  - `main` 已推到 GitHub：2d79953 fix(R7-3.10): clean south reveal and floor side seams。
+  - 目前新分支：`codex/r7-3-10-beam-column-bake-expansion`。
   - floor / north 1024 bake 已驗收，兩條衣櫃黑線看不出來。
   - floor / north / east / west / south / ceiling 正式 bake package 已移到 `assets/bakes/r7-3-10/c1-static-diffuse/`，runtime pointer 不再依賴 `.omc` 實驗資料夾。
   - floor / north / east / west / south / ceiling 六個 runtime slot 目前同為 1024，合併 atlas 為六格。
@@ -403,6 +407,7 @@ R7 採樣升級：
   - R7-3.10 south wall window opening seam debug 已修正：南牆主面窗洞排除改成真實 reveal 開口 `x -1.75..0.69 / y 1.04..2.905`，移除窗洞上方與東側不存在前平面造成的黑線，南牆 1024/1000spp package 已重烘；讀 `Debug_Log.md` 的 `R7-3.10-south-wall-window-opening-seam-debug`。
   - R7-3.10 south wall reveal atlas edge fix 已加入：reveal atlas 邊界改吃進半格 texel 並把烘焙位置推入窗洞深度，右側與上側 room-edge 黑線的正式 south atlas luma 由 0 補到 0.21+；讀 `Debug_Log.md` 的 `R7-3.10-south-wall-reveal-atlas-edge-fix`。
   - R7-3.10 floor east/west contact edge fix 已加入：地板在 `x = ±1.91` 的 side contact 欄位改由一格內側位置烘焙，正式 floor atlas luma 由 0 補到 0.40+；讀 `Debug_Log.md` 的 `R7-3.10-floor-east-west-contact-edge-fix`。
+  - R7-3.10 beam / column bake expansion branch 已開：從 GitHub 同步後的 main `2d79953` 開 `codex/r7-3-10-beam-column-bake-expansion`，下一步只處理樑柱，不混入家具或吸音板；讀 `Debug_Log.md` 的 `R7-3.10-beam-column-bake-expansion-branch-open`。
   - R7-3.10 keyboard movement frame-time clamp 已加入：W / A / S / D / E / C 不再直接吃 raw frameTime，render frame 偶發延遲時會限制單幀位移；讀 `Debug_Log.md` 的 `R7-3.10-keyboard-movement-frame-time-clamp`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`

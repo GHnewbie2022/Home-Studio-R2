@@ -2,7 +2,7 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前接手重點：R7-3.10 C1 seam debug Phase 2 的 H7 / H7' 內部視角發光已修；floor / north 的 H5 / H3' 衣櫃邊界黑線已改用 1024 bake atlas 解決，使用者肉眼確認兩條黑線看不出來。floor / north / east runtime pointer 目前都指向 1024 package。C runtime fallback 實驗已移除，不回退。partial bake 與 LIVE 並存時的局部偏亮已定性為深度相加的過渡假象；後續驗收基準改為「全相關靜態漫射面 bake vs 全 LIVE」。目前已完成 east wall 第一批接入；下一批往 west / south / ceiling 逐批擴張。架構 roadmap：先在現有架構收成快速預覽 hybrid room；成功後再處理高品質 bake 生產線，WebGPU / Metal / Blender 列加速候選，PlayCanvas 列展示承載候選。
+> 目前接手重點：R7-3.10 已完成 floor / north / east / west / south / ceiling 六面 1024 靜態漫射 bake，UI 六顆開關預設全開。使用者已肉眼確認：南牆窗洞 reveal 黑線 OK，東西牆與地板近距離接縫黑線 OK。`main` 已推到 GitHub：`2d79953 fix(R7-3.10): clean south reveal and floor side seams`。目前新分支是 `codex/r7-3-10-beam-column-bake-expansion`，下一步只準備樑柱烘焙；不回 fallback，不改鄰格取樣，不破壞既有六面 1024 bake。反射維持 LIVE path tracing。
 
 ---
 
@@ -8431,4 +8431,50 @@ validation:
 notes:
   - This fix is limited to floor bake-source positions near the east/west wall contacts.
   - North / east / west / south / ceiling packages were left unchanged.
+```
+
+### R7-3.10-beam-column-bake-expansion-branch-open
+
+```yaml
+date: 2026-05-17
+branch: codex/r7-3-10-beam-column-bake-expansion
+status: branch_open_docs_ready
+main_base:
+  - commit: 2d79953
+  - message: "fix(R7-3.10): clean south reveal and floor side seams"
+  - pushed_to_origin_main: true
+currentBaseline:
+  - floor / north / east / west / south / ceiling static diffuse bake packages are all formal assets under:
+      assets/bakes/r7-3-10/c1-static-diffuse/
+  - runtime atlas currently has 6 slots:
+      0 floor
+      1 north wall
+      2 east wall
+      3 west wall
+      4 south wall
+      5 ceiling
+  - UI has 6 bake buttons, all default on.
+  - User visually accepted:
+      south wall reveal edge fix
+      floor east/west contact edge fix
+nextScope:
+  - Prepare R7-3.10 beam / column static diffuse bake expansion.
+  - Start with static structural geometry only:
+      beams
+      corner columns
+      wall-side columns
+  - Do not include furniture, acoustic panels, outlets, doors, or object details in the first beam/column batch.
+expectedNextSteps:
+  - Inventory beam/column geometry and object IDs.
+  - Decide package layout, likely one structural-beams-columns 1024 / 1000spp package first.
+  - Add contract / runner checks before shader/runtime wiring.
+  - Add runtime atlas slot 6 and UI button only after target inventory is clear.
+guards:
+  - Do not return to fallback.
+  - Do not use neighbor sampling.
+  - Do not disturb existing six 1024 packages.
+  - Keep reflection LIVE path tracing.
+  - Keep bake capture anti-contamination guards.
+handoff:
+  - docs/superpowers/plans/2026-05-17-r7-3-10-beam-column-bake-expansion-handoff.md
 ```

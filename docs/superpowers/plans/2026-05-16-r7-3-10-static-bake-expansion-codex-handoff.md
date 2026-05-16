@@ -4,6 +4,10 @@
 狀態：給下一棒 CODEX 的入口文件
 前一棒來源：OPUS read-only 調查草案
 
+> 2026-05-17 更新：本檔已成為歷史入口。最新樑柱烘焙分支請先讀：
+>
+> `/Users/eajrockmacmini/Documents/VS Code/My Project/Home_Studio_3D/docs/superpowers/plans/2026-05-17-r7-3-10-beam-column-bake-expansion-handoff.md`
+
 完整詳版請讀：
 
 `/Users/eajrockmacmini/Documents/VS Code/My Project/Home_Studio_3D/docs/superpowers/plans/2026-05-16-r7-3-10-static-diffuse-bake-expansion-investigation-opus.md`
