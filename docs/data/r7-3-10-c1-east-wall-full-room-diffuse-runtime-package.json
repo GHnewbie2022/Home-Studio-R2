@@ -2,7 +2,7 @@
   "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
   "packageStatus": "architecture_probe",
   "runtimeScope": "c1_east_wall_diffuse_short_circuit",
-  "runtimeEnabledDefault": false,
+  "runtimeEnabledDefault": true,
   "packageDir": "assets/bakes/r7-3-10/c1-static-diffuse/east-wall-1024px-1000spp",
   "batch": "east_wall",
   "targetId": 1003,

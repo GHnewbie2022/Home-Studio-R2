@@ -12,6 +12,14 @@ north-wall-door-hole-1024px-1000spp
 
 east-wall-1024px-1000spp
   C1 east wall diffuse bake.
+
+west-wall-iron-door-hole-1024px-1000spp
+  C1 west wall diffuse bake.
+  Includes the iron-door-hole invalid texel region from the runtime pointer.
+
+south-wall-window-hole-1024px-1000spp
+  C1 south wall diffuse bake.
+  Includes the upper window-hole invalid texel region from the runtime pointer.
 ```
 
 Each package keeps:
@@ -42,4 +50,6 @@ Runtime pointers live in:
 docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json
 docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json
 docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json
+docs/data/r7-3-10-c1-west-wall-full-room-diffuse-runtime-package.json
+docs/data/r7-3-10-c1-south-wall-full-room-diffuse-runtime-package.json
 ```

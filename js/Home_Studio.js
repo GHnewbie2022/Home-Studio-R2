@@ -5177,7 +5177,7 @@ function initSceneData() {
     demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-static-east-hotfix-v2';
 
     sceneIsDynamic = false;
-    cameraFlightSpeed = 3;
+    cameraFlightSpeed = 2;
     pixelRatio = 1.0;
     EPS_intersect = 0.001;
 
@@ -5447,9 +5447,11 @@ function initSceneData() {
     pathTracingUniforms.uR7310C1FloorDiffuseMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1NorthWallDiffuseMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1EastWallDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1WestWallDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1SouthWallDiffuseMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1RuntimeProbeMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution = { value: 512.0 };
-    pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 3.0 };
+    pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 5.0 };
     pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
@@ -5844,9 +5846,13 @@ function refreshR7310SurfaceDiffuseButtons(report) {
     var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
     var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
     var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
+    var westBtn = document.getElementById('btn-r7310-west-wall-diffuse');
+    var southBtn = document.getElementById('btn-r7310-south-wall-diffuse');
     var floorActive = !!(report && report.floorEnabled);
     var northActive = !!(report && report.northWallEnabled);
     var eastActive = !!(report && report.eastWallEnabled);
+    var westActive = !!(report && report.westWallEnabled);
+    var southActive = !!(report && report.southWallEnabled);
     if (floorBtn) {
         floorBtn.textContent = floorActive ? '地板烘焙：開' : '地板烘焙：關';
         floorBtn.classList.toggle('glow-white', floorActive);
@@ -5868,13 +5874,29 @@ function refreshR7310SurfaceDiffuseButtons(report) {
             ? '東牆漫射使用 R7-3.10 1024 bake'
             : '東牆回到 live path tracing';
     }
+    if (westBtn) {
+        westBtn.textContent = westActive ? '西牆烘焙：開' : '西牆烘焙：關';
+        westBtn.classList.toggle('glow-white', westActive);
+        westBtn.title = westActive
+            ? '西牆漫射使用 R7-3.10 1024 bake'
+            : '西牆回到 live path tracing';
+    }
+    if (southBtn) {
+        southBtn.textContent = southActive ? '南牆烘焙：開' : '南牆烘焙：關';
+        southBtn.classList.toggle('glow-white', southActive);
+        southBtn.title = southActive
+            ? '南牆漫射使用 R7-3.10 1024 bake'
+            : '南牆回到 live path tracing';
+    }
 }
 
 function bindR7310FullFloorDiffuseControls() {
     var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
     var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
     var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
-    if (!floorBtn && !northBtn && !eastBtn) return;
+    var westBtn = document.getElementById('btn-r7310-west-wall-diffuse');
+    var southBtn = document.getElementById('btn-r7310-south-wall-diffuse');
+    if (!floorBtn && !northBtn && !eastBtn && !westBtn && !southBtn) return;
     var bindButton = function(btn, surfaceKey, setterName) {
         if (!btn) return;
         btn.addEventListener('click', function(e) {
@@ -5890,6 +5912,8 @@ function bindR7310FullFloorDiffuseControls() {
     bindButton(floorBtn, 'floorEnabled', 'setR7310C1FloorDiffuseRuntimeEnabled');
     bindButton(northBtn, 'northWallEnabled', 'setR7310C1NorthWallDiffuseRuntimeEnabled');
     bindButton(eastBtn, 'eastWallEnabled', 'setR7310C1EastWallDiffuseRuntimeEnabled');
+    bindButton(westBtn, 'westWallEnabled', 'setR7310C1WestWallDiffuseRuntimeEnabled');
+    bindButton(southBtn, 'southWallEnabled', 'setR7310C1SouthWallDiffuseRuntimeEnabled');
     if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig === 'function')
         refreshR7310SurfaceDiffuseButtons(window.reportR7310C1FullRoomDiffuseRuntimeConfig());
 }

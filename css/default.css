@@ -289,8 +289,8 @@ button.action-btn.glow-gradient-bo {
 	max-width: 90vw;
 }
 .snapshot-action-btn.glow-white {
-	color: #fff; box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
-	border-color: rgba(255, 255, 255, 0.4); background: rgba(255, 255, 255, 0.1);
+	color: #fff; box-shadow: 0 0 12px rgba(255, 255, 255, 0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+	border-color: rgba(255, 255, 255, 0.45); background: rgba(28, 28, 26, 0.95);
 }
 .snapshot-action-roughness {
 	width: 150px; max-width: calc(100vw - 30px); box-sizing: border-box;

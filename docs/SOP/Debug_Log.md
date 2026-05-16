@@ -38,8 +38,6 @@
     - docs/AI交接必讀.md
 ```
 
----
-
 ## R7-3.10｜Static diffuse bake expansion east wall 1024 runtime
 
 ```yaml
@@ -7937,4 +7935,243 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       ready: true
       applied: false
       report: .omc/r7-3-8-c1-bake-paste-preview/20260516-163828/
+```
+
+## R7-3.10｜West Wall Static Diffuse Bake Expansion
+
+```yaml
+- id: R7-3.10-west-wall-static-diffuse-bake-expansion
+  date: 2026-05-16
+  type: static_diffuse_runtime_expansion
+  branch: codex/r7-3-10-west-wall-bake-expansion
+  scope:
+    - Add C1 west wall as the fourth R7-3.10 static diffuse runtime surface.
+    - Keep reflection live.
+    - Keep floor / north / east 1024 bake behavior intact.
+    - Keep R7-3.8 sprout paste disabled under the R7-3.10 C1 room path.
+  bake_package:
+    source: .omc/r7-3-10-full-room-diffuse-bake/20260516-171604/
+    promoted_to: assets/bakes/r7-3-10/c1-static-diffuse/west-wall-iron-door-hole-1024px-1000spp/
+    pointer: docs/data/r7-3-10-c1-west-wall-full-room-diffuse-runtime-package.json
+    targetId: 1004
+    surfaceName: c1_west_wall
+    atlasResolution: 1024
+    requestedSamples: 1000
+    diffuseOnly: true
+    upscaled: false
+    worldBounds:
+      zMin: -1.874
+      zMax: 3.056
+      yMin: 0
+      yMax: 2.905
+      x: -1.91
+    invalidTexelRegions:
+      ironDoorHole:
+        zMin: -1.874
+        zMax: -0.984
+        yMin: 0.09
+        yMax: 2.04
+  bake_validation:
+    status: pass
+    runnerStatus: pass
+    nonzeroTexels: 666091
+    meanLuma: 0.3414857399163225
+    maxLuma: 0.8055359323819479
+    validTexelRatio: 0.8787927627563477
+    contaminationGuard:
+      uR7310C1FullRoomDiffuseMode: 0
+      uR7310C1FloorDiffuseMode: 0
+      uR7310C1NorthWallDiffuseMode: 0
+      uR7310C1EastWallDiffuseMode: 0
+      uR7310C1WestWallDiffuseMode: 0
+      uR738C1BakeCaptureMode: 2
+  runtime_changes:
+    - Added uR7310C1WestWallDiffuseMode.
+    - Added c1_west_wall runtime loader and pointer.
+    - Expanded the combined runtime atlas from 3 slots to 4 slots.
+    - Added West Wall UI toggle.
+    - Added runner support for --r7310-surface=west-wall and --r7310-west-wall-runtime-test.
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=west-wall --atlas-resolution=1024 --target-samples=1000 --timeout-ms=240000 --http-port=9025 --cdp-port=9245 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-west-wall-runtime-test --timeout-ms=180000 --http-port=9026 --cdp-port=9246 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9027 --cdp-port=9247 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9028 --cdp-port=9248 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=180000 --http-port=9029 --cdp-port=9249 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9030 --cdp-port=9250 --angle=metal
+  runner_result:
+    - west runtime:
+      status: pass
+      westWallSurfaceHitCount: 771911
+      westWallShortCircuitCount: 771911
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171748/
+    - ui toggle:
+      status: pass
+      report: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-171808/
+    - floor runtime regression:
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171826/
+    - north runtime regression:
+      status: pass
+      northWallSurfaceHitCount: 528987
+      northWallShortCircuitCount: 480847
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171848/
+    - east runtime regression:
+      status: pass
+      eastWallSurfaceHitCount: 699773
+      eastWallShortCircuitCount: 699773
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171904/
+```
+
+### R7-3.10-keyboard-movement-frame-time-clamp
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-camera-move-smoothing
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Smooth W / A / S / D / E / C camera movement after occasional render-frame stalls.
+root_cause:
+  - Keyboard movement used raw frameTime from the render loop.
+  - When a frame stalled after page wake, bake loading, GPU work, or high SPP rendering, the next held movement key applied the whole delayed time as one position step.
+change:
+  - Added HOME_STUDIO_KEYBOARD_MOVE_FRAME_TIME_LIMIT = 1 / 30.
+  - Added homeStudioKeyboardMoveFrameTime(value) to sanitize NaN / negative values and clamp delayed frames.
+  - Routed W / S / A / D / E / C movement through keyboardMoveFrameTime instead of raw frameTime.
+  - After user visual check confirmed no more movement stalls, reduced cameraFlightSpeed from 3 to 2 for finer movement steps.
+expected_behavior:
+  - Normal 60 FPS movement remains unchanged.
+  - A delayed render frame no longer creates a single large camera jump.
+  - Long stalls feel like a brief slow frame instead of a camera teleport.
+  - Movement distance per frame is smaller than the first clamp version.
+validation:
+  - node docs/tests/home-studio-keyboard-movement-smoothing.test.js
+  - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+```
+
+### R7-3.10-south-wall-window-rim-and-bake-button-style-fix
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-south-wall-only-bake
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Fix south wall window opening rim that stayed black under south-wall bake.
+  - Keep R7-3.10 bake buttons dark when enabled, with glow added on top.
+root_cause:
+  - South wall bake invalid region used the full window opening bounds:
+      xMin: -1.75
+      xMax: 0.69
+      yMin: 1.04
+      yMax: 2.905
+  - That made the opening boundary share the invalid atlas area, so the rim could remain unbaked.
+  - .snapshot-action-btn.glow-white used a pale translucent background, unlike the rest of the dark UI.
+change:
+  - Shrunk south wall window invalid region to keep a 6cm baked rim:
+      xMin: -1.69
+      xMax: 0.63
+      yMin: 1.10
+      yMax: 2.845
+  - Re-baked the south wall package from a fresh passing runner output:
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260516-221922
+      formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+      samples: 1000
+      atlasResolution: 1024
+      validTexelRatio: 0.669795036315918
+      nonzeroTexels: 305271
+      meanLuma: 0.08123695182226183
+      maxLuma: 0.9339140256245931
+  - Updated pointer invalidTexelRegions to match the new rim contract.
+  - Updated HTML cache-bust token to r7310-south-wall-rim-fix-v1.
+  - Updated .snapshot-action-btn.glow-white to keep background rgba(28, 28, 26, 0.95) and add glow.
+notes:
+  - A first full 1024 retry produced an all-zero atlas and was rejected:
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260516-221005
+      failedChecks: [atlasVisibleLuma, browserValidation]
+  - A 64px / 16 sample reproduction had nonzero atlas luma, confirming the shader and mask could work.
+  - The accepted full 1024 retry was generated after closing the temporary debug Brave session.
+validation:
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=south-wall --samples=1000 --target-samples=1000 --atlas-resolution=1024 --timeout-ms=360000 --http-port=9003 --cdp-port=9224 --angle=metal
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+  - git diff --check
+```
+
+### R7-3.10-south-wall-window-reveal-and-default-on
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-south-wall-only-bake
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Make all R7-3.10 static diffuse bake toggles enabled by default.
+  - Add south wall window reveal faces to the south-wall 1024 bake.
+root_cause:
+  - The previous south wall fix kept a baked rim on the front face, but the window reveal faces were still outside the south atlas mapping.
+  - The HTML and runtime package pointers still described the bake toggles as runtime-off by default.
+change:
+  - Added R7310_C1_SOUTH_WALL_WINDOW_REVEAL and packed four reveal zones into the south wall atlas:
+      leftReveal: 25215 valid texels
+      rightReveal: 25215 valid texels
+      bottomReveal: 26820 valid texels
+      topReveal: 26820 valid texels
+  - Added shader bake/runtime UV mapping for the reveal faces.
+  - Re-baked and promoted the formal south wall package:
+      source_package: .omc/r7-3-10-full-room-diffuse-bake/20260516-224551
+      formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+      samples: 1000
+      atlasResolution: 1024
+      validTexelRatio: 0.7690439224243164
+      nonzeroTexels: 409341
+      meanLuma: 0.10247568845212614
+      maxLuma: 0.9339140256245931
+  - Set floor / north / east / west / south runtimeEnabledDefault to true.
+  - Set the static HTML bake buttons to enabled dark+glow state on first load.
+  - Updated HTML cache-bust token to r7310-south-window-reveal-v1.
+  - Runtime probe setup now saves and restores the south toggle, so default-on south bake does not leak into old floor/north/east/west probe paths.
+validation:
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+  - node -e metadata reveal count check on formal south asset
+```
+
+### R7-3.10-south-window-reveal-black-screen-hotfix
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-south-wall-only-bake
+status: fixed-local
+symptom:
+  - User reported r7310-south-window-reveal-v1 loaded UI and sample counter, but the render canvas stayed black.
+root_cause:
+  - The fragment shader runtime probe branch called r7310C1SouthWallWindowRevealDiffuseUv(x, nl, atlasUv).
+  - atlasUv was declared inside r7310C1FullRoomDiffuseShortCircuit, not in the render-loop scope where the probe branch lives.
+  - This caused fragment shader compile failure; UI stayed alive while WebGL output stayed black.
+fix:
+  - Added a local r7310RuntimeProbeAtlasUv variable in the probe branch.
+  - Added contract coverage so the invalid undeclared atlasUv call cannot return.
+validation:
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - git diff --check
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-232022/
 ```

@@ -2,7 +2,7 @@
   "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
   "packageStatus": "architecture_probe",
   "runtimeScope": "c1_floor_full_room_diffuse_short_circuit",
-  "runtimeEnabledDefault": false,
+  "runtimeEnabledDefault": true,
   "packageDir": "assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp",
   "batch": "floor",
   "targetId": 1001,
