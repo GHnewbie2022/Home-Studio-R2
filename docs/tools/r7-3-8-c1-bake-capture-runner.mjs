@@ -72,7 +72,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--target-samples=')) out.targetSamples = Number(arg.slice('--target-samples='.length));
   }
   if (!['metal', 'swiftshader', 'opengl'].includes(out.angle)) throw new Error('Invalid angle mode');
-  if (!['floor', 'north-wall', 'east-wall', 'west-wall', 'south-wall'].includes(out.r7310Surface)) throw new Error('Invalid r7310Surface');
+  if (!['floor', 'north-wall', 'east-wall', 'west-wall', 'south-wall', 'ceiling'].includes(out.r7310Surface)) throw new Error('Invalid r7310Surface');
   for (const key of ['samples', 'atlasResolution', 'timeoutMs', 'httpPort', 'cdpPort']) {
     if (!Number.isFinite(out[key]) || out[key] <= 0) throw new Error(`Invalid ${key}`);
     out[key] = Math.trunc(out[key]);
@@ -669,11 +669,13 @@ async function main() {
           const eastButton = document.getElementById('btn-r7310-east-wall-diffuse');
           const westButton = document.getElementById('btn-r7310-west-wall-diffuse');
           const southButton = document.getElementById('btn-r7310-south-wall-diffuse');
+          const ceilingButton = document.getElementById('btn-r7310-ceiling-diffuse');
           if (!floorButton) throw new Error('btn-r7310-floor-diffuse missing');
           if (!northButton) throw new Error('btn-r7310-north-wall-diffuse missing');
           if (!eastButton) throw new Error('btn-r7310-east-wall-diffuse missing');
           if (!westButton) throw new Error('btn-r7310-west-wall-diffuse missing');
           if (!southButton) throw new Error('btn-r7310-south-wall-diffuse missing');
+          if (!ceilingButton) throw new Error('btn-r7310-ceiling-diffuse missing');
           await window.waitForR7310C1FullRoomDiffuseRuntimeReady(${args.timeoutMs});
           const initial = {
             floorText: floorButton.textContent,
@@ -681,6 +683,7 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           async function clickOffIfEnabled(button, surfaceKey) {
@@ -694,12 +697,14 @@ async function main() {
           await clickOffIfEnabled(eastButton, 'eastWallEnabled');
           await clickOffIfEnabled(westButton, 'westWallEnabled');
           await clickOffIfEnabled(southButton, 'southWallEnabled');
+          await clickOffIfEnabled(ceilingButton, 'ceilingEnabled');
           const before = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           floorButton.click();
@@ -710,6 +715,7 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             floorClassName: floorButton.className,
             floorTitle: floorButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -722,6 +728,7 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             northClassName: northButton.className,
             northTitle: northButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -734,6 +741,7 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             eastClassName: eastButton.className,
             eastTitle: eastButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -746,6 +754,7 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             westClassName: westButton.className,
             westTitle: westButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -758,8 +767,22 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             southClassName: southButton.className,
             southTitle: southButton.title,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          ceilingButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterCeilingOn = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            eastText: eastButton.textContent,
+            westText: westButton.textContent,
+            southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
+            ceilingClassName: ceilingButton.className,
+            ceilingTitle: ceilingButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           floorButton.click();
@@ -770,6 +793,7 @@ async function main() {
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           northButton.click();
@@ -780,12 +804,15 @@ async function main() {
           await new Promise((resolve) => setTimeout(resolve, 100));
           southButton.click();
           await new Promise((resolve) => setTimeout(resolve, 100));
+          ceilingButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
           const afterAllOff = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
             westText: westButton.textContent,
             southText: southButton.textContent,
+            ceilingText: ceilingButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           return {
@@ -797,6 +824,7 @@ async function main() {
             afterEastOn,
             afterWestOn,
             afterSouthOn,
+            afterCeilingOn,
             afterFloorOff,
             afterAllOff,
             status: initial.floorText === '地板烘焙：開' &&
@@ -804,12 +832,14 @@ async function main() {
               initial.eastText === '東牆烘焙：開' &&
               initial.westText === '西牆烘焙：開' &&
               initial.southText === '南牆烘焙：開' &&
+              initial.ceilingText === '天花板烘焙：開' &&
               initial.report.enabled === true &&
               initial.report.floorEnabled === true &&
               initial.report.northWallEnabled === true &&
               initial.report.eastWallEnabled === true &&
               initial.report.westWallEnabled === true &&
               initial.report.southWallEnabled === true &&
+              initial.report.ceilingEnabled === true &&
               initial.report.sproutPasteApplied === false &&
               initial.report.sproutPasteUniformMode === 0 &&
               before.floorText === '地板烘焙：關' &&
@@ -817,6 +847,7 @@ async function main() {
               before.eastText === '東牆烘焙：關' &&
               before.westText === '西牆烘焙：關' &&
               before.southText === '南牆烘焙：關' &&
+              before.ceilingText === '天花板烘焙：關' &&
               before.report.uiMeaningOff === 'all_live_path_tracing' &&
               before.report.sproutPasteApplied === false &&
               before.report.sproutPasteUniformMode === 0 &&
@@ -825,17 +856,20 @@ async function main() {
               afterFloorOn.eastText === '東牆烘焙：關' &&
               afterFloorOn.westText === '西牆烘焙：關' &&
               afterFloorOn.southText === '南牆烘焙：關' &&
+              afterFloorOn.ceilingText === '天花板烘焙：關' &&
               afterFloorOn.report.enabled === true &&
               afterFloorOn.report.floorEnabled === true &&
               afterFloorOn.report.northWallEnabled === false &&
               afterFloorOn.report.eastWallEnabled === false &&
               afterFloorOn.report.westWallEnabled === false &&
               afterFloorOn.report.southWallEnabled === false &&
+              afterFloorOn.report.ceilingEnabled === false &&
               afterFloorOn.report.uniformFloorMode === 1 &&
               afterFloorOn.report.uniformNorthWallMode === 0 &&
               afterFloorOn.report.uniformEastWallMode === 0 &&
               afterFloorOn.report.uniformWestWallMode === 0 &&
               afterFloorOn.report.uniformSouthWallMode === 0 &&
+              afterFloorOn.report.uniformCeilingMode === 0 &&
               afterFloorOn.report.sproutPasteApplied === false &&
               afterFloorOn.report.sproutPasteUniformMode === 0 &&
               afterNorthOn.floorText === '地板烘焙：開' &&
@@ -843,34 +877,40 @@ async function main() {
               afterNorthOn.eastText === '東牆烘焙：關' &&
               afterNorthOn.westText === '西牆烘焙：關' &&
               afterNorthOn.southText === '南牆烘焙：關' &&
+              afterNorthOn.ceilingText === '天花板烘焙：關' &&
               afterNorthOn.report.floorEnabled === true &&
               afterNorthOn.report.northWallEnabled === true &&
               afterNorthOn.report.eastWallEnabled === false &&
               afterNorthOn.report.westWallEnabled === false &&
               afterNorthOn.report.southWallEnabled === false &&
+              afterNorthOn.report.ceilingEnabled === false &&
               afterNorthOn.report.uniformFloorMode === 1 &&
               afterNorthOn.report.uniformNorthWallMode === 1 &&
               afterNorthOn.report.uniformEastWallMode === 0 &&
               afterNorthOn.report.uniformWestWallMode === 0 &&
               afterNorthOn.report.uniformSouthWallMode === 0 &&
+              afterNorthOn.report.uniformCeilingMode === 0 &&
               afterNorthOn.report.sproutPasteApplied === false &&
               afterNorthOn.report.sproutPasteUniformMode === 0 &&
-              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_east_west_or_south_wall_1024_baked_diffuse_plus_live_reflection' &&
+              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_east_west_south_wall_or_ceiling_1024_baked_diffuse_plus_live_reflection' &&
               afterEastOn.floorText === '地板烘焙：開' &&
               afterEastOn.northText === '北牆烘焙：開' &&
               afterEastOn.eastText === '東牆烘焙：開' &&
               afterEastOn.westText === '西牆烘焙：關' &&
               afterEastOn.southText === '南牆烘焙：關' &&
+              afterEastOn.ceilingText === '天花板烘焙：關' &&
               afterEastOn.report.floorEnabled === true &&
               afterEastOn.report.northWallEnabled === true &&
               afterEastOn.report.eastWallEnabled === true &&
               afterEastOn.report.westWallEnabled === false &&
               afterEastOn.report.southWallEnabled === false &&
+              afterEastOn.report.ceilingEnabled === false &&
               afterEastOn.report.uniformFloorMode === 1 &&
               afterEastOn.report.uniformNorthWallMode === 1 &&
               afterEastOn.report.uniformEastWallMode === 1 &&
               afterEastOn.report.uniformWestWallMode === 0 &&
               afterEastOn.report.uniformSouthWallMode === 0 &&
+              afterEastOn.report.uniformCeilingMode === 0 &&
               afterEastOn.report.sproutPasteApplied === false &&
               afterEastOn.report.sproutPasteUniformMode === 0 &&
               afterWestOn.floorText === '地板烘焙：開' &&
@@ -878,31 +918,45 @@ async function main() {
               afterWestOn.eastText === '東牆烘焙：開' &&
               afterWestOn.westText === '西牆烘焙：開' &&
               afterWestOn.southText === '南牆烘焙：關' &&
+              afterWestOn.ceilingText === '天花板烘焙：關' &&
               afterWestOn.report.floorEnabled === true &&
               afterWestOn.report.northWallEnabled === true &&
               afterWestOn.report.eastWallEnabled === true &&
               afterWestOn.report.westWallEnabled === true &&
               afterWestOn.report.southWallEnabled === false &&
+              afterWestOn.report.ceilingEnabled === false &&
               afterWestOn.report.uniformFloorMode === 1 &&
               afterWestOn.report.uniformNorthWallMode === 1 &&
               afterWestOn.report.uniformEastWallMode === 1 &&
               afterWestOn.report.uniformWestWallMode === 1 &&
               afterWestOn.report.uniformSouthWallMode === 0 &&
+              afterWestOn.report.uniformCeilingMode === 0 &&
               afterSouthOn.floorText === '地板烘焙：開' &&
               afterSouthOn.northText === '北牆烘焙：開' &&
               afterSouthOn.eastText === '東牆烘焙：開' &&
               afterSouthOn.westText === '西牆烘焙：開' &&
               afterSouthOn.southText === '南牆烘焙：開' &&
+              afterSouthOn.ceilingText === '天花板烘焙：關' &&
               afterSouthOn.report.floorEnabled === true &&
               afterSouthOn.report.northWallEnabled === true &&
               afterSouthOn.report.eastWallEnabled === true &&
               afterSouthOn.report.westWallEnabled === true &&
               afterSouthOn.report.southWallEnabled === true &&
+              afterSouthOn.report.ceilingEnabled === false &&
               afterSouthOn.report.uniformFloorMode === 1 &&
               afterSouthOn.report.uniformNorthWallMode === 1 &&
               afterSouthOn.report.uniformEastWallMode === 1 &&
               afterSouthOn.report.uniformWestWallMode === 1 &&
               afterSouthOn.report.uniformSouthWallMode === 1 &&
+              afterSouthOn.report.uniformCeilingMode === 0 &&
+              afterCeilingOn.floorText === '地板烘焙：開' &&
+              afterCeilingOn.northText === '北牆烘焙：開' &&
+              afterCeilingOn.eastText === '東牆烘焙：開' &&
+              afterCeilingOn.westText === '西牆烘焙：開' &&
+              afterCeilingOn.southText === '南牆烘焙：開' &&
+              afterCeilingOn.ceilingText === '天花板烘焙：開' &&
+              afterCeilingOn.report.ceilingEnabled === true &&
+              afterCeilingOn.report.uniformCeilingMode === 1 &&
               afterWestOn.report.sproutPasteApplied === false &&
               afterWestOn.report.sproutPasteUniformMode === 0 &&
               afterEastOn.report.sproutPasteApplied === false &&
@@ -912,16 +966,19 @@ async function main() {
               afterFloorOff.eastText === '東牆烘焙：開' &&
               afterFloorOff.westText === '西牆烘焙：開' &&
               afterFloorOff.southText === '南牆烘焙：開' &&
+              afterFloorOff.ceilingText === '天花板烘焙：開' &&
               afterFloorOff.report.floorEnabled === false &&
               afterFloorOff.report.northWallEnabled === true &&
               afterFloorOff.report.eastWallEnabled === true &&
               afterFloorOff.report.westWallEnabled === true &&
               afterFloorOff.report.southWallEnabled === true &&
+              afterFloorOff.report.ceilingEnabled === true &&
               afterFloorOff.report.uniformFloorMode === 0 &&
               afterFloorOff.report.uniformNorthWallMode === 1 &&
               afterFloorOff.report.uniformEastWallMode === 1 &&
               afterFloorOff.report.uniformWestWallMode === 1 &&
               afterFloorOff.report.uniformSouthWallMode === 1 &&
+              afterFloorOff.report.uniformCeilingMode === 1 &&
               afterFloorOff.report.sproutPasteApplied === false &&
               afterFloorOff.report.sproutPasteUniformMode === 0 &&
               afterAllOff.floorText === '地板烘焙：關' &&
@@ -929,12 +986,14 @@ async function main() {
               afterAllOff.eastText === '東牆烘焙：關' &&
               afterAllOff.westText === '西牆烘焙：關' &&
               afterAllOff.southText === '南牆烘焙：關' &&
+              afterAllOff.ceilingText === '天花板烘焙：關' &&
               afterAllOff.report.enabled === false &&
               afterAllOff.report.uniformFloorMode === 0 &&
               afterAllOff.report.uniformNorthWallMode === 0 &&
               afterAllOff.report.uniformEastWallMode === 0 &&
               afterAllOff.report.uniformWestWallMode === 0 &&
               afterAllOff.report.uniformSouthWallMode === 0 &&
+              afterAllOff.report.uniformCeilingMode === 0 &&
               afterAllOff.report.sproutPasteApplied === false &&
               afterAllOff.report.sproutPasteUniformMode === 0
                 ? 'pass'
@@ -1877,15 +1936,17 @@ async function main() {
       return;
     }
     console.error('[r738-runner] running capture helper');
-    const r7310CaptureHelper = args.r7310Surface === 'north-wall'
-      ? 'reportR7310C1NorthWallDiffuseBakeAfterSamples'
-      : (args.r7310Surface === 'east-wall'
-        ? 'reportR7310C1EastWallDiffuseBakeAfterSamples'
-        : (args.r7310Surface === 'west-wall'
-          ? 'reportR7310C1WestWallDiffuseBakeAfterSamples'
-          : (args.r7310Surface === 'south-wall'
-            ? 'reportR7310C1SouthWallDiffuseBakeAfterSamples'
-            : 'reportR7310C1FloorDiffuseBakeAfterSamples')));
+	    const r7310CaptureHelper = args.r7310Surface === 'north-wall'
+	      ? 'reportR7310C1NorthWallDiffuseBakeAfterSamples'
+	      : (args.r7310Surface === 'east-wall'
+	        ? 'reportR7310C1EastWallDiffuseBakeAfterSamples'
+	        : (args.r7310Surface === 'west-wall'
+	          ? 'reportR7310C1WestWallDiffuseBakeAfterSamples'
+	          : (args.r7310Surface === 'south-wall'
+	            ? 'reportR7310C1SouthWallDiffuseBakeAfterSamples'
+	            : (args.r7310Surface === 'ceiling'
+	              ? 'reportR7310C1CeilingDiffuseBakeAfterSamples'
+	              : 'reportR7310C1FloorDiffuseBakeAfterSamples'))));
 	    const expression = `(() => {
 	      function f32ToBase64(arr) {
         if (!arr) return null;

@@ -8175,3 +8175,69 @@ validation:
       bakedSurfaceShortCircuitCount: 95909
       report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-232022/
 ```
+
+### R7-3.10-ceiling-static-diffuse-bake-expansion
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-ceiling-bake-expansion
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Add C1 ceiling static diffuse bake as the sixth R7-3.10 runtime atlas slot.
+  - Keep floor / north / east / west / south 1024 bake packages intact.
+  - Keep reflection on the live path.
+change:
+  - Added c1_ceiling contract batch:
+      targetId: 1006
+      mapping: planar_xz
+      bounds: x -2.11..2.11, z -2.074..3.256, y 2.905
+  - Added shader bake target 1006 and runtime ceiling predicate / UV lookup.
+  - Expanded the combined runtime atlas from 5 slots to 6 slots:
+      0 floor
+      1 north wall
+      2 east wall
+      3 west wall
+      4 south wall
+      5 ceiling
+  - Added `天花板烘焙` UI toggle, enabled by default.
+  - Updated HTML cache-bust token to `r7310-ceiling-bake-v1`.
+  - Added formal package pointer:
+      docs/data/r7-3-10-c1-ceiling-full-room-diffuse-runtime-package.json
+  - Promoted the formal ceiling bake package:
+      source_package: .omc/r7-3-10-full-room-diffuse-bake/20260516-235611
+      formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/ceiling-full-room-1024px-1000spp/
+      samples: 1000
+      atlasResolution: 1024
+      validTexelRatio: 1
+      nonzeroTexels: 849200
+      meanLuma: 0.29200050543398604
+      maxLuma: 0.5321415265401205
+  - Capture contamination guard remained clean:
+      uR7310C1FullRoomDiffuseMode: 0
+      uR7310C1FloorDiffuseMode: 0
+      uR7310C1NorthWallDiffuseMode: 0
+      uR7310C1EastWallDiffuseMode: 0
+      uR7310C1WestWallDiffuseMode: 0
+      uR7310C1SouthWallDiffuseMode: 0
+      uR7310C1CeilingDiffuseMode: 0
+      uR738C1BakeCaptureMode: 2
+validation:
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=ceiling --samples=1000 --target-samples=1000 --atlas-resolution=1024 --timeout-ms=360000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260516-235611
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --samples=1 --target-samples=1 --atlas-resolution=1024 --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-235819
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --samples=1 --target-samples=1 --atlas-resolution=1024 --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      package: .omc/r7-3-10-full-room-diffuse-runtime/20260516-235857
+notes:
+  - The in-app browser loaded the page and showed all six bake buttons, but its screenshot API timed out on the continuously rendering path tracing canvas.
+  - Headless Brave runner is the primary verification source for shader/runtime health.
+```

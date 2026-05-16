@@ -1,0 +1,22 @@
+{
+  "config": 1,
+  "batch": "ceiling",
+  "surfaceTargetCount": 1,
+  "coveredSurfaceNames": [
+    "c1_ceiling"
+  ],
+  "missingSurfaceNames": [],
+  "validTexelRatioBySurface": {
+    "c1_ceiling": 1
+  },
+  "dilationAppliedBySurface": {
+    "c1_ceiling": false
+  },
+  "atlasPathBySurface": {
+    "c1_ceiling": "atlas-patch-000-rgba-f32.bin"
+  },
+  "allMajorSurfacesCovered": false,
+  "allStaticVisibleSurfacesAccountedFor": false,
+  "allStaticVisibleSurfacesCovered": false,
+  "finalC1Coverage": false
+}

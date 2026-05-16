@@ -5446,12 +5446,13 @@ function initSceneData() {
     pathTracingUniforms.uR7310C1FullRoomDiffuseReady = { value: 0.0 };
     pathTracingUniforms.uR7310C1FloorDiffuseMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1NorthWallDiffuseMode = { value: 0.0 };
-    pathTracingUniforms.uR7310C1EastWallDiffuseMode = { value: 0.0 };
-    pathTracingUniforms.uR7310C1WestWallDiffuseMode = { value: 0.0 };
-    pathTracingUniforms.uR7310C1SouthWallDiffuseMode = { value: 0.0 };
-    pathTracingUniforms.uR7310C1RuntimeProbeMode = { value: 0.0 };
-    pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution = { value: 512.0 };
-    pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 5.0 };
+	pathTracingUniforms.uR7310C1EastWallDiffuseMode = { value: 0.0 };
+	pathTracingUniforms.uR7310C1WestWallDiffuseMode = { value: 0.0 };
+	pathTracingUniforms.uR7310C1SouthWallDiffuseMode = { value: 0.0 };
+	pathTracingUniforms.uR7310C1CeilingDiffuseMode = { value: 0.0 };
+	pathTracingUniforms.uR7310C1RuntimeProbeMode = { value: 0.0 };
+	pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution = { value: 512.0 };
+	pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 6.0 };
     pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
@@ -5845,14 +5846,16 @@ function syncFloorRoughnessActionWidth() {
 function refreshR7310SurfaceDiffuseButtons(report) {
     var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
     var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
-    var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
-    var westBtn = document.getElementById('btn-r7310-west-wall-diffuse');
-    var southBtn = document.getElementById('btn-r7310-south-wall-diffuse');
+	var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
+	var westBtn = document.getElementById('btn-r7310-west-wall-diffuse');
+	var southBtn = document.getElementById('btn-r7310-south-wall-diffuse');
+	var ceilingBtn = document.getElementById('btn-r7310-ceiling-diffuse');
     var floorActive = !!(report && report.floorEnabled);
     var northActive = !!(report && report.northWallEnabled);
     var eastActive = !!(report && report.eastWallEnabled);
-    var westActive = !!(report && report.westWallEnabled);
-    var southActive = !!(report && report.southWallEnabled);
+	var westActive = !!(report && report.westWallEnabled);
+	var southActive = !!(report && report.southWallEnabled);
+	var ceilingActive = !!(report && report.ceilingEnabled);
     if (floorBtn) {
         floorBtn.textContent = floorActive ? '地板烘焙：開' : '地板烘焙：關';
         floorBtn.classList.toggle('glow-white', floorActive);
@@ -5881,22 +5884,30 @@ function refreshR7310SurfaceDiffuseButtons(report) {
             ? '西牆漫射使用 R7-3.10 1024 bake'
             : '西牆回到 live path tracing';
     }
-    if (southBtn) {
-        southBtn.textContent = southActive ? '南牆烘焙：開' : '南牆烘焙：關';
-        southBtn.classList.toggle('glow-white', southActive);
-        southBtn.title = southActive
-            ? '南牆漫射使用 R7-3.10 1024 bake'
-            : '南牆回到 live path tracing';
-    }
+	if (southBtn) {
+		southBtn.textContent = southActive ? '南牆烘焙：開' : '南牆烘焙：關';
+		southBtn.classList.toggle('glow-white', southActive);
+		southBtn.title = southActive
+			? '南牆漫射使用 R7-3.10 1024 bake'
+			: '南牆回到 live path tracing';
+	}
+	if (ceilingBtn) {
+		ceilingBtn.textContent = ceilingActive ? '天花板烘焙：開' : '天花板烘焙：關';
+		ceilingBtn.classList.toggle('glow-white', ceilingActive);
+		ceilingBtn.title = ceilingActive
+			? '天花板漫射使用 R7-3.10 1024 bake'
+			: '天花板回到 live path tracing';
+	}
 }
 
 function bindR7310FullFloorDiffuseControls() {
     var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
     var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
-    var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
-    var westBtn = document.getElementById('btn-r7310-west-wall-diffuse');
-    var southBtn = document.getElementById('btn-r7310-south-wall-diffuse');
-    if (!floorBtn && !northBtn && !eastBtn && !westBtn && !southBtn) return;
+	var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
+	var westBtn = document.getElementById('btn-r7310-west-wall-diffuse');
+	var southBtn = document.getElementById('btn-r7310-south-wall-diffuse');
+	var ceilingBtn = document.getElementById('btn-r7310-ceiling-diffuse');
+	if (!floorBtn && !northBtn && !eastBtn && !westBtn && !southBtn && !ceilingBtn) return;
     var bindButton = function(btn, surfaceKey, setterName) {
         if (!btn) return;
         btn.addEventListener('click', function(e) {
@@ -5911,9 +5922,10 @@ function bindR7310FullFloorDiffuseControls() {
     };
     bindButton(floorBtn, 'floorEnabled', 'setR7310C1FloorDiffuseRuntimeEnabled');
     bindButton(northBtn, 'northWallEnabled', 'setR7310C1NorthWallDiffuseRuntimeEnabled');
-    bindButton(eastBtn, 'eastWallEnabled', 'setR7310C1EastWallDiffuseRuntimeEnabled');
-    bindButton(westBtn, 'westWallEnabled', 'setR7310C1WestWallDiffuseRuntimeEnabled');
-    bindButton(southBtn, 'southWallEnabled', 'setR7310C1SouthWallDiffuseRuntimeEnabled');
+	bindButton(eastBtn, 'eastWallEnabled', 'setR7310C1EastWallDiffuseRuntimeEnabled');
+	bindButton(westBtn, 'westWallEnabled', 'setR7310C1WestWallDiffuseRuntimeEnabled');
+	bindButton(southBtn, 'southWallEnabled', 'setR7310C1SouthWallDiffuseRuntimeEnabled');
+	bindButton(ceilingBtn, 'ceilingEnabled', 'setR7310C1CeilingDiffuseRuntimeEnabled');
     if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig === 'function')
         refreshR7310SurfaceDiffuseButtons(window.reportR7310C1FullRoomDiffuseRuntimeConfig());
 }

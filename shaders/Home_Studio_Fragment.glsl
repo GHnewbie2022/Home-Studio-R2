@@ -51,6 +51,7 @@ uniform float uR7310C1NorthWallDiffuseMode;
 uniform float uR7310C1EastWallDiffuseMode;
 uniform float uR7310C1WestWallDiffuseMode;
 uniform float uR7310C1SouthWallDiffuseMode;
+uniform float uR7310C1CeilingDiffuseMode;
 uniform float uR7310C1RuntimeProbeMode;
 uniform float uR7310C1RuntimeAtlasPatchResolution;
 uniform float uR7310C1RuntimeAtlasPatchCount;
@@ -511,6 +512,16 @@ bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out v
 		objectID = 0.0;
 		return true;
 	}
+	if (patchId == 1006)
+	{
+		float x = mix(-2.11, 2.11, uv.x);
+		float z = mix(-2.074, 3.256, uv.y);
+		position = vec3(x, 2.905, z);
+		normal = vec3(0.0, -1.0, 0.0);
+		hitType = 1;
+		objectID = 0.0;
+		return true;
+	}
 	position = vec3(0.0);
 	normal = vec3(0.0, 1.0, 0.0);
 	hitType = 0;
@@ -614,7 +625,18 @@ bool r7310C1RuntimeSurfaceIsSouthWall(int visibleHitType, float visibleObjectID,
 		visiblePosition.x >= -2.11 &&
 		visiblePosition.x <= 2.11 &&
 		visiblePosition.y >= 0.0 &&
-		visiblePosition.y <= 2.905;
+			visiblePosition.y <= 2.905;
+}
+bool r7310C1RuntimeSurfaceIsCeiling(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return visibleObjectID < 1.5 &&
+		visibleNormal.y < -0.5 &&
+		visiblePosition.y >= 2.895 &&
+		visiblePosition.y <= 2.915 &&
+		visiblePosition.x >= -2.11 &&
+		visiblePosition.x <= 2.11 &&
+		visiblePosition.z >= -2.074 &&
+		visiblePosition.z <= 3.256;
 }
 bool r7310C1NorthWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
 {
@@ -740,6 +762,19 @@ bool r7310C1SouthWallDiffuseUv(vec3 visiblePosition, vec3 visibleNormal, out vec
 	);
 	return true;
 }
+bool r7310C1CeilingDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
+{
+	if (!r7310C1RuntimeSurfaceIsCeiling(1, 0.0, vec3(0.0, -1.0, 0.0), visiblePosition))
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	atlasUv = vec2(
+		(visiblePosition.x + 2.11) / 4.22,
+		(visiblePosition.z + 2.074) / 5.33
+	);
+	return true;
+}
 bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition, int visibleIsRayExiting, out vec3 bakedRadiance)
 {
 	bakedRadiance = vec3(0.0);
@@ -795,6 +830,14 @@ bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectI
 	{
 		vec3 r7310SouthWallRevealBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 4.0));
 		bakedRadiance = r7310SouthWallRevealBakedRadiance;
+		return true;
+	}
+	if (uR7310C1CeilingDiffuseMode > 0.5 &&
+		r7310C1RuntimeSurfaceIsCeiling(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		r7310C1CeilingDiffuseUv(visiblePosition, atlasUv))
+	{
+		vec3 r7310CeilingBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 5.0));
+		bakedRadiance = r7310CeilingBakedRadiance;
 		return true;
 	}
 	return false;
@@ -3225,7 +3268,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				float r7310C1RuntimeProbeMode = uR7310C1RuntimeProbeMode;
 				vec2 r7310RuntimeProbeAtlasUv = vec2(0.0);
 				if (r7310C1RuntimeProbeMode > 0.5 && r7310C1RuntimeProbeMode < 1.5)
-					accumCol += (uR7310C1SouthWallDiffuseMode > 0.5 && r7310C1SouthWallWindowRevealDiffuseUv(x, nl, r7310RuntimeProbeAtlasUv)) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsSouthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsWestWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 1.0, 0.0) : (r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0)))));
+					accumCol += (uR7310C1CeilingDiffuseMode > 0.5 && r7310C1RuntimeSurfaceIsCeiling(hitType, hitObjectID, nl, x)) ? vec3(1.0, 1.0, 1.0) : ((uR7310C1SouthWallDiffuseMode > 0.5 && r7310C1SouthWallWindowRevealDiffuseUv(x, nl, r7310RuntimeProbeAtlasUv)) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsSouthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsWestWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 1.0, 0.0) : (r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0))))));
 				else if (r7310C1RuntimeProbeMode > 1.5 && r7310C1RuntimeProbeMode < 2.5)
 					accumCol += nl * 0.5 + 0.5;
 				else if (r7310C1RuntimeProbeMode > 2.5 && r7310C1RuntimeProbeMode < 3.5)

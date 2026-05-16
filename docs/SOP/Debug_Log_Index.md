@@ -82,16 +82,16 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 
 目前狀態：
   - floor / north 1024 bake 已驗收，兩條衣櫃黑線看不出來。
-  - floor / north / east 正式 bake package 已移到 `assets/bakes/r7-3-10/c1-static-diffuse/`，runtime pointer 不再依賴 `.omc` 實驗資料夾。
-  - floor / north / east 三個 runtime slot 目前同為 1024，合併 atlas 為三格。
-  - UI 目前拆成三顆按鈕：`地板烘焙`、`北牆烘焙`、`東牆烘焙`。
+  - floor / north / east / west / south / ceiling 正式 bake package 已移到 `assets/bakes/r7-3-10/c1-static-diffuse/`，runtime pointer 不再依賴 `.omc` 實驗資料夾。
+  - floor / north / east / west / south / ceiling 六個 runtime slot 目前同為 1024，合併 atlas 為六格。
+  - UI 目前拆成六顆按鈕：`地板烘焙`、`北牆烘焙`、`東牆烘焙`、`西牆烘焙`、`南牆烘焙`、`天花板烘焙`，預設全開。
   - C runtime fallback 已移除；不回 fallback，不改鄰格取樣。
   - Option A / Option B bake 防污染保護已保留。
   - partial bake + LIVE 局部偏亮已定性為深度相加的過渡假象。
   - 正式驗收基準是全相關靜態漫射面 bake vs 全 LIVE。
   - 目前主線先在現有 Home Studio 架構收成快速預覽 hybrid room。
   - hybrid room 技術分工：靜態漫射面讀 bake；反射保留 LIVE path tracing。
-  - 第一批新增面是 east wall；後續逐批 west / south / ceiling。
+  - floor / north / east / west / south / ceiling 已接成可分開開關的靜態漫射 bake；下一批可往樑柱與細部結構擴張。
   - 快速預覽成功後，再開高品質 bake 生產線與 WebGPU / Metal / Blender 加速候選評估。
   - PlayCanvas 只列展示承載候選，等 baked room 穩定後再談。
 ```
@@ -395,6 +395,7 @@ R7 採樣升級：
   - R7-3.10 floor toggle 已接管舊 R7-3.8 嫩芽 paste：三個烘焙都關代表全 LIVE；地板烘焙開只使用 R7-3.10 floor 1024 bake；north / east 開關不會啟用嫩芽 paste。讀 `Debug_Log.md` 的 `R7-3.10-floor-toggle-unifies-sprout`。
   - R7-3.10 west wall static diffuse bake 已加入：`assets/bakes/r7-3-10/c1-static-diffuse/west-wall-iron-door-hole-1024px-1000spp/`，第 4 個 runtime atlas slot，UI 新增 `西牆烘焙`，floor / north / east 回歸通過；讀 `Debug_Log.md` 的 `R7-3.10-west-wall-static-diffuse-bake-expansion`。
   - R7-3.10 south wall window reveal fix 已加入：南牆窗洞 front rim 與四個 reveal 切面都進入正式 south wall 1024/1000spp package，所有 bake toggles 預設為開，烘焙按鈕開啟時維持黑灰底加發光；讀 `Debug_Log.md` 的 `R7-3.10-south-wall-window-rim-and-bake-button-style-fix` 與 `R7-3.10-south-wall-window-reveal-and-default-on`。
+  - R7-3.10 ceiling static diffuse bake 已加入：`assets/bakes/r7-3-10/c1-static-diffuse/ceiling-full-room-1024px-1000spp/`，第 6 個 runtime atlas slot，UI 新增 `天花板烘焙` 且預設開；讀 `Debug_Log.md` 的 `R7-3.10-ceiling-static-diffuse-bake-expansion`。
   - R7-3.10 keyboard movement frame-time clamp 已加入：W / A / S / D / E / C 不再直接吃 raw frameTime，render frame 偶發延遲時會限制單幀位移；讀 `Debug_Log.md` 的 `R7-3.10-keyboard-movement-frame-time-clamp`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`

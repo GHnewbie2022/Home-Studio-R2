@@ -1,0 +1,27 @@
+{
+  "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
+  "packageStatus": "architecture_probe",
+  "runtimeScope": "c1_ceiling_diffuse_short_circuit",
+  "runtimeEnabledDefault": true,
+  "packageDir": "assets/bakes/r7-3-10/c1-static-diffuse/ceiling-full-room-1024px-1000spp",
+  "batch": "ceiling",
+  "targetId": 1006,
+  "surfaceName": "c1_ceiling",
+  "requestedSamples": 1000,
+  "targetAtlasResolution": 1024,
+  "diffuseOnly": true,
+  "upscaled": false,
+  "worldBounds": {
+    "xMin": -2.11,
+    "xMax": 2.11,
+    "zMin": -2.074,
+    "zMax": 3.256,
+    "y": 2.905
+  },
+  "artifacts": {
+    "manifest": "manifest.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "coverageReport": "coverage-report.json",
+    "validationReport": "validation-report.json"
+  }
+}

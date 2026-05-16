@@ -167,6 +167,19 @@
       }
     }
   },
+  "c1CeilingBatch": {
+    "targetId": 1006,
+    "surfaceName": "c1_ceiling",
+    "surfaceClass": "ceiling",
+    "mapping": "planar_xz",
+    "worldBounds": {
+      "xMin": -2.11,
+      "xMax": 2.11,
+      "zMin": -2.074,
+      "zMax": 3.256,
+      "y": 2.905
+    }
+  },
   "acceptedSproutBaseline": {
     "pointer": "docs/data/r7-3-8-c1-bake-accepted-package.json",
     "kind": "full_diffuse_radiance",
