@@ -1185,18 +1185,20 @@ Type consistency:
 
 ```text
 Status:
-  accepted
+  invalidated_by_ab_visual_check
 
 Checkpoint:
   r7-3-9-config1-sprout-v2-success-20260513
 
 User visual acceptance:
-  Roughness 1 shows a hard boundary because the floor outside the sprout patch has no reflection.
-  Roughness 0.1 at exactly 1000 spp blends into a complete ceiling-lamp reflection.
+  Later 1 spp A/B check rejected the previous acceptance.
+  A diffuse is clean.
+  B original V2 and C reflection-only are both noisy like live path tracing.
+  D roughness 1 shows the central patch is forced to roughness 0.1.
 
 Runtime result:
   R7-3.8 sprout diffuse bake remains active.
-  R7-3.9 current-view sprout reflection route is active.
+  R7-3.9 current-view sprout reflection route remains diagnostic only.
   Finite-view R7-3.9 reflection cache packages remain unaccepted.
 
 Latest validation report:

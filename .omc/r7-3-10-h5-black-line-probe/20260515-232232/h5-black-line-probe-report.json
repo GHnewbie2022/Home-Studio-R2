@@ -1,0 +1,288 @@
+{
+  "version": "r7-3-10-c1-h5-black-line-probe",
+  "reports": [
+    {
+      "surface": "floor",
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-215727",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 379130,
+        "bakedSurfaceShortCircuitCount": 12624,
+        "northWallSurfaceHitCount": 165995,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 165995,
+        "eastWallShortCircuitCount": 359,
+        "probeLevel": 7,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "atlasRowCol",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 261,
+            "rtPixel": {
+              "x": 378,
+              "y": 164
+            },
+            "r": 0.369140625,
+            "g": 0.734375,
+            "b": 0,
+            "decoded": {
+              "row": 378,
+              "col": 752,
+              "world": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 379130,
+          "gik": 267536,
+          "ceiling": 0,
+          "wall": 165995,
+          "object": 108939,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "h5BlackLineProbe": {
+          "surface": "floor",
+          "boundaryCenter": -0.703,
+          "boundaryBand": [
+            -0.733,
+            -0.6729999999999999
+          ],
+          "colBand": [
+            410,
+            495
+          ],
+          "atlasResolution": 1024,
+          "totalFragmentsInBand": 0,
+          "worldRangeInBand": null,
+          "dominantRow": null,
+          "rowHistogram": []
+        },
+        "currentSamples": 1
+      }
+    },
+    {
+      "surface": "north",
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "north_wall",
+        "enabled": true,
+        "floorEnabled": false,
+        "northWallEnabled": true,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-215727",
+        "northWallPackageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-212509",
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 104,
+        "bakedSurfaceShortCircuitCount": 4352,
+        "northWallSurfaceHitCount": 528987,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 528987,
+        "eastWallShortCircuitCount": 40287,
+        "probeLevel": 7,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "atlasRowCol",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.4705789387226105,
+            "g": 0.12571512162685394,
+            "b": 0.013219540938735008,
+            "decoded": {
+              "row": 482,
+              "col": 129,
+              "world": 0.013219540938735008
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 104,
+          "gik": 52697,
+          "ceiling": 0,
+          "wall": 528987,
+          "object": 339812,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "h5BlackLineProbe": {
+          "surface": "north",
+          "boundaryCenter": 1.955,
+          "boundaryBand": [
+            1.925,
+            1.985
+          ],
+          "colBand": [
+            410,
+            495
+          ],
+          "atlasResolution": 1024,
+          "totalFragmentsInBand": 1494,
+          "worldRangeInBand": [
+            1.9250059127807617,
+            1.9848978519439697
+          ],
+          "dominantRow": 682,
+          "rowHistogram": [
+            {
+              "row": 682,
+              "count": 89,
+              "worldMin": 1.9352507591247559,
+              "worldMax": 1.9379911422729492
+            },
+            {
+              "row": 686,
+              "count": 78,
+              "worldMin": 1.9466437101364136,
+              "worldMax": 1.9493993520736694
+            },
+            {
+              "row": 690,
+              "count": 78,
+              "worldMin": 1.9580113887786865,
+              "worldMax": 1.9606802463531494
+            },
+            {
+              "row": 693,
+              "count": 76,
+              "worldMin": 1.9664950370788574,
+              "worldMax": 1.9692879915237427
+            },
+            {
+              "row": 685,
+              "count": 75,
+              "worldMin": 1.943834662437439,
+              "worldMax": 1.9465900659561157
+            },
+            {
+              "row": 691,
+              "count": 73,
+              "worldMin": 1.9608137607574463,
+              "worldMax": 1.9636363983154297
+            },
+            {
+              "row": 695,
+              "count": 73,
+              "worldMin": 1.9722155332565308,
+              "worldMax": 1.974851369857788
+            },
+            {
+              "row": 698,
+              "count": 73,
+              "worldMin": 1.980700969696045,
+              "worldMax": 1.9834893941879272
+            },
+            {
+              "row": 679,
+              "count": 71,
+              "worldMin": 1.926734447479248,
+              "worldMax": 1.9295096397399902
+            },
+            {
+              "row": 687,
+              "count": 71,
+              "worldMin": 1.949497103691101,
+              "worldMax": 1.9522298574447632
+            },
+            {
+              "row": 688,
+              "count": 71,
+              "worldMin": 1.9522993564605713,
+              "worldMax": 1.955120325088501
+            },
+            {
+              "row": 692,
+              "count": 69,
+              "worldMin": 1.9636902809143066,
+              "worldMax": 1.9663993120193481
+            },
+            {
+              "row": 694,
+              "count": 68,
+              "worldMin": 1.9693377017974854,
+              "worldMax": 1.9720429182052612
+            },
+            {
+              "row": 697,
+              "count": 68,
+              "worldMin": 1.97784423828125,
+              "worldMax": 1.9806631803512573
+            },
+            {
+              "row": 680,
+              "count": 67,
+              "worldMin": 1.9296343326568604,
+              "worldMax": 1.9323991537094116
+            },
+            {
+              "row": 684,
+              "count": 64,
+              "worldMin": 1.9409562349319458,
+              "worldMax": 1.943765640258789
+            },
+            {
+              "row": 681,
+              "count": 63,
+              "worldMin": 1.9324586391448975,
+              "worldMax": 1.9350436925888062
+            },
+            {
+              "row": 696,
+              "count": 63,
+              "worldMin": 1.9750499725341797,
+              "worldMax": 1.9777766466140747
+            },
+            {
+              "row": 683,
+              "count": 61,
+              "worldMin": 1.9380879402160645,
+              "worldMax": 1.9408931732177734
+            },
+            {
+              "row": 689,
+              "count": 57,
+              "worldMin": 1.9551910161972046,
+              "worldMax": 1.9579627513885498
+            },
+            {
+              "row": 678,
+              "count": 45,
+              "worldMin": 1.9250059127807617,
+              "worldMax": 1.9267131090164185
+            },
+            {
+              "row": 699,
+              "count": 41,
+              "worldMin": 1.983535885810852,
+              "worldMax": 1.9848978519439697
+            }
+          ]
+        },
+        "currentSamples": 1
+      }
+    }
+  ],
+  "status": "pass"
+}

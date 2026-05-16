@@ -66,14 +66,14 @@ function autoAssignMaterial(color, type, fixtureGroup, boxIdx) {
     }
     return { roughness: 0.8, metalness: 0.0 }; // 保底
 }
-function addBox(min, max, emission, color, type, meta, cullable, fixtureGroup, roughness, metalness) {
+function addBox(min, max, emission, color, type, meta, cullable, fixtureGroup, roughness, metalness, rotateUV90) {
     var fg = fixtureGroup || 0;
     if (roughness === undefined || metalness === undefined) {
         var autoMat = autoAssignMaterial(color, type, fg, sceneBoxes.length);
         if (roughness === undefined) roughness = autoMat.roughness;
         if (metalness === undefined) metalness = autoMat.metalness;
     }
-    sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0, cullable: cullable || 0, fixtureGroup: fg, roughness: roughness, metalness: metalness });
+    sceneBoxes.push({ min, max, emission, color, type, meta: meta || 0, cullable: cullable || 0, fixtureGroup: fg, roughness: roughness, metalness: metalness, rotateUV90: rotateUV90 || 0 });
 }
 
 // R2-3 牆面 (fix10：地面/天花板 9 片化、四角牆裂)
@@ -248,9 +248,9 @@ const panelConfig1 = [
 
 // Config 2：9 片（北 3 灰水平 + 東 3 白 + 西 3 白）
 const panelConfig2 = [
-    { min: [-0.6, 0.585, -1.874], max: [0.6, 1.185, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N1 下層
-    { min: [-0.6, 1.255, -1.874], max: [0.6, 1.855, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N2 中層
-    { min: [-0.6, 1.925, -1.874], max: [0.6, 2.525, -1.756], color: C_GIK, meta: 0, cullable: 1 },      // N3 上層
+    { min: [-0.6, 0.585, -1.874], max: [0.6, 1.185, -1.756], color: C_GIK, meta: 0, cullable: 1, rotateUV90: 1 },      // N1 下層
+    { min: [-0.6, 1.255, -1.874], max: [0.6, 1.855, -1.756], color: C_GIK, meta: 0, cullable: 1, rotateUV90: 1 },      // N2 中層
+    { min: [-0.6, 1.925, -1.874], max: [0.6, 2.525, -1.756], color: C_GIK, meta: 0, cullable: 1, rotateUV90: 1 },      // N3 上層
     { min: [1.792, 0.795, -0.5525], max: [1.91, 1.995, 0.0475], color: C_WHITE, meta: 1, cullable: 1 },  // E1 東牆
     { min: [1.792, 0.655, 0.198], max: [1.91, 1.855, 0.798], color: C_WHITE, meta: 1, cullable: 1 },     // E2 東牆
     { min: [1.792, 0.795, 0.9485], max: [1.91, 1.995, 1.5485], color: C_WHITE, meta: 1, cullable: 1 },   // E3 東牆
@@ -391,7 +391,7 @@ function buildSceneBVH() {
         boxArr[(p + 3) * 4 + 0] = b.max[0]; boxArr[(p + 3) * 4 + 1] = b.max[1];
         boxArr[(p + 3) * 4 + 2] = b.max[2]; boxArr[(p + 3) * 4 + 3] = b.fixtureGroup || 0; // R2-14：裝置開關分群
         boxArr[(p + 4) * 4 + 0] = b.roughness; boxArr[(p + 4) * 4 + 1] = b.metalness;
-        boxArr[(p + 4) * 4 + 2] = 0; boxArr[(p + 4) * 4 + 3] = 0; // R2-18 保留槽位
+        boxArr[(p + 4) * 4 + 2] = b.rotateUV90 || 0; boxArr[(p + 4) * 4 + 3] = 0; // .b：GIK 橫擺面板 UV 旋轉旗標；.a R2-18 保留槽位
     }
     var boxDataTexture = new THREE.DataTexture(boxArr, BVH_TEX_W, 1, THREE.RGBAFormat, THREE.FloatType);
     boxDataTexture.wrapS = THREE.ClampToEdgeWrapping;
@@ -429,6 +429,7 @@ function updateBoxDataTexture() {
             boxArr[(p + 3) * 4 + 0] = b.max[0]; boxArr[(p + 3) * 4 + 1] = b.max[1];
             boxArr[(p + 3) * 4 + 2] = b.max[2]; boxArr[(p + 3) * 4 + 3] = b.fixtureGroup || 0;
             boxArr[(p + 4) * 4 + 0] = b.roughness; boxArr[(p + 4) * 4 + 1] = b.metalness;
+            boxArr[(p + 4) * 4 + 2] = b.rotateUV90 || 0;
         }
         pathTracingUniforms.tBoxDataTexture.value.needsUpdate = true;
     }
@@ -446,11 +447,11 @@ function applyPanelConfig(config) {
     // 4: 全吸音 + 軌道+廣角燈（冷暖有氣氛）
     if (config === 1) {
         panelConfig1.forEach(function (p) {
-            addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
+            addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable, 0, undefined, undefined, p.rotateUV90 || 0);
         });
     } else if (config === 2 || config === 3 || config === 4) {
         panelConfig2.forEach(function (p) {
-            addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable);
+            addBox(p.min, p.max, z3, p.color, 10, p.meta, p.cullable, 0, undefined, undefined, p.rotateUV90 || 0);
         });
     }
     // Cloud 吊頂板 + 吸頂燈撤場：config 3/4 同樣處理（全吸音環境）
@@ -862,7 +863,6 @@ let bloomIntensity = 0.025;
 //   層數多 → halo 廣、柔；少 → halo 集中、窄
 let bloomMipCount = 7;
 
-const MAX_SAMPLES = 1000;
 let uiLocked = false;
 let SNAPSHOT_CAPTURE_ENABLED = false;
 const SNAPSHOT_MILESTONES = [];
@@ -887,7 +887,6 @@ function makeFilename(spp) {
 }
 
 function captureSnapshot() {
-    if (!SNAPSHOT_CAPTURE_ENABLED) return null;
     renderer.setRenderTarget(null);
     renderer.render(screenOutputScene, orthoCamera);
     const offscreen = document.createElement('canvas');
@@ -4942,11 +4941,7 @@ window.updateSamplingControls = updateSamplingControls;
 
 function updateSnapshotControls() {
     const toggle = document.getElementById('btn-toggle-snapshots');
-    const manual = document.getElementById('btn-manual-capture');
-    const saveAll = document.getElementById('btn-save-all');
     if (toggle) toggle.textContent = SNAPSHOT_CAPTURE_ENABLED ? '快照：開' : '快照：關';
-    if (manual) manual.disabled = !SNAPSHOT_CAPTURE_ENABLED;
-    if (saveAll) saveAll.disabled = !SNAPSHOT_CAPTURE_ENABLED || snapshots.length === 0;
     updateSamplingControls();
 }
 
@@ -5004,27 +4999,41 @@ function resetRenderTimerForAccumulationRestart(nowMs) {
     window._renderTimer.pausedMs = 0;
 }
 
-function downloadAllSnapshots() {
-    if (!SNAPSHOT_CAPTURE_ENABLED) return;
-    snapshots.forEach((snap, i) => {
-        setTimeout(() => {
-            const a = document.createElement('a');
-            a.href = snap.src;
-            a.download = snap.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }, i * 300);
-    });
-}
-
 (function wireSnapshotButtons() {
     const toggle = document.getElementById('btn-toggle-snapshots');
     if (toggle) toggle.onclick = function () {
         setSnapshotCaptureEnabled(!SNAPSHOT_CAPTURE_ENABLED);
     };
-    const saveAll = document.getElementById('btn-save-all');
-    if (saveAll) saveAll.onclick = downloadAllSnapshots;
+    const sppCapInput = document.getElementById('input-spp-cap');
+    if (sppCapInput && typeof window.setSppCap === 'function' && typeof window.reportSppCap === 'function') {
+        const syncSppCapFromInput = function () {
+            const raw = parseInt(sppCapInput.value, 10);
+            if (!Number.isFinite(raw) || raw < 1) return false;
+            const report = window.setSppCap(raw);
+            sppCapInput.value = report.cap;
+            return true;
+        };
+        // 分頁複製情境：瀏覽器把使用者先前輸入的值還原到 input.value 的時機可能晚於本 IIFE，
+        // 所以在多個時機都嘗試同步，確保畫面顯示的 cap 與 JS 端 userSppCap 一致。
+        if (!syncSppCapFromInput()) sppCapInput.value = window.reportSppCap().cap;
+        const lateSync = function () {
+            const reported = window.reportSppCap();
+            const inputRaw = parseInt(sppCapInput.value, 10);
+            if (Number.isFinite(inputRaw) && inputRaw >= 1 && inputRaw !== reported.cap)
+                syncSppCapFromInput();
+        };
+        if (document.readyState === 'complete') lateSync();
+        else window.addEventListener('load', lateSync, { once: true });
+        window.addEventListener('pageshow', lateSync);
+        sppCapInput.addEventListener('change', syncSppCapFromInput);
+        sppCapInput.addEventListener('blur', syncSppCapFromInput);
+        sppCapInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                syncSppCapFromInput();
+                sppCapInput.blur();
+            }
+        });
+    }
     const manual = document.getElementById('btn-manual-capture');
     if (manual) manual.onclick = function () {
         const dataURL = captureSnapshot();
@@ -5159,11 +5168,13 @@ function switchCamera(preset) {
     cameraIsMoving = true;
     // R2-UI：瞬間清空累加 buffer，消除前視角殘影
     needClearAccumulation = true;
+    if (typeof scheduleHomeStudioAnimationFrame === 'function')
+        scheduleHomeStudioAnimationFrame();
 
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7-3-9-c1-floor-reflection-roughness-v1';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-static-east-hotfix-v2';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5430,10 +5441,23 @@ function initSceneData() {
     r738DefaultBakeAtlasTexture.generateMipmaps = false;
     r738DefaultBakeAtlasTexture.needsUpdate = true;
     pathTracingUniforms.tR738C1BakeAtlasTexture = { value: r738DefaultBakeAtlasTexture };
+    pathTracingUniforms.tR7310C1FullRoomDiffuseAtlasTexture = { value: r738DefaultBakeAtlasTexture };
+    pathTracingUniforms.uR7310C1FullRoomDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1FullRoomDiffuseReady = { value: 0.0 };
+    pathTracingUniforms.uR7310C1FloorDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1NorthWallDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1EastWallDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1RuntimeProbeMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution = { value: 512.0 };
+    pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 3.0 };
     pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
+    // R7-3.10 Phase 2 第三刀前 H7' / sprout-paste-inside-guard probe：
+    // 預設 0 = 完全不影響 paste 視覺；reportR738C1SproutPasteRuntimeProbe() 可暫時設為 1~4 取 readback。
+    pathTracingUniforms.uR738C1SproutPasteProbeMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePatchWorldBounds = { value: new THREE.Vector4(-1.0, 1.0, -1.0, 1.0) };
+    pathTracingUniforms.uR7310C1BakeFloorWorldBounds = { value: new THREE.Vector4(MIN_X, MAX_X, MIN_Z, MAX_Z) };
     pathTracingUniforms.uR739C1AccurateReflectionMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionReferenceMode = { value: 0.0 };
     pathTracingUniforms.uR739C1ReflectionSurfaceMaskMode = { value: 0.0 };
@@ -5814,6 +5838,64 @@ function syncFloorRoughnessActionWidth() {
     var width = Math.ceil(manualRect.right - controlsRect.left);
     if (Number.isFinite(width) && width > 0)
         roughness.style.width = width + 'px';
+}
+
+function refreshR7310SurfaceDiffuseButtons(report) {
+    var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
+    var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
+    var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
+    var floorActive = !!(report && report.floorEnabled);
+    var northActive = !!(report && report.northWallEnabled);
+    var eastActive = !!(report && report.eastWallEnabled);
+    if (floorBtn) {
+        floorBtn.textContent = floorActive ? '地板烘焙：開' : '地板烘焙：關';
+        floorBtn.classList.toggle('glow-white', floorActive);
+        floorBtn.title = floorActive
+            ? '全地板漫射使用 1000SPP 烘焙，反射仍即時計算'
+            : '地板回到 live path tracing';
+    }
+    if (northBtn) {
+        northBtn.textContent = northActive ? '北牆烘焙：開' : '北牆烘焙：關';
+        northBtn.classList.toggle('glow-white', northActive);
+        northBtn.title = northActive
+            ? '北牆漫射使用 1000SPP 烘焙'
+            : '北牆回到 live path tracing';
+    }
+    if (eastBtn) {
+        eastBtn.textContent = eastActive ? '東牆烘焙：開' : '東牆烘焙：關';
+        eastBtn.classList.toggle('glow-white', eastActive);
+        eastBtn.title = eastActive
+            ? '東牆漫射使用 1000SPP 烘焙'
+            : '東牆回到 live path tracing';
+    }
+}
+
+function bindR7310FullFloorDiffuseControls() {
+    var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
+    var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
+    var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
+    if (!floorBtn && !northBtn && !eastBtn) return;
+    var bindButton = function(btn, surfaceKey, setterName) {
+        if (!btn) return;
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig !== 'function' ||
+                typeof window[setterName] !== 'function')
+                return;
+            var current = window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+            var report = window[setterName](!current[surfaceKey]);
+            refreshR7310SurfaceDiffuseButtons(report);
+        }, false);
+    };
+    bindButton(floorBtn, 'floorEnabled', 'setR7310C1FloorDiffuseRuntimeEnabled');
+    bindButton(northBtn, 'northWallEnabled', 'setR7310C1NorthWallDiffuseRuntimeEnabled');
+    bindButton(eastBtn, 'eastWallEnabled', 'setR7310C1EastWallDiffuseRuntimeEnabled');
+    if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig === 'function')
+        refreshR7310SurfaceDiffuseButtons(window.reportR7310C1FullRoomDiffuseRuntimeConfig());
+}
+
+function refreshR7310FullFloorDiffuseButton(report) {
+    refreshR7310SurfaceDiffuseButtons(report);
 }
 
 // 強制重啟累加（即使已進入 1000 SPP 休眠也能即時刷新）
@@ -6881,7 +6963,7 @@ function initUI() {
     }
 
     // Pointer-lock guard for snapshot bar and actions（bug fix：chip 點選會觸發 pointer lock）
-    ['snapshot-controls', 'floor-roughness-actions', 'snapshot-bar', 'snapshot-actions'].forEach(function(id) {
+    ['snapshot-controls', 'floor-roughness-actions', 'r7310-full-floor-actions', 'snapshot-bar', 'snapshot-actions'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.addEventListener('mouseenter', function() { ableToEngagePointerLock = false; }, false);
@@ -6916,6 +6998,8 @@ function initUI() {
             if (uiLocked && document.pointerLockElement) document.exitPointerLock();
         }, false);
     }
+
+    bindR7310FullFloorDiffuseControls();
 
     // R4-4：BVH 指針策略綁定（拖動期鎖 + 指針放開 50 ms 防抖）
     // 投射燈間距 / 投射燈軌道 x / 廣角燈距 Cloud 邊距 3 條接 BVH
@@ -7014,13 +7098,18 @@ function updateVariablesAndUniforms() {
     let _elapsedMs;
     if (_samplingPausedForMetrics) {
         _elapsedMs = window._renderTimer.pauseStartMs - window._renderTimer.startMs - window._renderTimer.pausedMs;
-    } else if (sampleCounter >= MAX_SAMPLES) {
+    } else if (sampleCounter >= userSppCap) {
         if (!window._renderTimer.frozen) {
             window._renderTimer.finalMs = _nowT - window._renderTimer.startMs - window._renderTimer.pausedMs;
             window._renderTimer.frozen = true;
         }
         _elapsedMs = window._renderTimer.finalMs;
     } else {
+        if (window._renderTimer.frozen) {
+            window._renderTimer.startMs = _nowT - window._renderTimer.finalMs;
+            window._renderTimer.finalMs = 0;
+            window._renderTimer.frozen = false;
+        }
         _elapsedMs = _nowT - window._renderTimer.startMs - window._renderTimer.pausedMs;
     }
     const _totalSec = Math.floor(_elapsedMs / 1000);
@@ -7028,9 +7117,9 @@ function updateVariablesAndUniforms() {
     const _m = Math.floor((_totalSec % 3600) / 60);
     const _s = _totalSec % 60;
     const _timeStr = (_h > 0 ? _h + "h" : "") + String(_m).padStart(2, '0') + "m" + String(_s).padStart(2, '0') + "s";
-    var _hibernating = (sampleCounter >= MAX_SAMPLES && !cameraIsMoving);
+    var _hibernating = (sampleCounter >= userSppCap && !cameraIsMoving);
     if (_hibernating) window._fpsAcc.fps = 0;
-    var _displaySamples = _hibernating ? MAX_SAMPLES : sampleCounter;
+    var _displaySamples = _hibernating ? userSppCap : sampleCounter;
     cameraInfoElement.innerHTML = "FPS: " + window._fpsAcc.fps + " / FOV: " + worldCamera.fov + " / Samples: " + _displaySamples + " / 耗時: " + _timeStr + (_samplingPausedForMetrics ? " (暫停)" : "") + (_hibernating ? " (休眠)" : "") + getCloudVisibilityProbeLabel() + getCloudThetaImportanceShaderABLabel() + getCloudMisWeightProbeLabel();
 
 }

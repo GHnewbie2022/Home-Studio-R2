@@ -10,6 +10,11 @@
 *.bak-*
 *.backup
 *.orig
+textures/*.bak-pre-padding-fix
+
+# Local generated artifacts and bake/probe outputs.
+# Track intentionally kept evidence or baseline assets with `git add -f`.
+.omc/
 
 # Editor
 .vscode/

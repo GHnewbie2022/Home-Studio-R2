@@ -1,0 +1,27 @@
+{
+  "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
+  "packageStatus": "architecture_probe",
+  "runtimeScope": "c1_east_wall_diffuse_short_circuit",
+  "runtimeEnabledDefault": false,
+  "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260516-123227",
+  "batch": "east_wall",
+  "targetId": 1003,
+  "surfaceName": "c1_east_wall",
+  "requestedSamples": 1000,
+  "targetAtlasResolution": 1024,
+  "diffuseOnly": true,
+  "upscaled": false,
+  "worldBounds": {
+    "zMin": -1.874,
+    "zMax": 3.056,
+    "yMin": 0.0,
+    "yMax": 2.905,
+    "x": 1.91
+  },
+  "artifacts": {
+    "manifest": "manifest.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "coverageReport": "coverage-report.json",
+    "validationReport": "validation-report.json"
+  }
+}

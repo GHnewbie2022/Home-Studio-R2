@@ -1,0 +1,22 @@
+{
+  "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+  "config": 1,
+  "enabled": true,
+  "ready": true,
+  "applied": true,
+  "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260513-165203",
+  "bakedSurfaceHitCount": 96174,
+  "bakedSurfaceShortCircuitCount": 190562,
+  "status": "pass",
+  "surfaceClassSummary": {
+    "floor": 96174,
+    "gik": 39755,
+    "ceiling": 141226,
+    "wall": 484263,
+    "object": 160182,
+    "background": 0,
+    "width": 1280,
+    "height": 720
+  },
+  "probePixels": 921600
+}

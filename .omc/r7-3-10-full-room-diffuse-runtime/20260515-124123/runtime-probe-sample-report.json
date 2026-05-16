@@ -1,0 +1,1551 @@
+{
+  "version": "r7-3-10-c1-runtime-probe-sample",
+  "samplePointSpace": "canvasCssPixel",
+  "samplePoints": [
+    {
+      "x": 378,
+      "y": 237
+    },
+    {
+      "x": 378,
+      "y": 304
+    },
+    {
+      "x": 378,
+      "y": 370
+    }
+  ],
+  "reports": [
+    {
+      "cameraCase": "normal_floor_view",
+      "probeLevel": 1,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 124790,
+        "bakedSurfaceShortCircuitCount": 234982,
+        "northWallSurfaceHitCount": 366058,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 366058,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 1,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "surfaceClass",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.543816328048706,
+            "g": 0.15171633660793304,
+            "b": 0.015084760263562202,
+            "decoded": {
+              "r": 0.543816328048706,
+              "g": 0.15171633660793304,
+              "b": 0.015084760263562202
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 124790,
+          "gik": 53286,
+          "ceiling": 0,
+          "wall": 366058,
+          "object": 377466,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "normal_floor_view",
+      "probeLevel": 2,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 124790,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 366058,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 366058,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 2,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "visibleNormal",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.543816328048706,
+            "g": 0.15171633660793304,
+            "b": 0.015084760263562202,
+            "decoded": {
+              "x": 0.08763265609741211,
+              "y": -0.6965673267841339,
+              "z": -0.9698304794728756
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 124790,
+          "gik": 53286,
+          "ceiling": 0,
+          "wall": 366058,
+          "object": 377466,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "normal_floor_view",
+      "probeLevel": 3,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 124790,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 366058,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 366058,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 3,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "visiblePosY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.543816328048706,
+            "g": 0.15171633660793304,
+            "b": 0.015084760263562202,
+            "decoded": {
+              "y": 0.004381632804870604
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.5000000596046448,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 5.960464476151284e-9
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.5000001788139343,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 1.7881393435392745e-8
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 124790,
+          "gik": 53286,
+          "ceiling": 0,
+          "wall": 366058,
+          "object": 377466,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "normal_floor_view",
+      "probeLevel": 4,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 124790,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 366058,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 366058,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 4,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "rayDirY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.543816328048706,
+            "g": 0.15171633660793304,
+            "b": 0.015084760263562202,
+            "decoded": {
+              "y": 0.08763265609741211
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.2694407105445862,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.46111857891082764
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.23537614941596985,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.5292477011680603
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 124790,
+          "gik": 53286,
+          "ceiling": 0,
+          "wall": 366058,
+          "object": 377466,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "normal_floor_view",
+      "probeLevel": 5,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 124790,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 366058,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 366058,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 5,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "isRayExiting",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.543816328048706,
+            "g": 0.15171633660793304,
+            "b": 0.015084760263562202,
+            "decoded": {
+              "isRayExiting": true
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": false
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": false
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 124790,
+          "gik": 53286,
+          "ceiling": 0,
+          "wall": 366058,
+          "object": 377466,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "normal_floor_view",
+      "probeLevel": 6,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 124790,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 366058,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 366058,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 6,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "cameraPosY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.543816328048706,
+            "g": 0.15171633660793304,
+            "b": 0.015084760263562202,
+            "decoded": {
+              "y": 2.131448984146118
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.31666669249534607,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 1.4500000774860382
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.31666669249534607,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 1.4500000774860382
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 124790,
+          "gik": 53286,
+          "ceiling": 0,
+          "wall": 366058,
+          "object": 377466,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_level_view",
+      "probeLevel": 1,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 419110,
+        "bakedSurfaceShortCircuitCount": 879262,
+        "northWallSurfaceHitCount": 68468,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 68468,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 1,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "surfaceClass",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 419110,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 68468,
+          "object": 434022,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_level_view",
+      "probeLevel": 2,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 419110,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 68468,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 68468,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 2,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "visibleNormal",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 419110,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 68468,
+          "object": 434022,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_level_view",
+      "probeLevel": 3,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 419110,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 68468,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 68468,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 3,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "visiblePosY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.05
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.05
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.05
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 419110,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 68468,
+          "object": 434022,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_level_view",
+      "probeLevel": 4,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 419110,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 68468,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 68468,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 4,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "rayDirY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.38752031326293945,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.2249593734741211
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.3466872572898865,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.30662548542022705
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.30973345041275024,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.3805330991744995
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 419110,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 68468,
+          "object": 434022,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_level_view",
+      "probeLevel": 5,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 419110,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 68468,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 68468,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 5,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "isRayExiting",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": true
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": true
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": true
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 419110,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 68468,
+          "object": 434022,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_level_view",
+      "probeLevel": 6,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 419110,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 68468,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 68468,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 6,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "cameraPosY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 0.5
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 0.5
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 0.5
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 419110,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 68468,
+          "object": 434022,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_up_view",
+      "probeLevel": 1,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 921600,
+        "bakedSurfaceShortCircuitCount": 921600,
+        "northWallSurfaceHitCount": 0,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 0,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 1,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "surfaceClass",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 1,
+            "b": 0,
+            "decoded": {
+              "r": 0,
+              "g": 1,
+              "b": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 921600,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 0,
+          "object": 0,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_up_view",
+      "probeLevel": 2,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 921600,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 0,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 0,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 2,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "visibleNormal",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.5,
+            "g": 1,
+            "b": 0.5,
+            "decoded": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 921600,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 0,
+          "object": 0,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_up_view",
+      "probeLevel": 3,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 921600,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 0,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 0,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 3,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "visiblePosY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.05
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.05
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.05
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 921600,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 0,
+          "object": 0,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_up_view",
+      "probeLevel": 4,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 921600,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 0,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 0,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 4,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "rayDirY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0.12035143375396729,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.7592971324920654
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0.09586399793624878,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.8082720041275024
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0.07584822177886963,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": -0.8483035564422607
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 921600,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 0,
+          "object": 0,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_up_view",
+      "probeLevel": 5,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 921600,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 0,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 0,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 5,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "isRayExiting",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": true
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": true
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 1,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "isRayExiting": true
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 921600,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 0,
+          "object": 0,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    },
+    {
+      "cameraCase": "inside_floor_up_view",
+      "probeLevel": 6,
+      "report": {
+        "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+        "config": 1,
+        "probeTarget": "floor",
+        "enabled": true,
+        "floorEnabled": true,
+        "northWallEnabled": false,
+        "ready": true,
+        "applied": true,
+        "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+        "northWallPackageDir": null,
+        "eastWallPackageDir": null,
+        "bakedSurfaceHitCount": 921600,
+        "bakedSurfaceShortCircuitCount": 0,
+        "northWallSurfaceHitCount": 0,
+        "northWallShortCircuitCount": 0,
+        "eastWallSurfaceHitCount": 0,
+        "eastWallShortCircuitCount": 0,
+        "probeLevel": 6,
+        "samplePointSpace": "canvasCssPixel",
+        "decodeMode": "cameraPosY",
+        "samplePoints": [
+          {
+            "x": 378,
+            "y": 237,
+            "rtPixel": {
+              "x": 378,
+              "y": 188
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 0.5
+            }
+          },
+          {
+            "x": 378,
+            "y": 304,
+            "rtPixel": {
+              "x": 378,
+              "y": 121
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 0.5
+            }
+          },
+          {
+            "x": 378,
+            "y": 370,
+            "rtPixel": {
+              "x": 378,
+              "y": 55
+            },
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "decoded": {
+              "y": 0.5
+            }
+          }
+        ],
+        "status": "pass",
+        "surfaceClassSummary": {
+          "floor": 921600,
+          "gik": 0,
+          "ceiling": 0,
+          "wall": 0,
+          "object": 0,
+          "background": 0,
+          "width": 1280,
+          "height": 720
+        },
+        "probePixels": 921600,
+        "currentSamples": 1
+      }
+    }
+  ],
+  "status": "pass"
+}

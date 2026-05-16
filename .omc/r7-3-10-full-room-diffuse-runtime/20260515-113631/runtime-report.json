@@ -1,0 +1,31 @@
+{
+  "version": "r7-3-10-c1-full-room-diffuse-runtime-probe",
+  "config": 1,
+  "probeTarget": "floor",
+  "enabled": true,
+  "floorEnabled": true,
+  "northWallEnabled": false,
+  "ready": true,
+  "applied": true,
+  "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-112620",
+  "northWallPackageDir": null,
+  "eastWallPackageDir": null,
+  "bakedSurfaceHitCount": 96170,
+  "bakedSurfaceShortCircuitCount": 190560,
+  "northWallSurfaceHitCount": 484263,
+  "northWallShortCircuitCount": 0,
+  "eastWallSurfaceHitCount": 484263,
+  "eastWallShortCircuitCount": 0,
+  "status": "pass",
+  "surfaceClassSummary": {
+    "floor": 96170,
+    "gik": 39755,
+    "ceiling": 141226,
+    "wall": 484263,
+    "object": 160186,
+    "background": 0,
+    "width": 1280,
+    "height": 720
+  },
+  "probePixels": 921600
+}

@@ -1,7 +1,7 @@
 # Debug Log Index
 
 > 目的：讓接手代理先用本檔路由，再回 `Debug_Log.md` 讀必要章節。`Debug_Log.md` 保留為完整總帳，不建議每次接手全讀。
-> 更新日：2026-05-08
+> 更新日：2026-05-16
 
 ---
 
@@ -68,6 +68,80 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 ---
 
 ## 目前優先路線
+
+### R7-3.10 static diffuse bake expansion current line
+
+```
+必讀：
+  - `docs/superpowers/plans/2026-05-16-r7-3-10-static-bake-expansion-codex-handoff.md`
+  - `docs/superpowers/plans/2026-05-16-r7-3-10-static-diffuse-bake-expansion-investigation-opus.md`
+  - `docs/superpowers/plans/2026-05-15-r7-3-10-c1-1024-bake-resolution-plan.md`
+  - `docs/SOP/R7：採樣演算法升級.md` 的 `2026-05-16 目前共識：先收 hybrid room，再談架構加速`
+  - `Debug_Log.md` 的 `R7-3.10-static-diffuse-bake-expansion-east-wall-1024-runtime`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`
+
+目前狀態：
+  - floor / north 1024 bake 已驗收，兩條衣櫃黑線看不出來。
+  - east wall 第一批 1024 runtime 已接入，pointer 指到 `.omc/r7-3-10-full-room-diffuse-bake/20260516-123227/`。
+  - floor / north / east 三個 runtime slot 目前同為 1024，合併 atlas 為三格。
+  - UI 目前拆成三顆按鈕：`地板烘焙`、`北牆烘焙`、`東牆烘焙`。
+  - C runtime fallback 已移除；不回 fallback，不改鄰格取樣。
+  - Option A / Option B bake 防污染保護已保留。
+  - partial bake + LIVE 局部偏亮已定性為深度相加的過渡假象。
+  - 正式驗收基準是全相關靜態漫射面 bake vs 全 LIVE。
+  - 目前主線先在現有 Home Studio 架構收成快速預覽 hybrid room。
+  - hybrid room 技術分工：靜態漫射面讀 bake；反射保留 LIVE path tracing。
+  - 第一批新增面是 east wall；後續逐批 west / south / ceiling。
+  - 快速預覽成功後，再開高品質 bake 生產線與 WebGPU / Metal / Blender 加速候選評估。
+  - PlayCanvas 只列展示承載候選，等 baked room 穩定後再談。
+```
+
+### R7-3.10 C1 H5 / H3' 1024 bake resolution closeout
+
+```
+必讀：
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`
+  - `docs/superpowers/plans/2026-05-15-r7-3-10-c1-1024-bake-resolution-plan.md`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-second-knife-bprime-h7`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-first-knife-h8-cprime`
+
+目前狀態：
+  - H8 runtime gate、C' bake UV、H7 exiting-hit guard、H7' camera-y guard 都已完成且不回退。
+  - C runtime fallback 實驗已移除；不得重啟作為正式修法。
+  - floor / north 皆已烤 1024，runtime pointer 皆指向 1024 package。
+  - floor 1024 package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-215727/`
+  - north 1024 package：`.omc/r7-3-10-full-room-diffuse-bake/20260515-212509/`
+  - 512 pointer 備份：`.omc/r7-3-10-1024-pointer-backups/20260515-212327/`
+  - 使用者肉眼確認：東北衣櫃底部南側、頂部北側兩條黑線在 1024 看不出來。
+  - 1024 鎖為目前 floor / north 正式候選；2048 本輪不推進，因 north nearest interval 預估會相位退化。
+  - partial bake + LIVE 的偏亮現象已定性為深度相加的過渡假象。
+  - 驗收基準改為全相關靜態漫射面 bake vs 全 LIVE。
+  - bake 防污染 Option A snapshot 已保留；Option B captureMode guard 已加，runtime smoke 數值不變。
+  - 後續方向：往全相關靜態漫射面烘焙推進，減少 partial bake 與 LIVE 的交界。
+```
+
+### R7-3.10 C1 seam debug Phase 1 closeout
+
+```
+必讀：
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md`
+  - `docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md`
+  - `Debug_Log.md` 的 `R7-3.10-c1-seam-debug-phase1-step-f-complete`
+
+目前狀態：
+  - Phase 1 A / B / C / D / E / F 已完成。
+  - H8 / H7 / H5 / H3' 成立，H1b 泛化 U 軸撤回，H4 由使用者多視角截圖正式排除。
+  - 地板 package 回到 `.omc/r7-3-10-full-room-diffuse-bake/20260513-165203/`。
+  - 北牆 package 回到 `.omc/r7-3-10-full-room-diffuse-bake/20260513-210338/`。
+  - 東牆 package `.omc/r7-3-10-full-room-diffuse-bake/20260513-214539/` 先保留為歷史產物，runtime 暫不接入。
+  - runtime 合併 atlas 目前只有兩格：地板、北牆。
+  - UI 目前拆成兩顆按鈕：`地板烘焙：關 / 開`、`北牆烘焙：關 / 開`。
+  - contact invalid region + flood-fill dilation 路線已判定退化，後續不要延續。
+  - 失敗證據包：東牆 `20260513-221112`、地板 `20260513-222644`、北牆 `20260513-222958`。
+  - Phase 2 設計已進入第一刀，請優先讀上方 Phase 2 first knife。
+```
 
 ### R7-3 quick preview terminal fixed curve closeout
 
@@ -316,13 +390,15 @@ R7 採樣升級：
   - R7-3.8 C1 floor-center paste preview 已把正式 atlas 貼回 C1 畫面；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-floor-patch-paste-preview`
   - R7-3.8 C1 diffuse-only paste fix 已移除 floor patch 內的 ceiling-lamp reflection spike，補休眠 framePending=false、keyboard idle、snapshot UI、1000SPP 顯示、floor roughness UI 驗證；後續使用者肉眼確認 350SPP 已難見界線、1000SPP 隱形，diffuse bake 架構通過 floor-center patch 驗收，反射另開處理線；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-diffuse-paste-fix1`
   - R7-3.8 C1 嫩芽成功版已覆蓋為「diffuse bake + 可用 floor roughness UI」版本；右緣對齊手動存圖，數字欄不壓住滑桿，成功 tag `r7-3-8-c1-diffuse-bake-success-20260511` 代表這個恢復版；讀 `Debug_Log.md` 的 `R7-3.8-c1-diffuse-bake-sprout-ui-recovery`
+  - R7-3.10 C1 full-room diffuse bake 已完成 Phase 2 第一刀 H8 / C'、第二刀 H7、第三刀 H7'，並以 1024 bake resolution 收斂 H5 / H3' 兩條衣櫃黑線；現況先讀 `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`、`docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md` 與 `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`。
+  - R7-3.10 static bake expansion 已完成 east wall hotfix：舊 east package 全黑已換成 `.omc/r7-3-10-full-room-diffuse-bake/20260516-123227/`，runtime baked diffuse short-circuit 限制為 `bounces == 0`，secondary / LIVE 反彈維持 live path tracing；讀 `Debug_Log.md` 的 `R7-3.10-static-bake-expansion-east-wall-hotfix`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`
   - R7-3.9 C1 舊 sprout-only package `.omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/` 已判定為 camera-space reference，不是 runtime 可接受反射包；後續必須改走 surface position + outgoing direction 或 true planar reflection pass。
   - R7-3.9 C1 surrounding floor roughness 0.1 live reflection fix 與 roughness gate fix 都已被 reset 收攏成歷史紀錄；目前畫面基準只保留 R7-3.8 C1 嫩芽純漫射 bake。
   - R7-3.9 C1 large-floor reflection cache double-division fix 只保留為歷史紀錄；`.omc/r7-3-9-c1-accurate-reflection-bake/20260511-235900/` 已不可用，後續不得沿用此路線；讀 `Debug_Log.md` 的 `R7-3.9-c1-floor-reflection-cache-double-division-fix`
-  - R7-3.9 Config 1 current-view sprout reflection route 已形成嫩芽 V2 checkpoint；漫射使用 R7-3.8 成功包，反射使用 R7-3.9 current-view route。讀 `Debug_Log.md` 的 `R7-3.9-config1-sprout-v2-success-checkpoint`。
-  - R7-3.9 Config 1 current-view sprout reflection route 曾只在 validation helper 內啟用，導致手動畫面看不到嫩芽反射；已補 `r739C1CurrentViewReflectionPreviewEnabled = true`，讀 `Debug_Log.md` 的 `R7-3.9-config1-current-view-sprout-reflection-preview-enable-fix`。
+  - R7-3.9 Config 1 current-view sprout V2 已被 1SPP A/B 肉眼驗收推翻；A 漫射乾淨，B 原V2 與 C 反射同樣 noisy，D 證明中央只是被固定 roughness 0.1。讀 `Debug_Log.md` 的 `R7-3.9-config1-sprout-v2-ab-invalidated`。
+  - R7-3.9 Config 1 current-view sprout reflection route 曾只在 validation helper 內啟用，後續又漏 startup uniform sync；這些只屬於診斷歷史，不能當 V2 成功證據。
   - R7-3.9 Config 1 current-view preview 預設 true 後仍漏了啟動 uniform 同步，手動畫面會保持 `uR739C1CurrentViewReflectionMode = 0`；已在 `initTHREEjs()` 補同步，讀 `Debug_Log.md` 的 `R7-3.9-config1-current-view-sprout-reflection-startup-uniform-sync-fix`。
 ```
 

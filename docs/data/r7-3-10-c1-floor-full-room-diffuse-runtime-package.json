@@ -1,0 +1,27 @@
+{
+  "version": "r7-3-10-full-room-diffuse-bake-architecture-probe",
+  "packageStatus": "architecture_probe",
+  "runtimeScope": "c1_floor_full_room_diffuse_short_circuit",
+  "runtimeEnabledDefault": false,
+  "packageDir": ".omc/r7-3-10-full-room-diffuse-bake/20260515-215727",
+  "batch": "floor",
+  "targetId": 1001,
+  "surfaceName": "c1_floor_full_room",
+  "requestedSamples": 1000,
+  "targetAtlasResolution": 1024,
+  "diffuseOnly": true,
+  "upscaled": false,
+  "worldBounds": {
+    "xMin": -2.11,
+    "xMax": 2.11,
+    "zMin": -2.074,
+    "zMax": 3.256,
+    "y": 0.01
+  },
+  "artifacts": {
+    "manifest": "manifest.json",
+    "atlasPatch0": "atlas-patch-000-rgba-f32.bin",
+    "coverageReport": "coverage-report.json",
+    "validationReport": "validation-report.json"
+  }
+}

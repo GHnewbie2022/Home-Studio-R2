@@ -5,7 +5,7 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1">
 		<link rel="icon" href="data:,">
-		<link href="css/default.css?v=r7-3-9-c1-floor-reflection-roughness-v1" rel="stylesheet"/>
+		<link href="css/default.css?v=r7310-static-east-hotfix-v2" rel="stylesheet"/>
 
 		<script type="importmap">
 		{
@@ -49,6 +49,11 @@
 			<div id="floor-roughness-actions" class="snapshot-action-roughness">
 				<div id="slider-floor-roughness"></div>
 			</div>
+			<div id="r7310-full-floor-actions" class="r7310-full-floor-actions">
+				<button class="snapshot-action-btn" id="btn-r7310-floor-diffuse">地板烘焙：關</button>
+				<button class="snapshot-action-btn" id="btn-r7310-north-wall-diffuse">北牆烘焙：關</button>
+				<button class="snapshot-action-btn" id="btn-r7310-east-wall-diffuse">東牆烘焙：關</button>
+			</div>
 			<div id="snapshot-bar"></div>
 			<div id="snapshot-actions">
 				<button class="snapshot-action-btn" id="btn-toggle-snapshots">快照：關</button>
@@ -56,7 +61,10 @@
 				<button class="snapshot-action-btn" id="btn-toggle-sampling">暫停採樣</button>
 				<button class="snapshot-action-btn" id="btn-step-back-sampling">上一個採樣</button>
 				<button class="snapshot-action-btn" id="btn-step-sampling">下一個採樣</button>
-				<button class="snapshot-action-btn" id="btn-save-all">📦 打包下載全部</button>
+				<label class="snapshot-action-spp-cap" for="input-spp-cap">
+					<span>SPP 上限</span>
+					<input type="number" id="input-spp-cap" min="1" step="1" value="1000">
+				</label>
 			</div>
 		</div>
 		<img id="snapshot-preview" src="" alt="snapshot">
@@ -304,9 +312,9 @@
 		<script defer src="js/MobileJoystickControls.js"> </script>
 		<script defer src="js/PathTracingCommon.js"> </script>
 		<script defer src="js/BVH_Acc_Structure_Iterative_Fast_Builder.js"> </script>
-		<script defer src="js/InitCommon.js?v=r7-3-9-c1-floor-reflection-roughness-v1"> </script>
+		<script defer src="js/InitCommon.js?v=r7310-static-east-hotfix-v2"> </script>
 
-			<script defer src="js/Home_Studio.js?v=r7-3-9-c1-floor-reflection-roughness-v1"> </script>
+			<script defer src="js/Home_Studio.js?v=r7310-static-east-hotfix-v2"> </script>
 
 	</body>
 </html>

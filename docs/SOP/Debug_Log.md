@@ -2,9 +2,421 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前 R7-3 接手重點：R7-3.9 Config 1 current-view 嫩芽反射路線已通過自動驗證與使用者畫面驗收，形成「嫩芽 V2」checkpoint；先讀本檔 `R7-3.9-config1-sprout-v2-success-checkpoint` 與 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`。
+> 目前接手重點：R7-3.10 C1 seam debug Phase 2 的 H7 / H7' 內部視角發光已修；floor / north 的 H5 / H3' 衣櫃邊界黑線已改用 1024 bake atlas 解決，使用者肉眼確認兩條黑線看不出來。floor / north / east runtime pointer 目前都指向 1024 package。C runtime fallback 實驗已移除，不回退。partial bake 與 LIVE 並存時的局部偏亮已定性為深度相加的過渡假象；後續驗收基準改為「全相關靜態漫射面 bake vs 全 LIVE」。目前已完成 east wall 第一批接入；下一批往 west / south / ceiling 逐批擴張。架構 roadmap：先在現有架構收成快速預覽 hybrid room；成功後再處理高品質 bake 生產線，WebGPU / Metal / Blender 列加速候選，PlayCanvas 列展示承載候選。
 
 ---
+
+## R7-3.10｜Static diffuse bake expansion roadmap consolidation
+
+```yaml
+- id: R7-3.10-static-diffuse-bake-expansion-roadmap
+  date: 2026-05-16
+  type: docs_roadmap_consolidation
+  scope:
+    - 整理 R7-3.10 之後的 hybrid room / 架構升級共識。
+    - 更新 SOP 入口，降低接棒代理讀到舊 R7-2 / WebGPU 立即搬遷資訊的機率。
+  current_line:
+    - 先在現有 Home Studio 架構內完成快速預覽 hybrid room。
+    - 靜態漫射面讀 bake。
+    - 反射保留 LIVE path tracing。
+    - floor / north 1024 bake 已驗收。
+    - 下一批從 east wall 開始，後續逐批 west / south / ceiling。
+  brightness_difference_policy:
+    - partial bake + LIVE 局部偏亮是深度相加的過渡假象。
+    - partial bake 畫面只作診斷。
+    - 正式驗收基準是全相關靜態漫射面 bake vs 全 LIVE。
+  architecture_roadmap:
+    - 快速預覽 hybrid room 成功後，先量化趨近真實模式 bake 成本。
+    - 下一層議題是高品質 bake 生產線：分面、分燈、分批、可續跑、可快取。
+    - WebGPU / Metal / Blender 只在高品質 bake 成本成為主要瓶頸後評估。
+    - PlayCanvas 用於後續展示承載，不作為目前光學 debug 工具。
+  docs_updated:
+    - docs/SOP/R0：全景地圖.md
+    - docs/SOP/R7：採樣演算法升級.md
+    - docs/SOP/Debug_Log_Index.md
+    - docs/架構升級計畫/混音室數位孿生_光照採購導向_ThreeJS_WebGPU架構升級與實作SOP.md
+    - docs/AI交接必讀.md
+```
+
+---
+
+## R7-3.10｜Static diffuse bake expansion east wall 1024 runtime
+
+```yaml
+- id: R7-3.10-static-diffuse-bake-expansion-east-wall-1024-runtime
+  date: 2026-05-16
+  type: diffuse_bake_runtime_expansion
+  branch: codex/r7-3-10-static-bake-expansion
+  scope:
+    - First static diffuse bake expansion batch after floor / north 1024 closeout.
+    - East wall runtime re-entry with the current 1024 atlas family.
+    - Floor / north 1024 runtime guard preservation.
+  source_docs:
+    - docs/superpowers/plans/2026-05-16-r7-3-10-static-bake-expansion-codex-handoff.md
+    - docs/superpowers/plans/2026-05-16-r7-3-10-static-diffuse-bake-expansion-investigation-opus.md
+  implementation:
+    - Added uR7310C1EastWallDiffuseMode.
+    - r7310C1FullRoomDiffuseShortCircuit() now uses east wall slot 2 only when the east per-surface flag is active.
+    - buildR7310C1CombinedDiffuseRuntimeTexture() now builds a 3-slot atlas: floor, north wall, east wall.
+    - Runtime loaders keep a shared resolution guard across all loaded slots.
+    - UI now has independent buttons for floor, north wall, and east wall.
+    - reportR7310C1FullRoomDiffuseRuntimeConfig() now reports eastWallEnabled, eastWallReady, eastWallPackageDir, and uniformEastWallMode.
+    - reportR7310C1FullRoomDiffuseRuntimeProbe() can target east wall runtime directly.
+    - Home_Studio cache-bust tag updated to r7310-static-east-hotfix-v2.
+  packages:
+    - floor_1024: .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/
+    - north_1024: .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/
+    - east_1024: .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+    - old_east_512_history: .omc/r7-3-10-full-room-diffuse-bake/20260513-214539/
+  pointer_state:
+    - docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json -> floor_1024.
+    - docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json -> north_1024.
+    - docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json -> east_1024.
+    - All three runtime pointers now use targetAtlasResolution: 1024.
+  east_1024_capture:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=east-wall --atlas-resolution=1024 --target-samples=1000 --timeout-ms=900000 --http-port=9002 --cdp-port=9333
+    - status: pass
+    - samples: 1000
+    - upscaled: false
+    - diffuseOnly: true
+    - validTexelRatio: 1
+    - coveredSurfaceNames: [c1_east_wall]
+    - missingSurfaceNames: [c1_south_wall, c1_west_wall]
+    - finalC1Coverage: false
+  runtime_validation:
+    - contract: node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - syntax_init: node --check js/InitCommon.js
+    - syntax_home: node --check js/Home_Studio.js
+    - syntax_runner: node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - ui_toggle: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-092254/ status pass
+    - east_runtime: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123701/ status pass, eastWallSurfaceHitCount=699773, eastWallShortCircuitCount=699773
+    - floor_runtime_regression: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123351/ status pass, bakedSurfaceHitCount=96170, bakedSurfaceShortCircuitCount=95909
+    - north_runtime_regression: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123353/ status pass, northWallSurfaceHitCount=528987, northWallShortCircuitCount=480847
+  guardrails_kept:
+    - C runtime fallback remains removed.
+    - Neighbor-cell sampling remains unused.
+    - Floor / north 1024 packages and pointer resolution remain intact.
+    - Option B capture-mode guard remains active.
+    - Partial bake brightness remains diagnostic only.
+  next:
+    - Ask user for same-view visual acceptance of floor / north / east hybrid room.
+    - Continue west / south / ceiling only after this east batch is accepted.
+```
+
+---
+
+## GIK｜北牆橫擺面板 UV 旋轉 + 貼圖頂底偽影修補
+
+```yaml
+- id: gik-north-rotate-uv-r4
+  date: 2026-05-15
+  type: shader_uv_rotation + texture_padding_repair
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  symptom:
+    - Config 2/3/4 北牆三片橫擺 GIK（N1/N2/N3，X 軸 1.2 m × Y 軸 0.6 m）正面 LOGO 與 GEMINI 標誌被水平拉寬、垂直壓縮。
+    - 修旋轉後出現新症狀：橫擺 GIK 上下側面與正面交界、東邊（或旋轉方向反向時的西邊）有白色 / 灰色細邊。
+    - C1 直擺 GIK（E2/W2 東西牆）頂邊也有同類白邊。
+    - C3/C4 天花板 Cloud GIK 北端邊也有白邊。
+  root_cause:
+    - shader UV 邏輯 R2-LOGO-FIX 為「直擺面板」寫死（U→box X 軸、V→box Y 軸、薄軸取貼圖中央細條）；R6-3 將北牆 GIK 從一片直擺 N_v 改成三片橫擺 N1/N2/N3 後，UV 沒對應旋轉，1440×2912 直立貼圖被映射到 X 長 Y 短的橫擺面板上必然變形。
+    - 貼圖 textures/gik244_grey.jpeg 與 gik244_white.jpeg 上下邊緣留有原圖製作時的 padding 偽影：grey 頂部 row 0~4 漸層 237→136、底部 row 2907~2911 跳變 77→47→60→112；white 頂部 row 0~8 漸層 241→208、底部 row 2907~2911 跳變 167→153→167→205→198。R2-LOGO-FIX 採貼圖整條 0~1 時必然碰到這幾 px，旋轉後位置從不易察覺處（直擺時）甩到顯眼處（橫擺與天花板）。
+  implementation:
+    - js/Home_Studio.js addBox 簽名新增 rotateUV90 參數，箱體屬性傳入。
+    - js/Home_Studio.js panelConfig2 N1/N2/N3 三片各加 rotateUV90: 1，其他箱體預設 0。
+    - js/Home_Studio.js applyPanelConfig 兩條 forEach 透傳 p.rotateUV90 || 0。
+    - js/Home_Studio.js buildSceneBVH / updateBoxDataTexture 把 b.rotateUV90 寫入 pixel 4 的 .b 槽位（R2-18 保留欄位）。
+    - shaders/Home_Studio_Fragment.glsl 新增全域 hitRotateUV90，fetchBoxData 多 out 一個 rotateUV90 讀 p4.z，SceneIntersect 防漏寫預設 0、命中時寫入 hit。
+    - shaders/Home_Studio_Fragment.glsl GIK ACOUSTIC_PANEL 分支三個 hitNormal 子分支結束後加入整體 90° 旋轉：vec2 rel = uv - 0.5; uv = vec2(0.5 - rel.y, 0.5 + rel.x); 三個面同步翻轉維持 R2-LOGO-FIX 接縫關係。
+    - textures/gik244_grey.jpeg 頂部 row 0~4 用 row 5~9 mirror、底部 row 2907~2911 用 row 2902~2906 mirror（PIL JPEG quality 95 subsampling 0 重存）。
+    - textures/gik244_white.jpeg 頂部 row 0~8 用 row 9~17 mirror（fade 較寬）、底部 row 2907~2911 用 row 2902~2906 mirror。
+    - 原貼圖各備份於 .bak-pre-padding-fix。
+    - Home_Studio.html + Home_Studio.js cache-buster 升到 gik-north-rotate-uv-r4。
+  verification:
+    - Config 1 (C1)：E2/W2/N_v 三片直擺灰色 GIK 與舊版視覺相同（迴歸），無白邊。
+    - Config 2 (C2)：N1/N2/N3 橫擺灰色 GIK 順時針 90° 旋轉、無拉伸、無白邊；E1-E3/W1-W3 六片白色 GIK 無白邊。
+    - Config 3/4 (C3/C4)：天花板 Cloud C1-C6 灰色 GIK 北端與南端皆無白邊。
+    - 使用者實機四個 Config 全驗收通過。
+  pitfalls:
+    - 第一次嘗試把旋轉只放在 aN.z（正面）分支內：正面修對但側面沒旋轉，造成接縫紋路斷裂。解：旋轉移到三個分支之後做整體 UV 90° 旋轉。
+    - 第一次旋轉方向公式 (x,y) → (y,-x) 是逆時針 90°，使用者要的是順時針；改用 (x,y) → (-y,x) 才對。
+    - 第一次以為白邊是 shader 取樣邏輯造成，實際是貼圖檔的 padding 偽影；修法應在貼圖層而非 shader 層 hack clamp，否則未來換貼圖時 clamp 就成沒意義的疤痕。
+  rules_reinforced:
+    - CLAUDE.md Rule 1：複用 hitType 前必須 Read 完整 shader 分支與相關 box 維度組合，發現 R2-LOGO-FIX 對 hs.x>hs.y 橫擺 box 未處理才能定位根因。
+    - CLAUDE.md Rule 2：rotateUV90 是物件語義屬性（「此 box 需要 UV 旋轉」），不用幾何條件如 hs.x>hs.y 隱式判定，避免未來新增同尺寸但不該旋轉的 box 被誤觸發。
+```
+
+---
+
+## R7-3.10｜C1 Phase 2 第一刀 H8 + C' 完成
+
+```yaml
+- id: R7-3.10-c1-phase2-first-knife-h8-cprime
+  date: 2026-05-15
+  type: seam_phase2_first_knife
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  scope:
+    - H8 runtime gate 隔離。
+    - C' bake capture half-texel 修正。
+    - 重烘 floor / north 1000SPP atlas。
+    - 更新 floor / north runtime pointer。
+  implementation:
+    - updateR738C1BakePastePreviewUniforms() 改成只受 floor runtime 互斥影響，north runtime 不再關掉 R7-3.8 嫩芽 paste。
+    - updateR7310C1FullRoomDiffuseRuntimeUniforms() 改成 floorApplied / northWallApplied 分開計算。
+    - loadR7310C1FullRoomDiffuseRuntimePackage() 不再強制等待 north loader。
+    - loadR7310C1NorthWallDiffuseRuntimePackage() 可單獨更新 north slot。
+    - combined atlas 保留兩格，缺資料 slot 使用 black placeholder，真正取樣由 per-surface mode flag 控制。
+    - PathTracingCommon bake capture path 改為 gl_FragCoord.xy / uResolution，正常 camera ray 未改。
+  packages:
+    - floor: .omc/r7-3-10-full-room-diffuse-bake/20260515-112620/
+    - north: .omc/r7-3-10-full-room-diffuse-bake/20260515-112717/
+    - runtime_floor_probe: .omc/r7-3-10-full-room-diffuse-runtime/20260515-113631/
+    - runtime_north_probe: .omc/r7-3-10-full-room-diffuse-runtime/20260515-113648/
+    - ui_toggle: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260515-113705/
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/PathTracingCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000
+  result:
+    - Contract and syntax checks passed.
+    - Runtime short-circuit smoke passed.
+    - North-wall runtime smoke passed.
+    - UI toggle smoke passed.
+    - Same-view visual seam check remains user-facing acceptance.
+  next:
+    - User checks same-view floor / north seam and sprout coexistence.
+    - If seam still fails or inside-floor issue remains, continue with B' probe then H7 guard.
+```
+
+## R7-3.10｜C1 Phase 2 第一刀實機回報與 Debug
+
+```yaml
+- id: R7-3.10-c1-phase2-first-knife-user-debug
+  date: 2026-05-15
+  type: user_visual_feedback_and_root_cause_investigation
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_feedback:
+    - floor on: northeast wardrobe bottom west boundary black line is gone.
+    - floor on: northeast wardrobe bottom south boundary is slightly darker; user is unsure whether it existed before.
+    - north on: northeast wardrobe west vertical boundary black line is gone.
+    - north on: northeast wardrobe top north boundary now has a black line; user says it did not exist before.
+    - floor on: inside-floor view still glows.
+    - floor off: inside-floor view only glows in the sprout area.
+    - north on no longer affects the sprout area.
+  atlas_evidence:
+    - floor fixed-X col 419 old package mean 0.003628 p50 0; new package mean 0.316591 p50 0.315657.
+    - north fixed-X col 419 old package mean 0.000969 p50 0; new package mean 0.409004 p50 0.416011.
+    - floor fixed-Z row 131 old package mean 0.367539 p50 0.369889; new package mean 0.005740 p50 0.
+    - floor fixed-Z row 132 new package remains bright with p50 0.376268.
+    - north fixed-Y row 344 old package mean 0.252991 p50 0.254330; new package mean 0.005483 p50 0.
+    - north fixed-Y row 345 new package remains bright with p50 0.257726.
+  metadata_evidence:
+    - floor row 131 col 453 keeps world z -0.705064 in both old and new packages.
+    - north row 344 col 453 keeps world y 1.954634 in both old and new packages.
+    - Metadata positions did not drift; the luma changed because the corrected bake UV samples the boundary texel differently.
+  root_cause_split:
+    - H8 is confirmed fixed because north runtime no longer disables the sprout paste path.
+    - C' fixed-X half-texel issue is confirmed fixed because floor and north west boundary texels became bright.
+    - The new floor south and north top dark lines are atlas data boundary-policy issues exposed by C' correction, not the old H8 gate issue.
+    - Inside-floor glow remains H7 because runtime floor short-circuit still lacks camera and ray-side guards.
+  next:
+    - Do not roll back H8.
+    - Do not patch H7 before B' shader probe.
+    - Record fixed-Z / fixed-Y dark boundary as H5 / H3' second-round candidate for contact / occluder atlas policy.
+```
+
+## R7-3.10｜C1 Phase 2 第二刀 B' probe + H7 guard
+
+```yaml
+- id: R7-3.10-c1-phase2-second-knife-bprime-h7
+  date: 2026-05-15
+  type: runtime_probe_and_inside_geometry_guard
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  trigger:
+    - User reported that floor bake on still makes the inside-floor view glow.
+    - User also reported floor bake off only leaves the sprout area glowing, and north bake no longer affects the sprout area.
+  implementation:
+    - shaders/Home_Studio_Fragment.glsl now tracks hitIsRayExiting from BVH box hits and rotated object hits.
+    - Runtime probe mode now supports levels 2 through 6: visible normal, visible position Y, ray direction Y, hitIsRayExiting, and camera position Y.
+    - js/InitCommon.js reportR7310C1FullRoomDiffuseRuntimeProbe() accepts probeLevel, samplePoints, samplePointSpace, decodeMode, and cameraState.
+    - docs/tools/r7-3-8-c1-bake-capture-runner.mjs adds --r7310-runtime-probe-sample-test to capture normal floor view and two inside-floor camera cases.
+    - r7310C1FullRoomDiffuseShortCircuit() now receives visibleIsRayExiting and returns false when visibleIsRayExiting == TRUE.
+  pre_guard_evidence:
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260515-124123/runtime-probe-sample-report.json
+    - normal_floor_view L1 short: 234982
+    - normal_floor_view L5 sample 2 / 3: isRayExiting false
+    - inside_floor_level_view L1 short: 879262
+    - inside_floor_level_view L5 sample 1 / 2 / 3: isRayExiting true
+    - inside_floor_up_view L1 short: 921600
+    - inside_floor_up_view L5 sample 1 / 2 / 3: isRayExiting true
+  post_guard_evidence:
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260515-124246/runtime-probe-sample-report.json
+    - inside_floor_level_view L1 short: 0
+    - inside_floor_up_view L1 short: 0
+  normal_runtime_guard_check:
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260515-124309/runtime-report.json
+    - status: pass
+    - bakedSurfaceHitCount: 96170
+    - bakedSurfaceShortCircuitCount: 190559
+  root_cause:
+    - The floor short-circuit accepted hits from inside the floor solid because it only checked objectID, normal, and visible position.
+    - The B' probe showed the inside-floor camera cases were exiting hits.
+    - H7 therefore only needs an exiting-hit guard for this symptom.
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-probe-sample-test --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000
+  remaining:
+    - User visually confirmed inside-floor view with floor bake on is now fully black.
+    - fixed-Z / fixed-Y dark boundary remains H5 / H3' and is not solved by H7.
+    - inside-floor sprout glow with floor bake off remains H7' and is not solved by H7.
+```
+
+## R7-3.10｜C1 Phase 2 第三刀前 CODEX / OPUS 共識
+
+```yaml
+- id: R7-3.10-c1-phase2-third-knife-preprobe-consensus
+  date: 2026-05-15
+  type: cross_agent_root_cause_consensus
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  current_url: http://127.0.0.1:9002/Home_Studio.html?v=r7310-phase2-h7-guard-v1
+  user_latest_validation:
+    fixed:
+      - "floor bake ON: inside-floor view is now fully black."
+    remaining:
+      - "floor bake ON: northeast wardrobe bottom south edge still has a slight dark line."
+      - "north bake ON: northeast wardrobe top north edge still has a clearer dark line."
+      - "floor bake OFF: inside-floor view still shows the sprout glow area."
+  agreed_done:
+    - H8 runtime gate isolation is valid and must stay.
+    - C' bake UV correction is physically valid and must stay.
+    - H7 exiting-hit guard for R7-3.10 full-room diffuse short-circuit is valid and must stay.
+  issue_1_floor_fixed_z:
+    root_cause_class: "H5 / H3' boundary texel nearest-policy"
+    evidence:
+      - "floor row 131 world z = -0.705064."
+      - "wardrobe zMax = -0.703; row 131 is about 2 mm inside the wardrobe footprint."
+      - "floor row 131 wardrobe X span zero = 68 / 69."
+      - "floor row 132 world z = -0.694654."
+      - "floor row 132 wardrobe X span zero = 0 / 69."
+    conclusion:
+      - "The symptom points to atlas boundary ownership policy, not a C' rollback."
+      - "Bake surface point epsilon is only a fallback check if later fixes leave residue."
+    remaining_probe:
+      - "nearest hit interval for row 131, converted to mm."
+      - "visible-hit runtime row / col readback on the dark-line sample point."
+  issue_2_north_fixed_y:
+    root_cause_class: "H5 / H3' boundary texel nearest-policy"
+    evidence:
+      - "Correct V direction: row index up means world y up."
+      - "row 343 y = 1.948960."
+      - "row 344 y = 1.954634."
+      - "row 345 y = 1.960308."
+      - "row 346 y = 1.965981."
+      - "wardrobe yMax = 1.955; row 344 is about 0.36 mm inside, row 345 is outside."
+      - "north row 344 wardrobe X span zero = 68 / 69."
+      - "north row 345 wardrobe X span zero = 0 / 69."
+    conclusion:
+      - "Same root class as floor fixed-Z."
+      - "OPUS earlier row-direction assumption was corrected and accepted."
+    remaining_probe:
+      - "nearest hit interval for row 344, converted to mm."
+      - "visible-hit runtime row / col readback on the dark-line sample point."
+  issue_3_inside_floor_sprout_glow:
+    name: "H7' / sprout-paste-inside-guard"
+    root_cause_candidate:
+      - "R7-3.8 paste path uses firstVisible* data but does not track firstVisibleIsRayExiting."
+      - "R7-3.8 paste mix lacks an inside-geometry guard."
+      - "H7 second knife only guards r7310C1FullRoomDiffuseShortCircuit(), so it does not cover R7-3.8 paste."
+    intended_behavior:
+      - "R7-3.8 paste visible in normal view with floor bake OFF is intended."
+      - "R7-3.8 paste visible from inside the floor solid is unintended."
+    required_probe:
+      - "Read back how many fragments pass the R7-3.8 paste entrance if inside-floor view is active."
+      - "Quantify firstVisibleNormal and firstVisiblePosition.y."
+      - "Temporarily read back firstVisibleIsRayExiting = hitIsRayExiting; readback only, no guard."
+  locked_constraints:
+    - "Do not roll back H7 guard."
+    - "Do not roll back H8 runtime gate."
+    - "Do not roll back C' bake UV correction."
+    - "Do not rebake floor / north atlas for this probe stage."
+    - "Do not directly copy neighboring texels into boundary texels."
+    - "Do not touch ACOUSTIC_PANEL or textures/gik244_*.jpeg as part of Phase 2 probe work."
+  next:
+    - "Wait for explicit user start before code edits."
+    - "CODEX leads H7' readback probe."
+    - "OPUS or CODEX may run H5 / H3' nearest interval and visible-hit runtime probes."
+    - "H5 / H3' fix design opens only after the probes are sealed."
+```
+
+## R7-3.10｜C1 H5 / H3' 1024 bake resolution closeout
+
+```yaml
+- id: R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout
+  date: 2026-05-15
+  type: seam_phase2_h5_h3_resolution_closeout
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  current_url: http://127.0.0.1:9002/Home_Studio.html?v=r7310-1024-bake-v1
+  user_validation:
+    - "floor bake ON + north bake ON: northeast wardrobe bottom south edge black line is no longer visible."
+    - "north bake ON: northeast wardrobe top north edge black line is no longer visible."
+  decision:
+    - "Lock 1024 as the current accepted floor / north bake resolution candidate."
+    - "Do not advance to 2048 in this round because the nearest-interval phase result predicts north-line regression at 2048."
+    - "C runtime fallback was an abandoned diagnostic experiment; it proved the boundary-texel path but created a live/bake quality seam, and has been removed."
+  packages:
+    floor_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-215727"
+    north_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-212509"
+    contamination_evidence_north_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-225147"
+    pointer_backup_512: ".omc/r7-3-10-1024-pointer-backups/20260515-212327"
+  pointer_state:
+    - "docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json points to floor 1024."
+    - "docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json points to north 1024."
+    - "Both package pointers now share targetAtlasResolution: 1024, so the combined texture resolution guard is satisfied."
+  black_line_evidence:
+    - "User visual validation: both wardrobe boundary black lines are gone at 1024."
+    - "nearest interval: north visible black band 512=3.46mm, 1024=0.125mm, 2048=1.30mm."
+    - "nearest interval: floor and north texel pitch shrink with resolution, but visible black-band width is phase dependent."
+    - "H5 black-line probe after 1024: north dominantRow=682, totalInBand=1494."
+  live_bake_brightness_difference:
+    symptom:
+      - "Partial bake + LIVE comparison can make adjacent LIVE furniture or wall areas look slightly brighter."
+    root_cause:
+      - "R7-3.10 short-circuit splices baked radiance into a LIVE path: accumCol += mask * r7310BakedRadiance; break."
+      - "A LIVE path that reaches a baked surface after k segments then receives that surface's baked multi-bounce value."
+      - "Effective depth becomes k plus the baked solution depth, so partial bake / LIVE boundaries are brighter than all-LIVE reference."
+    conclusion:
+      - "This is a partial-bake transition artifact, not a rejection reason for 1024."
+      - "Official visual comparison should use all relevant static diffuse surfaces baked versus all LIVE, with matching bounce settings."
+  contamination_guard:
+    option_a_snapshot:
+      - "captureR738C1DirectSurfaceTexelPatch now records bakeContaminationGuardSnapshot during capture before uniform restore."
+      - "Evidence package 20260515-225147 recorded uR7310C1FullRoomDiffuseMode=0, uR7310C1FullRoomDiffuseReady=0, uR7310C1FloorDiffuseMode=0, uR7310C1NorthWallDiffuseMode=0, uR738C1BakeCaptureMode=2."
+      - "Conclusion: this 1024 capture did not eat runtime baked short-circuit data."
+    option_b_guard:
+      - "r7310C1FullRoomDiffuseShortCircuit() returns false when uR738C1BakeCaptureMode != 0."
+      - "The guard blocks future bake-capture contamination even if a runtime bake package is already loaded in the page."
+  verification:
+    - "node --check js/InitCommon.js"
+    - "node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs"
+    - "node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js"
+    - "R7-3.10 short-circuit smoke: bakedSurfaceHitCount=96170, bakedSurfaceShortCircuitCount=190559."
+    - "H5 black-line probe: north dominantRow=682, totalInBand=1494."
+  latest_codex_verification:
+    - "runtime_short_circuit: .omc/r7-3-10-full-room-diffuse-runtime/20260515-232259"
+    - "h5_black_line_probe: .omc/r7-3-10-h5-black-line-probe/20260515-232232"
+  next:
+    - "Move next phase toward all relevant static diffuse surface bake, reducing partial bake / LIVE splice artifacts."
+  cache_buster:
+    - "Home_Studio.html and Home_Studio.js updated to r7310-1024-bake-v1."
+```
 
 ## 2026-05-12 R7-3.9 C1 Reflection Bake Reset To Diffuse-Only
 
@@ -49,6 +461,791 @@
   required_future_path:
     - Runtime reflection data must be addressed by surface position plus outgoing direction, or by a true planar reflection pass.
     - Missing direction coverage must reject the package before runtime.
+```
+
+## R7-3.10｜C1 第一批地板漫射烘焙擴張到全地板
+
+```yaml
+- id: R7-3.10-c1-floor-full-room-diffuse-bake
+  date: 2026-05-13
+  type: diffuse_bake_architecture_probe
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  scope:
+    - C1 第一批只處理地板。
+    - 目標是把 R7-3.8 嫩芽區漫射烘焙擴張到全地板。
+    - 牆面、天花板與其他物件尚未加入。
+    - 反射仍維持即時計算；本次只建立全地板完整漫射輻射亮度圖集。
+  implementation:
+    - 新增 R7-3.10 合約與合約測試。
+    - 新增 C1 全地板目標編號 1001，表面名稱 c1_floor_full_room。
+    - 全地板世界座標範圍：x -2.11 至 2.11，z -2.074 至 3.256，y 0.01。
+    - 執行器新增 --r7310-full-room-diffuse-bake 與 --target-samples 入口。
+    - R7-3.8 嫩芽區已驗收指標保持不動。
+  artifacts:
+    - smoke_test_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-165001/
+    - accepted_probe_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-165203/
+  accepted_probe_package_summary:
+    - version: r7-3-10-full-room-diffuse-bake-architecture-probe
+    - batch: floor
+    - targetId: 1001
+    - surfaceName: c1_floor_full_room
+    - requestedSamples: 1000
+    - targetAtlasResolution: 512
+    - diffuseOnly: true
+    - upscaled: false
+    - runnerStatus: pass
+    - coverage: c1_floor_full_room validTexelRatio 1
+    - missingSurfaceNames: []
+    - finalC1Coverage: false
+  validation:
+    - node --check js/InitCommon.js
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - git diff --check -- docs/data/r7-3-10-full-room-diffuse-bake-contract.json docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js js/InitCommon.js js/PathTracingCommon.js js/Home_Studio.js shaders/Home_Studio_Fragment.glsl docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --target-samples=1 --samples=1 --atlas-resolution=16 --timeout-ms=60000 --smoke-test --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --config=1 --samples=1000 --angle=metal --timeout-ms=180000
+  notes:
+    - validation-report 仍保留 R7-3.8 舊重投影診斷欄位；這個欄位在舊已驗收包也顯示 fail，runner 驗證以封包合約為準。
+    - 下一步才是把全地板烘焙值接進執行期短路，並做 100 / 200 / 500 / 1000SPP 舊架構與新架構對照。
+```
+
+## R7-3.10｜C1 全地板漫射烘焙接入執行期短路
+
+```yaml
+- id: R7-3.10-c1-floor-runtime-diffuse-short-circuit
+  date: 2026-05-13
+  type: runtime_integration_probe
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  scope:
+    - 將 C1 全地板 1000SPP 漫射烘焙包接入 HTML 執行期。
+    - 只處理第一批地板。
+    - 地板 Fresnel 反射分支仍維持即時計算。
+    - 地板漫射分支在下一事件估計與漫射彈跳之前讀取烘焙圖集並短路。
+  runtime_package_pointer:
+    - docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json
+  source_package:
+    - .omc/r7-3-10-full-room-diffuse-bake/20260513-165203/
+  implementation:
+    - 新增獨立 tR7310C1FullRoomDiffuseAtlasTexture，不覆蓋 R7-3.8 嫩芽貼回 sampler。
+    - 新增 uR7310C1FullRoomDiffuseMode 與 uR7310C1FullRoomDiffuseReady。
+    - 新增 r7310C1FullRoomDiffuseShortCircuit()。
+    - 短路公式：accumCol += mask * r7310BakedRadiance。
+    - R7-3.10 runtime 啟用時，R7-3.8 後處理貼回不套用，避免覆蓋短路結果。
+    - 新增 runtime probe 計數：bakedSurfaceHitCount 與 bakedSurfaceShortCircuitCount。
+  validation:
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=swiftshader
+    - git diff --check -- docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js docs/tools/r7-3-8-c1-bake-capture-runner.mjs js/Home_Studio.js js/InitCommon.js shaders/Home_Studio_Fragment.glsl
+  runtime_probe_result:
+    - status: pass
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-172036/
+    - bakedSurfaceHitCount: 96174
+    - bakedSurfaceShortCircuitCount: 191251
+    - applied: true
+    - ready: true
+  next_step:
+    - 進入 100 / 200 / 500 / 1000SPP 舊架構與新架構對照。
+```
+
+## R7-3.10｜C1 全地板漫射烘焙 UI 開關語意
+
+```yaml
+- id: R7-3.10-c1-floor-runtime-ui-toggle
+  date: 2026-05-13
+  type: runtime_ui_toggle_probe
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  scope:
+    - 新增 HTML 按鈕：全地板：關 / 全地板：開。
+    - 關閉狀態代表維持目前行為：一小塊嫩芽區使用 R7-3.8 貼回，其餘地板維持即時路徑追蹤。
+    - 打開狀態代表啟用 R7-3.10 全地板 1000SPP 漫射烘焙短路，地板反射仍維持即時計算。
+    - 打開 R7-3.10 時，R7-3.8 後處理貼回暫停，避免兩套地板烘焙結果重疊。
+  implementation:
+    - Home_Studio.html 新增 btn-r7310-full-floor-diffuse。
+    - js/Home_Studio.js 新增 bindR7310FullFloorDiffuseControls() 與 refreshR7310FullFloorDiffuseButton()。
+    - js/InitCommon.js 回報 uiMeaningOff 與 uiMeaningOn，明確鎖定開關語意。
+    - 執行器新增 --r7310-ui-toggle-test，會實際點擊按鈕並檢查文字與 runtime 狀態。
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=swiftshader
+    - git diff --check -- Home_Studio.html js/Home_Studio.js js/InitCommon.js docs/tools/r7-3-8-c1-bake-capture-runner.mjs docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  ui_toggle_result:
+    - status: pass
+    - package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-174014/
+    - before: 全地板：關
+    - afterOn: 全地板：開
+    - afterOff: 全地板：關
+  runtime_probe_result_after_ui:
+    - status: pass
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-174056/
+    - bakedSurfaceHitCount: 96174
+    - bakedSurfaceShortCircuitCount: 191251
+  conclusion:
+    - 關閉不是全 live；關閉是一小塊嫩芽區貼回加上周圍地板即時計算。
+    - 打開是全地板漫射烘焙加上地板反射即時計算。
+```
+
+## R7-3.10｜C1 全地板 UI 清理
+
+```yaml
+- id: R7-3.10-c1-floor-runtime-ui-cleanup
+  date: 2026-05-13
+  type: runtime_ui_cleanup
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_result:
+    - 使用者確認全地板烘焙成功。
+    - 使用者要求移除上一輪失敗驗證用的 A / B / C / D 按鈕。
+  implementation:
+    - Home_Studio.html 移除 btn-r739-ab-a / b / c / d。
+    - Home_Studio.html 將操作區改為 r7310-full-floor-actions，只保留 btn-r7310-full-floor-diffuse。
+    - js/Home_Studio.js 移除 bindR739SproutABControls() 與 refreshR739SproutABButtons()。
+    - css/default.css 將操作區樣式改為 r7310-full-floor-actions。
+    - R7-3.9 相關執行期函式保留為已推翻證據與內部診斷，不再顯示在 UI。
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=swiftshader
+  ui_toggle_result:
+    - status: pass
+    - package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-175759/
+    - before: 全地板：關
+    - afterOn: 全地板：開
+    - afterOff: 全地板：關
+  conclusion:
+    - 目前畫面只保留全地板開關。
+```
+
+## R7-3.10｜C1 全地板開關誤影響西北門檻修正
+
+```yaml
+- id: R7-3.10-c1-floor-threshold-exclusion-fix
+  date: 2026-05-13
+  type: runtime_classification_fix
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - 全地板烘焙開關會影響西北鐵門前地上門檻的上方顏色。
+  root_cause:
+    - R7-3.10 全地板短路沿用 cloudVisibleSurfaceIsFloor()。
+    - 該舊分類規則為 visibleObjectID < 1.5、normal.y > 0.5、visiblePosition.y < 0.1。
+    - 西牆門檻是結構 box 第 10 個，頂面 y=0.09，也符合這個舊分類。
+    - 開啟全地板時，門檻頂面被誤拿去查全地板 atlas。
+  fix:
+    - 新增 R7-3.10 專用 r7310C1RuntimeSurfaceIsTrueFloor()。
+    - R7-3.10 全地板短路只接受 visiblePosition.y <= 0.025 的真正地板。
+    - 不修改舊 cloudVisibleSurfaceIsFloor()，避免影響其他既有診斷。
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/Home_Studio.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=swiftshader
+  ui_toggle_result:
+    - status: pass
+    - package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-180611/
+  runtime_probe_result:
+    - status: pass
+    - package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-180702/
+    - bakedSurfaceHitCount: 96174
+    - bakedSurfaceShortCircuitCount: 190562
+  conclusion:
+    - 全地板短路仍作用於真正地板。
+    - 西北鐵門前門檻頂面已排除於 R7-3.10 全地板 atlas 查表之外。
+```
+
+## R7-3.10｜暫停採樣時視角按鈕喚醒修正
+
+```yaml
+- id: R7-3.10-camera-preset-wake-while-sampling-paused
+  date: 2026-05-13
+  type: ui_runtime_fix
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - 點暫停採樣狀態下，視角 1 / 2 / 3 不會切換。
+  root_cause:
+    - 暫停採樣後 render loop 會睡眠。
+    - switchCamera() 會更新相機位置、設定 needClearAccumulation、標記 cameraIsMoving。
+    - switchCamera() 沒有主動呼叫 scheduleHomeStudioAnimationFrame()。
+    - 因此畫面停在舊視角，直到其他動作喚醒 render loop。
+  fix:
+    - switchCamera() 在設定 needClearAccumulation 後呼叫 scheduleHomeStudioAnimationFrame()。
+  validation:
+    - node docs/tests/camera-preset-fov-reset.test.js
+    - node docs/tests/r6-3-max-samples.test.js
+    - node --check js/Home_Studio.js
+  conclusion:
+    - 暫停採樣時，視角按鈕會喚醒下一幀並刷新畫面。
+```
+
+## R7-3.10｜C1 全地板烘焙成功使用者確認
+
+```yaml
+- id: R7-3.10-c1-full-floor-bake-user-confirmed
+  date: 2026-05-13
+  type: user_visual_confirmation
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_result:
+    - 使用者確認全地板烘焙成功。
+    - 使用者確認 UI 清理後只保留全地板開關。
+    - 使用者確認暫停採樣狀態下視角 1 / 2 / 3 已恢復正常。
+  note:
+    - 這版可作為 R7-3.10 第一批地板擴張成功版本暫存。
+```
+
+## R7-3.10｜C1 北牆單面漫射烘焙擷取
+
+```yaml
+- id: R7-3.10-c1-north-wall-diffuse-bake-capture
+  date: 2026-05-13
+  type: diffuse_bake_wall_batch_probe
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_direction:
+    - 第二批牆面先做北牆。
+  scope:
+    - 只新增北牆單面擷取與 coverage。
+    - 尚未把北牆接入 runtime 全室查表。
+    - 地板全地板 runtime 開關語意維持不變。
+  implementation:
+    - docs/data/r7-3-10-full-room-diffuse-bake-contract.json 新增 c1NorthWallBatch。
+    - docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js 新增北牆合約檢查。
+    - js/InitCommon.js 新增 targetId 1002、c1_north_wall、北牆 texel metadata、門洞無效 texel mask、北牆擷取回報 helper。
+    - shaders/Home_Studio_Fragment.glsl 新增 R7-3.10 patchId 1002 的北牆 direct surface texel 入口。
+    - docs/tools/r7-3-8-c1-bake-capture-runner.mjs 新增 --r7310-surface=north-wall。
+  geometry:
+    - surfaceName: c1_north_wall
+    - targetId: 1002
+    - mapping: planar_xy
+    - x: -2.11 to 2.11
+    - y: 0.0 to 2.905
+    - z: -1.874
+    - normal: [0, 0, 1]
+    - invalidTexelRegion: north door hole x -1.52 to -0.73, y 0.0 to 2.03
+  artifacts:
+    - smoke_test_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-210245/
+    - formal_1000spp_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-210338/
+  formal_1000spp_summary:
+    - runnerStatus: pass
+    - requestedSamples: 1000
+    - targetAtlasResolution: 512
+    - diffuseOnly: true
+    - upscaled: false
+    - validTexelRatio: 0.8702621459960938
+    - coveredSurfaceNames: [c1_north_wall]
+    - missingSurfaceNames: [c1_south_wall, c1_east_wall, c1_west_wall]
+    - finalC1Coverage: false
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=north-wall --target-samples=1 --samples=1 --atlas-resolution=16 --timeout-ms=60000 --smoke-test --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=north-wall --config=1 --samples=1000 --angle=metal --timeout-ms=180000
+  note:
+    - validation-report 的 reprojectionStatus 仍是舊診斷欄位；runner 驗證以封包合約、finite check、samples、atlas bytes、metadata bytes、valid texel ratio 為準。
+```
+
+## R7-3.10｜C1 北牆 runtime 查表接入
+
+```yaml
+- id: R7-3.10-c1-north-wall-runtime-diffuse-short-circuit
+  date: 2026-05-13
+  type: runtime_integration_probe
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  scope:
+    - 將 C1 北牆 1000SPP 漫射烘焙包接入 HTML 執行期。
+    - 地板全地板 runtime 保持可用。
+    - R7-3.10 開關語意更新為地板 + 北牆。
+    - 其他三面牆尚未加入。
+  runtime_package_pointers:
+    - floor: docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json
+    - north_wall: docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json
+  source_packages:
+    - floor: .omc/r7-3-10-full-room-diffuse-bake/20260513-165203/
+    - north_wall: .omc/r7-3-10-full-room-diffuse-bake/20260513-210338/
+  implementation:
+    - 早期版本曾新增 tR7310C1NorthWallDiffuseAtlasTexture。
+    - 使用者開啟頁面後回報 UI 出現但畫面區全黑。
+    - 根因收斂為 active sampler 數量風險：北牆獨立 sampler 讓 shader 更接近或超過實機 WebGL 可用上限。
+    - 已移除北牆獨立 sampler，改成地板與北牆共用 tR7310C1FullRoomDiffuseAtlasTexture。
+    - buildR7310C1CombinedDiffuseRuntimeTexture() 將地板放在合併 atlas 左半、北牆放在右半。
+    - shader 透過 r7310C1CombinedAtlasUv(localUv, patchSlot) 選擇左半或右半。
+    - loadR7310C1FullRoomDiffuseRuntimePackage() 會一併載入北牆 runtime package。
+    - r7310C1FullRoomDiffuseShortCircuit() 現在可辨識真正地板與北牆。
+    - 北牆 UV 使用 x/y 平面映射，門洞區域不查表。
+    - probe 模式中地板短路為綠色，北牆短路為青色，方便 runner 分開計數。
+    - UI 文字改為 地板北牆：關 / 地板北牆：開。
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=60000 --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=60000 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=metal
+  runtime_probe_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-211937/
+    - floor_probe_status: pass
+    - floor_bakedSurfaceHitCount: 96174
+    - floor_bakedSurfaceShortCircuitCount: 180768
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-212018/
+    - north_wall_probe_status: pass
+    - northWallSurfaceHitCount: 528987
+    - northWallShortCircuitCount: 579082
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-212051/
+    - ui_toggle_status: pass
+    - ui_before: 地板北牆：關
+    - ui_afterOn: 地板北牆：開
+    - ui_afterOff: 地板北牆：關
+  black_screen_fix_validation:
+    - production_files_no_tR7310C1NorthWallDiffuseAtlasTexture_hits: true
+    - active_shader_sampler_declarations_after_fix: 15
+    - floor_probe_package_metal: .omc/r7-3-10-full-room-diffuse-runtime/20260513-213058/
+    - floor_probe_status_metal: pass
+    - floor_bakedSurfaceHitCount_metal: 96170
+    - floor_bakedSurfaceShortCircuitCount_metal: 180764
+    - north_wall_probe_package_metal: .omc/r7-3-10-full-room-diffuse-runtime/20260513-213111/
+    - north_wall_probe_status_metal: pass
+    - northWallSurfaceHitCount_metal: 528987
+    - northWallShortCircuitCount_metal: 579084
+    - ui_toggle_package_metal: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-213124/
+    - ui_toggle_status_metal: pass
+    - ui_before_metal: 地板北牆：關
+    - ui_afterOn_metal: 地板北牆：開
+    - ui_afterOff_metal: 地板北牆：關
+  user_visual_acceptance:
+    - time: 2026-05-13
+    - north_wall_runtime: success
+    - floor_north_wall_seam: no_issue_reported
+    - evidence: user screenshot at http://localhost:9002/Home_Studio.html with 地板北牆：開
+  next_step:
+    - 北牆樣板已通過使用者目視驗收。
+    - 下一面牆依序加入南牆、東牆、西牆。
+```
+
+## R7-3.10｜C1 東牆單面漫射烘焙與 runtime 查表接入
+
+```yaml
+- id: R7-3.10-c1-east-wall-diffuse-bake-runtime
+  date: 2026-05-13
+  type: diffuse_bake_wall_batch_probe
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_direction:
+    - 北牆通過使用者目視驗收後，下一面改做東牆。
+  scope:
+    - 新增東牆單面擷取、coverage 與 runtime 查表。
+    - 地板與北牆 runtime 保持可用。
+    - 合併 atlas 繼續使用單一 tR7310C1FullRoomDiffuseAtlasTexture。
+  geometry:
+    - surfaceName: c1_east_wall
+    - targetId: 1003
+    - mapping: planar_zy
+    - z: -1.874 to 3.056
+    - y: 0.0 to 2.905
+    - x: 1.91
+    - normal: [-1, 0, 0]
+  artifacts:
+    - smoke_test_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-214440/
+    - formal_1000spp_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-214539/
+  formal_1000spp_summary:
+    - runnerStatus: pass
+    - requestedSamples: 1000
+    - targetAtlasResolution: 512
+    - diffuseOnly: true
+    - upscaled: false
+    - validTexelRatio: 1
+    - coveredSurfaceNames: [c1_east_wall]
+    - missingSurfaceNames: [c1_south_wall, c1_west_wall]
+    - finalC1Coverage: false
+  implementation:
+    - docs/data/r7-3-10-full-room-diffuse-bake-contract.json 新增 c1EastWallBatch。
+    - docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json 指向東牆正式 1000SPP package。
+    - docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js 新增東牆合約檢查。
+    - shaders/Home_Studio_Fragment.glsl 新增 patchId 1003 與東牆 runtime UV。
+    - js/InitCommon.js 新增東牆 texel metadata、擷取 helper、runtime loader、runtime probe。
+    - buildR7310C1CombinedDiffuseRuntimeTexture() 從兩格擴為三格：全地板、北牆、東牆。
+    - r7310C1CombinedAtlasUv() 用三格 atlas 佈局查表。
+    - docs/tools/r7-3-8-c1-bake-capture-runner.mjs 新增 --r7310-surface=east-wall 與 --r7310-east-wall-runtime-test。
+    - UI 文字改為 地板北東牆：關 / 地板北東牆：開。
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=east-wall --target-samples=1 --samples=1 --atlas-resolution=16 --timeout-ms=60000 --smoke-test --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=east-wall --config=1 --samples=1000 --angle=metal --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=60000 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=60000 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=metal
+  runtime_probe_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-214638/
+    - floor_probe_status: pass
+    - floor_bakedSurfaceHitCount: 96170
+    - floor_bakedSurfaceShortCircuitCount: 173852
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-214655/
+    - north_wall_probe_status: pass
+    - northWallSurfaceHitCount: 528987
+    - northWallShortCircuitCount: 574374
+    - east_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-214711/
+    - east_wall_probe_status: pass
+    - eastWallSurfaceHitCount: 699773
+    - eastWallShortCircuitCount: 729723
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-214731/
+    - ui_toggle_status: pass
+    - ui_before: 地板北東牆：關
+    - ui_afterOn: 地板北東牆：開
+    - ui_afterOff: 地板北東牆：關
+  sampler_guard:
+    - active_shader_sampler_declarations: 15
+    - no_east_wall_runtime_sampler_added: true
+  user_visual_observation:
+    - time: 2026-05-13
+    - east_wall_floor_seam: dirtier_than_north_wall
+    - east_wardrobe_floor_north_wall_contact: visible_black_edge
+    - user_followup_evidence:
+        - User rendered to about 334 samples.
+        - The black seam remained stable, proving this is not only low-SPP noise.
+    - confirmed_root_cause:
+        - Combined runtime atlas used exact slot borders.
+        - UV at local edge 0 or 1 could land on slot borders such as 1/3 or 2/3.
+        - That allowed nearest texture lookup to pick adjacent slot edge texels or empty edge texels.
+    - fix:
+        - Added uR7310C1RuntimeAtlasPatchResolution.
+        - Added uR7310C1RuntimeAtlasPatchCount.
+        - r7310C1CombinedAtlasUv() now maps local UV edges to texel centers with half-texel inset.
+        - The fix keeps one shared runtime sampler and does not create new per-surface samplers.
+    - fix_validation:
+        - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+        - node --check js/InitCommon.js
+        - node --check js/Home_Studio.js
+        - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+        - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=60000 --angle=metal
+        - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=60000 --angle=metal
+        - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=60000 --angle=metal
+        - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=60000 --angle=metal
+    - fix_packages:
+        - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-215741/
+        - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-215809/
+        - east_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-215833/
+        - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-215857/
+    - likely_scope:
+        - Large room surfaces are baked and short-circuited.
+        - East wall acoustic panel and east wardrobe are still live path traced.
+        - Contact shadow from those still-live static objects can be baked into floor / wall atlases while the object surfaces themselves remain live at low SPP.
+    - acceptance_note:
+        - Recheck the same user view after half-texel inset fix.
+        - Remaining contact darkness after this fix should be handled separately from atlas-slot boundary bleed.
+  next_step:
+    - 使用者用同一視角重新驗收東牆接縫。
+    - If the hard black line is gone but contact darkness remains, continue with nearby static furniture / acoustic panels as a separate quality pass.
+```
+
+## R7-3.10｜C1 衣櫃北側與西側黑線修正
+
+```yaml
+- id: R7-3.10-c1-wardrobe-north-and-west-contact-seam-fix
+  date: 2026-05-13
+  type: diffuse_bake_artifact_fix
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - 東牆接觸區修正後仍有黑線。
+    - 黑線只出現在衣櫃與北牆交界。
+    - 黑線也出現在衣櫃西側與地板交界。
+    - 衣櫃與東牆交界乾淨。
+    - 衣櫃南側與地板交界乾淨。
+    - 使用者推測可能與法線判斷有關。
+  root_cause:
+    - 前一輪只處理東牆 hidden contact。
+    - 使用者補充的方向顯示，剩餘髒邊對應到北牆 atlas 的衣櫃背後區與地板 atlas 的衣櫃 footprint。
+    - 這兩塊被衣櫃遮住的區域仍被視為有效 texel，邊緣取樣會吃到被遮蔽區暗值。
+  fix:
+    - c1FloorBatch 新增 invalidTexelRegions.wardrobeFootprint。
+    - wardrobeFootprint: x 1.35 to 1.91, z -1.874 to -0.703。
+    - c1NorthWallBatch 新增 invalidTexelRegions.wardrobeContact。
+    - wardrobeContact: x 1.35 to 1.91, y 0.0 to 1.955。
+    - buildR7310C1FloorTexelMetadata() 改為標記 floor wardrobe footprint invalid。
+    - buildR7310C1NorthWallTexelMetadata() 改為標記 north wall wardrobe contact invalid。
+    - r7310C1BakeSurfacePoint(patchId 1001 / 1002) 拒絕上述隱藏接觸區。
+    - r7310C1BakePastePreviewUv() 與 r7310C1NorthWallDiffuseUv() runtime 查表也拒絕上述區域。
+    - floor / north wall invalid 區用鄰近有效 texel 補色；北牆門洞仍維持清零。
+  updated_artifacts:
+    - floor_smoke_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-222542/
+    - floor_formal_1000spp_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-222644/
+    - north_wall_smoke_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-222845/
+    - north_wall_formal_1000spp_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-222958/
+  coverage:
+    - floor_validTexelRatio: 0.9706878662109375
+    - floor_dilationApplied: true
+    - north_wall_validTexelRatio: 0.7807693481445312
+    - north_wall_dilationApplied: true
+  runtime_probe_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-223127/
+    - floor_probe_status: pass
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-223200/
+    - north_wall_probe_status: pass
+    - east_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-223155/
+    - east_wall_probe_status: pass
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-223237/
+    - ui_toggle_status: pass
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=floor --target-samples=1 --samples=1 --atlas-resolution=16 --timeout-ms=60000 --smoke-test --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=floor --config=1 --samples=1000 --angle=metal --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=north-wall --target-samples=1 --samples=1 --atlas-resolution=16 --timeout-ms=60000 --smoke-test --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=north-wall --config=1 --samples=1000 --angle=metal --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --angle=metal --timeout-ms=120000
+  next_step:
+    - 使用者用同一視角重驗衣櫃北側與西側地板黑線。
+    - 通過後繼續下一面牆。
+```
+
+## R7-3.10｜C1 東牆接觸區黑線修正
+
+```yaml
+- id: R7-3.10-c1-east-wall-contact-seam-bake-fix
+  date: 2026-05-13
+  type: diffuse_bake_artifact_fix
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - 東牆接縫比北牆髒。
+    - 衣櫃 / 地板 / 北牆交界有明顯黑邊。
+    - 使用者跑到約 334 samples 後黑線仍穩定存在。
+    - 使用者關閉 R7-3.10 烘焙後黑線消失，確認問題在烘焙路徑。
+  root_cause:
+    - 214539 東牆包把整張東牆 atlas 都標成有效 texel，validTexelRatio = 1。
+    - 東牆上有貼牆衣櫃與東牆吸音板，這些接觸區其實是被靜態物件遮住的牆面。
+    - 隱藏牆面 texel 被烘入 atlas 後，接觸邊緣查表會吃到過暗 texel，形成穩定黑線。
+  fix:
+    - c1EastWallBatch 新增 invalidTexelRegions。
+    - wardrobeContact: z -1.874 to -0.703, y 0.0 to 1.955。
+    - panelE2Contact: z 0.198 to 0.798, y 0.655 to 1.855。
+    - buildR7310C1EastWallTexelMetadata() 將上述區域標為 invalid。
+    - r7310C1BakeSurfacePoint(patchId 1003) 拒絕上述東牆隱藏接觸區。
+    - r7310C1EastWallDiffuseUv() 在 runtime 查表時同樣拒絕上述區域。
+    - maskR7310C1EastWallAtlasPixels() 使用鄰近有效 texel 補色 invalid 區，避免邊緣取到黑值。
+    - 東牆 validTexelRatio 門檻調整為 0.75，因為接觸區已成為預期無效區。
+  updated_artifacts:
+    - smoke_test_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-221008/
+    - formal_1000spp_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-221112/
+    - runtime_pointer: docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json
+  formal_1000spp_summary:
+    - runnerStatus: pass
+    - requestedSamples: 1000
+    - targetAtlasResolution: 512
+    - diffuseOnly: true
+    - validTexelRatio: 0.7892990112304688
+    - dilationAppliedBySurface.c1_east_wall: true
+    - coveredSurfaceNames: [c1_east_wall]
+    - missingSurfaceNames: [c1_south_wall, c1_west_wall]
+    - finalC1Coverage: false
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check -- docs/data/r7-3-10-full-room-diffuse-bake-contract.json docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js js/InitCommon.js shaders/Home_Studio_Fragment.glsl docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=east-wall --target-samples=1 --samples=1 --atlas-resolution=16 --timeout-ms=60000 --smoke-test --angle=swiftshader
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=east-wall --config=1 --samples=1000 --angle=metal --timeout-ms=180000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --angle=metal --timeout-ms=120000
+  runtime_probe_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-221152/
+    - floor_probe_status: pass
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-221219/
+    - north_wall_probe_status: pass
+    - east_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-221256/
+    - east_wall_probe_status: pass
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-221322/
+    - ui_toggle_status: pass
+  next_step:
+    - 使用者用同一視角重驗東牆衣櫃與牆/地接觸黑線。
+    - 通過後繼續下一面牆。
+```
+
+## R7-3.10｜C1 接縫退化回退與 seam policy 草案
+
+```yaml
+- id: R7-3.10-c1-seam-regression-option-a-rollback
+  date: 2026-05-13
+  type: diffuse_bake_architecture_rollback
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - 第三輪後黑線變白線。
+    - 北牆與地板近距離看見像素格子。
+    - 東北角牆牆交界有黑線。
+    - 衣櫃上方與牆面交界出現白線。
+  opus_review_result:
+    - contact invalid region + flood-fill dilation 路線判定為退化來源。
+    - DataTexture + NearestFilter 會讓低解析 radiance atlas 放大成像素格子。
+    - per-surface atlas 缺少 unified seam policy。
+    - validation runner 允許 reprojectionStatus fail 仍標 pass，屬於 gate 漏洞。
+  codex_quant_evidence:
+    - floor_wardrobe_footprint_inside_mean_luma: 0.0036 -> 0.5113
+    - north_wall_wardrobe_contact_inside_mean_luma: 0.0008 -> 0.5829
+    - interpretation: flood-fill 把家具外側受光亮環複製進被遮擋區。
+  rollback:
+    - floor runtime package reset to .omc/r7-3-10-full-room-diffuse-bake/20260513-165203/
+    - north wall runtime package reset to .omc/r7-3-10-full-room-diffuse-bake/20260513-210338/
+    - east wall runtime package reset to .omc/r7-3-10-full-room-diffuse-bake/20260513-214539/
+    - floor invalidTexelRegions.wardrobeFootprint removed.
+    - north wall invalidTexelRegions.wardrobeContact removed.
+    - east wall invalidTexelRegions removed.
+    - shader hidden contact functions kept as false-return stubs only.
+    - capture path no longer calls floor / east wall contact mask helpers.
+    - flood-fill dilation helper removed from current path.
+    - half-texel inset retained.
+  failed_artifacts_retained_as_evidence:
+    - east_wall_contact_dilation_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-221112/
+    - floor_wardrobe_dilation_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-222644/
+    - north_wall_wardrobe_dilation_package: .omc/r7-3-10-full-room-diffuse-bake/20260513-222958/
+  design_doc:
+    - docs/superpowers/plans/2026-05-13-r7-3-10-c1-seam-policy.md
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check -- docs/data/r7-3-10-full-room-diffuse-bake-contract.json docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js js/InitCommon.js shaders/Home_Studio_Fragment.glsl docs/tools/r7-3-8-c1-bake-capture-runner.mjs docs/superpowers/plans/2026-05-13-r7-3-10-c1-seam-policy.md docs/superpowers/plans/嫩芽擴張計畫大綱 CODEX版.MD docs/SOP/Debug_Log.md docs/SOP/Debug_Log_Index.md
+  runtime_smoke_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-234348/
+    - floor_probe_status: pass
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-234420/
+    - north_wall_probe_status: pass
+    - east_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260513-234455/
+    - east_wall_probe_status: pass
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260513-234528/
+    - ui_toggle_status: pass
+    - ui_before: 地板北東牆：關
+    - ui_afterOn: 地板北東牆：開
+    - ui_afterOff: 地板北東牆：關
+  source_check:
+    - three.js DataTexture docs: magFilter/minFilter default to NearestFilter.
+    - three.js Texture docs: normal Texture magFilter default is LinearFilter.
+    - three.js texture manual: NearestFilter magnifies low resolution textures into pixelated appearance.
+  next_step:
+    - OPUS / CODEX 審 seam policy。
+    - 決定 DataTexture filter、alpha fall-through、occluder table、surface registry、shared edge tests。
+    - 重新 bake floor / north / east after seam policy is accepted.
+```
+
+## R7-3.10｜C1 runtime 再回退到地板 + 北牆
+
+```yaml
+- id: R7-3.10-c1-runtime-floor-north-only-rollback
+  date: 2026-05-13
+  type: diffuse_bake_runtime_scope_rollback
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - Option A 回退後，畫面看起來回到兩條黑線版本。
+    - 使用者希望再往前退到只有地板與北牆烘焙，東牆不要烘焙。
+  change:
+    - buildR7310C1CombinedDiffuseRuntimeTexture() 從三格 atlas 回到兩格 atlas。
+    - uR7310C1RuntimeAtlasPatchCount 從 3.0 回到 2.0。
+    - loadR7310C1FullRoomDiffuseRuntimePackage() 不再載入 east wall runtime package。
+    - r7310C1FullRoomDiffuseShortCircuit() 不再對 east wall 回傳 baked radiance。
+    - UI 文字回到 地板北牆：關 / 地板北牆：開。
+    - reportR7310C1FullRoomDiffuseRuntimeConfig() 將 eastWallReady 與 eastWallPackageDir 固定回報為 false / null。
+  retained_for_future:
+    - east wall capture function and metadata builder remain available for future seam-policy rebake.
+    - c1EastWallBatch remains in contract as rollout target, but it is not active runtime coverage now.
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-1000spp-bake-capture.test.js
+    - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --angle=metal --timeout-ms=120000
+  runtime_smoke_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260514-000207/
+    - floor_probe_status: pass
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260514-000241/
+    - north_wall_probe_status: pass
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260514-000324/
+    - ui_toggle_status: pass
+    - ui_before: 地板北牆：關
+    - ui_afterOn: 地板北牆：開
+    - ui_afterOff: 地板北牆：關
+```
+
+## R7-3.10｜C1 地板 / 北牆獨立 runtime 開關
+
+```yaml
+- id: R7-3.10-c1-floor-north-independent-runtime-toggles
+  date: 2026-05-14
+  type: diffuse_bake_runtime_debug_control
+  branch: codex/r7-3-10-c1-full-floor-diffuse-bake
+  user_report:
+    - 地板 + 北牆版本仍可見兩條黑線。
+    - 使用者希望可以退回只有地板烘焙，或讓不同牆壁烘焙分別開關。
+  change:
+    - UI 改成兩顆按鈕：地板烘焙、北牆烘焙。
+    - 新增 uR7310C1FloorDiffuseMode。
+    - 新增 uR7310C1NorthWallDiffuseMode。
+    - r7310C1FullRoomDiffuseShortCircuit() 依 per-surface uniform 決定是否使用地板或北牆 atlas。
+    - setR7310C1FloorDiffuseRuntimeEnabled() 可單獨切換地板。
+    - setR7310C1NorthWallDiffuseRuntimeEnabled() 可單獨切換北牆。
+    - 舊 setR7310C1FullRoomDiffuseRuntimeEnabled() 保留為一次切兩者的相容入口。
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --angle=metal --timeout-ms=120000
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --angle=metal --timeout-ms=120000
+  runtime_smoke_results:
+    - floor_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260514-002029/
+    - floor_probe_status: pass
+    - north_wall_probe_package: .omc/r7-3-10-full-room-diffuse-runtime/20260514-002105/
+    - north_wall_probe_status: pass
+    - ui_toggle_package: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260514-002138/
+    - ui_toggle_status: pass
+    - ui_before: 地板烘焙：關 / 北牆烘焙：關
+    - ui_afterFloorOn: 地板烘焙：開 / 北牆烘焙：關
+    - ui_afterNorthOn: 地板烘焙：開 / 北牆烘焙：開
+    - ui_afterAllOff: 地板烘焙：關 / 北牆烘焙：關
+  user_validation:
+    - 地板烘焙：開 / 北牆烘焙：關，可驗只有地板烘焙。
+    - 地板烘焙：關 / 北牆烘焙：開，可驗只有北牆烘焙。
+    - 地板烘焙：開 / 北牆烘焙：開，可驗兩者交界。
 ```
 
 ## R7-3.9｜Config 1 current-view sprout reflection route validation
@@ -170,7 +1367,7 @@
 ```yaml
 - id: R7-3.9-config1-sprout-v2-success-checkpoint
   date: 2026-05-13
-  type: reflection_visual_acceptance_checkpoint
+  type: superseded_reflection_visual_checkpoint
   branch: codex/r7-3-9-c1-reflection-bake
   checkpoint_label: r7-3-9-config1-sprout-v2-success-20260513
   scope:
@@ -179,17 +1376,17 @@
     - bounds x=-1..1, z=-1..1
     - route roughness 0.1
   accepted_content:
-    - Existing R7-3.8 Config 1 sprout diffuse bake remains active.
-    - R7-3.9 current-view sprout reflection route is accepted for runtime preview.
-    - No R7-3.9 finite-view reflection cache binary is accepted as runtime data.
+    - Superseded by R7-3.9-config1-sprout-v2-ab-invalidated.
+    - Existing R7-3.8 Config 1 sprout diffuse bake remains valid.
+    - R7-3.9 current-view sprout reflection route is diagnostic only.
   user_visual_acceptance:
     - At roughness 1, the floor outside the sprout patch has no reflection, so the visible hard boundary is expected.
     - At roughness 0.1 and exactly 1000 spp, the sprout patch blends into the surrounding floor as a complete ceiling-lamp reflection.
   pointer_update:
     - docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json keeps packageStatus none because no finite reflection package is accepted.
-    - routeStatus is accepted.
-    - runtimeEnabled is true.
-    - acceptedRoute is runtime_path_tracing_current_view.
+    - Later routeStatus is invalidated_by_ab_visual_check.
+    - Later runtimeEnabled is false.
+    - Later acceptedRoute is null.
   validation:
     - node docs/tests/r7-3-9-c1-accurate-reflection-bake.test.js
     - node --check js/InitCommon.js
@@ -203,6 +1400,34 @@
     - actualSamples: 1000
     - states: 14
     - cameraStateVariation: true
+```
+
+## R7-3.9｜Config 1 sprout V2 A/B invalidated
+
+```yaml
+- id: R7-3.9-config1-sprout-v2-ab-invalidated
+  date: 2026-05-13
+  type: reflection_visual_rejection
+  branch: codex/r7-3-10-reflection-expansion
+  user_ab_report:
+    - A diffuse at 1 spp shows a clean central sprout patch.
+    - B original V2 at 1 spp shows noisy central sprout patch, matching the surrounding live floor.
+    - C reflection-only at 1 spp matches B.
+    - D roughness 1 proves the central patch roughness is forced to 0.1.
+  console_evidence:
+    - A: diffuseBakeApplied true, currentViewReflectionApplied false, diffuseWouldBeBlockedByCurrentView false, floorRoughness 0.1.
+    - B: diffuseBakeApplied true, currentViewReflectionApplied true, diffuseWouldBeBlockedByCurrentView true, floorRoughness 0.1.
+    - C: diffuseBakeApplied false, currentViewReflectionApplied true, diffuseWouldBeBlockedByCurrentView false, floorRoughness 0.1.
+    - D: diffuseBakeApplied true, currentViewReflectionApplied true, diffuseWouldBeBlockedByCurrentView true, floorRoughness 1.
+  corrected_conclusion:
+    - The previous 1000 spp visual blend proved only that the central patch and surrounding floor could converge under live path tracing.
+    - It did not prove that the sprout patch used both baked diffuse and correct current-view reflection.
+    - Current V2 path blocks the R7-3.8 diffuse paste whenever current-view reflection is active.
+  status_update:
+    - docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json routeStatus is invalidated_by_ab_visual_check.
+    - runtimeEnabled is false.
+    - Default visual mode returns to A diffuse.
+    - A/B UI and console tools remain available for the next integration fix.
 ```
 
 ## Cloud / GIK 名詞鎖定
@@ -6508,4 +7733,119 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - Central sprout patch still needs a dedicated sprout_reflection_c1 package.
     - Surrounding live floor at roughness 0.1 should still be live path tracing.
     - The intended 1000SPP proof is that surrounding live roughness 0.1 converges toward the central sprout patch.
+```
+
+## R7-3.10｜C1 seam debug Phase 1 completed after Step F multiview check
+
+```yaml
+- id: R7-3.10-c1-seam-debug-phase1-step-f-complete
+  date: 2026-05-14
+  type: seam_root_cause_evidence
+  branch: current_worktree
+  scope:
+    - C1 full-room diffuse bake seam debugging.
+    - Wardrobe fixed-X black seam.
+    - Floor internal baked surface glow.
+    - R7-3.10 / R7-3.8 runtime gate interaction.
+  source_docs:
+    - docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md
+    - docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-opus.md
+  user_step_f_observation:
+    - Floor bake on: northeast wardrobe bottom south seam is clean, west seam has a black line.
+    - North wall bake on: northeast wardrobe top north seam is clean, west seam has a black line.
+    - User supplied two screenshots in the 2026-05-14 conversation.
+  phase1_result:
+    - A / H8 completed: any R7-3.10 floor or north runtime path can disable R7-3.8 sprout paste through the runtime-applied gate.
+    - B / H7 completed: floor short-circuit lacks inside-geometry / ray-side guard; user confirmed camera can enter the floor solid space and see baked surfaces glowing.
+    - C / D / H5 / H3' completed: raw atlas and metadata show fixed-X dark band leaks outside the wardrobe xMin boundary by about one texel, while fixed-Y / fixed-Z retain a bright rim.
+    - E / H1b completed: east wall U-axis history package keeps a bright boundary, so the generalized U-axis hypothesis is withdrawn.
+    - F / H4 completed: multiview user observation matches atlas evidence; perspective compression is excluded.
+  current_hypothesis_state:
+    - H8: confirmed.
+    - H7: static code gap confirmed plus user-observed trigger confirmed; B' shader numeric probe remains Phase 2.
+    - H5 / H3': confirmed.
+    - H1b generalized U-axis version: withdrawn.
+    - H6: low-priority runtime probe candidate.
+    - H4: excluded.
+  phase2_candidates:
+    - B' shader numeric probe: camera position, ray origin, visibleNormal, visiblePosition, isRayExiting, triggered baked surfaces.
+    - C' fixed-X asymmetry analysis: wardrobe xMin dark-band leak source, possible OOBB epsilon, bake surface point nudge, ray origin offset, or floating-point boundary decision.
+    - H8 / H7 / H5 / H3' fix design.
+  important_failed_or_untrusted_artifacts:
+    - A temporary automatic Step F multiview tool produced inconclusive results because its scripted camera sampling did not see useful projected pixels and should not be used as evidence.
+    - The accepted Step F evidence is the user's direct screenshots and observation.
+  guardrails:
+    - Do not return to whole-atlas flood-fill.
+    - Do not directly restore the old contact invalid region route.
+    - Do not treat C' as decided before Phase 2 evidence.
+    - Do not rely on floor-only / north-only runtime visual comparison until H8 / H7 are handled, because gate coupling pollutes the observation.
+```
+
+## R7-3.10｜Static bake expansion east wall black package and LIVE secondary hotfix
+
+```yaml
+- id: R7-3.10-static-bake-expansion-east-wall-hotfix
+  date: 2026-05-16
+  type: static_diffuse_runtime_hotfix
+  branch: codex/r7-3-10-static-bake-expansion
+  user_report:
+    - East wall bake on made the east wall fully black.
+    - LIVE objects still received baked diffuse contribution through secondary hits.
+  root_cause:
+    - East wall pointer targeted .omc/r7-3-10-full-room-diffuse-bake/20260516-092150/.
+    - That package atlas RGB was all zero:
+      nonzeroTexels: 0
+      meanLuma: 0
+      maxLuma: 0
+    - The validator accepted that package because it only checked sizes, sample count, finite values, and valid texel ratio.
+    - r7310C1FullRoomDiffuseShortCircuit ran inside the bounce loop without a bounces == 0 guard.
+  fix:
+    - Re-baked east wall 1024 / 1000SPP with Metal:
+      .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+    - Updated docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json to point to the new package.
+    - Added atlas visible-luma checks to browser validation, runner validation, and the contract test.
+    - Restricted r7310C1FullRoomDiffuseShortCircuit to bounces == 0.
+    - Primary camera hits still display baked diffuse.
+    - Secondary / LIVE bounces stay on live path tracing.
+    - Updated cache buster to r7310-static-east-hotfix-v2.
+  new_east_package_stats:
+    atlasResolution: 1024
+    requestedSamples: 1000
+    nonzeroTexels: 582109
+    meanLuma: 0.3059058627924159
+    maxLuma: 0.8272547324498495
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9015 --cdp-port=9235 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9016 --cdp-port=9236 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=180000 --http-port=9017 --cdp-port=9237 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9018 --cdp-port=9238 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9019 --cdp-port=9239 --angle=metal
+  runner_result:
+    - east runtime:
+      status: pass
+      eastWallSurfaceHitCount: 699773
+      eastWallShortCircuitCount: 699773
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123701/
+    - floor runtime regression:
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123351/
+    - north runtime regression:
+      status: pass
+      northWallSurfaceHitCount: 528987
+      northWallShortCircuitCount: 480847
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123353/
+    - ui toggle:
+      status: pass
+      report: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-123411/
+  note:
+    - floor pointer stays at .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/.
+    - north pointer stays at .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/.
+    - floor / north 1024 bake remained intact.
 ```
