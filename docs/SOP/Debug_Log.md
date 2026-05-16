@@ -38,8 +38,6 @@
     - docs/AI交接必讀.md
 ```
 
----
-
 ## R7-3.10｜Static diffuse bake expansion east wall 1024 runtime
 
 ```yaml
@@ -8028,4 +8026,30 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       eastWallSurfaceHitCount: 699773
       eastWallShortCircuitCount: 699773
       report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171904/
+```
+
+### R7-3.10-keyboard-movement-frame-time-clamp
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-camera-move-smoothing
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Smooth W / A / S / D / E / C camera movement after occasional render-frame stalls.
+root_cause:
+  - Keyboard movement used raw frameTime from the render loop.
+  - When a frame stalled after page wake, bake loading, GPU work, or high SPP rendering, the next held movement key applied the whole delayed time as one position step.
+change:
+  - Added HOME_STUDIO_KEYBOARD_MOVE_FRAME_TIME_LIMIT = 1 / 30.
+  - Added homeStudioKeyboardMoveFrameTime(value) to sanitize NaN / negative values and clamp delayed frames.
+  - Routed W / S / A / D / E / C movement through keyboardMoveFrameTime instead of raw frameTime.
+expected_behavior:
+  - Normal 60 FPS movement remains unchanged.
+  - A delayed render frame no longer creates a single large camera jump.
+  - Long stalls feel like a brief slow frame instead of a camera teleport.
+validation:
+  - node docs/tests/home-studio-keyboard-movement-smoothing.test.js
+  - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
 ```

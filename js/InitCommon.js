@@ -66,6 +66,7 @@ let needClearAccumulation = false;
 // R2-UI：60 FPS cap（避免 120Hz 螢幕把 path tracing 推到 120 FPS 滿載）
 let lastRenderTime = 0;
 const FRAME_INTERVAL_MS = 1000 / 60;
+const HOME_STUDIO_KEYBOARD_MOVE_FRAME_TIME_LIMIT = 1 / 30;
 let homeStudioAnimationFrameId = 0;
 let homeStudioAnimationSleeping = false;
 let TWO_PI = Math.PI * 2;
@@ -4588,6 +4589,14 @@ function keyPressed(keyName)
 	return KeyboardState[keyName];
 }
 
+function homeStudioKeyboardMoveFrameTime(value)
+{
+	const safeFrameTime = Number(value);
+	if (!Number.isFinite(safeFrameTime) || safeFrameTime < 0)
+		return 0;
+	return Math.min(safeFrameTime, HOME_STUDIO_KEYBOARD_MOVE_FRAME_TIME_LIMIT);
+}
+
 
 function onMouseWheel(event)
 {
@@ -5619,34 +5628,35 @@ function animate()
 	{
 		if (!isPaused)
 		{
+			const keyboardMoveFrameTime = homeStudioKeyboardMoveFrameTime(frameTime);
 			if ((keyPressed('KeyW') || button3Pressed) && !(keyPressed('KeyS') || button4Pressed))
 			{
-				cameraControlsObject.position.add(cameraDirectionVector.multiplyScalar(cameraFlightSpeed * frameTime));
+				cameraControlsObject.position.add(cameraDirectionVector.multiplyScalar(cameraFlightSpeed * keyboardMoveFrameTime));
 				cameraIsMoving = true;
 			}
 			if ((keyPressed('KeyS') || button4Pressed) && !(keyPressed('KeyW') || button3Pressed))
 			{
-				cameraControlsObject.position.sub(cameraDirectionVector.multiplyScalar(cameraFlightSpeed * frameTime));
+				cameraControlsObject.position.sub(cameraDirectionVector.multiplyScalar(cameraFlightSpeed * keyboardMoveFrameTime));
 				cameraIsMoving = true;
 			}
 			if ((keyPressed('KeyA') || button1Pressed) && !(keyPressed('KeyD') || button2Pressed))
 			{
-				cameraControlsObject.position.sub(cameraRightVector.multiplyScalar(cameraFlightSpeed * frameTime));
+				cameraControlsObject.position.sub(cameraRightVector.multiplyScalar(cameraFlightSpeed * keyboardMoveFrameTime));
 				cameraIsMoving = true;
 			}
 			if ((keyPressed('KeyD') || button2Pressed) && !(keyPressed('KeyA') || button1Pressed))
 			{
-				cameraControlsObject.position.add(cameraRightVector.multiplyScalar(cameraFlightSpeed * frameTime));
+				cameraControlsObject.position.add(cameraRightVector.multiplyScalar(cameraFlightSpeed * keyboardMoveFrameTime));
 				cameraIsMoving = true;
 			}
 			if (keyPressed('KeyE'))
 			{
-				cameraControlsObject.position.add(cameraUpVector.multiplyScalar(cameraFlightSpeed * frameTime));
+				cameraControlsObject.position.add(cameraUpVector.multiplyScalar(cameraFlightSpeed * keyboardMoveFrameTime));
 				cameraIsMoving = true;
 			}
 			if (keyPressed('KeyC'))
 			{
-				cameraControlsObject.position.sub(cameraUpVector.multiplyScalar(cameraFlightSpeed * frameTime));
+				cameraControlsObject.position.sub(cameraUpVector.multiplyScalar(cameraFlightSpeed * keyboardMoveFrameTime));
 				cameraIsMoving = true;
 			}
 			if ((keyPressed('ArrowUp') || button5Pressed) && !(keyPressed('ArrowDown') || button6Pressed))
