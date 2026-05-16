@@ -327,6 +327,8 @@ assert.match(shader, /x >= -1\.69 && x <= 0\.63 && y >= 1\.10 && y <= 2\.845/);
 assert.match(shader, /r7310C1SouthWallWindowRevealDiffuseUv/);
 assert.match(shader, /position = vec3\(-1\.75, revealY, revealZ\)/);
 assert.match(shader, /position = vec3\(revealX, 1\.04, revealZ\)/);
+assert.match(shader, /vec2 r7310RuntimeProbeAtlasUv = vec2\(0\.0\)/);
+assert.doesNotMatch(shader, /r7310C1SouthWallWindowRevealDiffuseUv\(x, nl, atlasUv\)/);
 assert.doesNotMatch(initCommon, /R7310_C1_FLOOR_INVALID_TEXEL_REGIONS/);
 assert.doesNotMatch(initCommon, /R7310_C1_NORTH_WALL_STATIC_CONTACT_REGIONS/);
 assert.doesNotMatch(initCommon, /R7310_C1_EAST_WALL_INVALID_TEXEL_REGIONS/);

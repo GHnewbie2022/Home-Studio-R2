@@ -3223,8 +3223,9 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, hitIsRayExiting, r7310BakedRadiance))
 			{
 				float r7310C1RuntimeProbeMode = uR7310C1RuntimeProbeMode;
+				vec2 r7310RuntimeProbeAtlasUv = vec2(0.0);
 				if (r7310C1RuntimeProbeMode > 0.5 && r7310C1RuntimeProbeMode < 1.5)
-					accumCol += (uR7310C1SouthWallDiffuseMode > 0.5 && r7310C1SouthWallWindowRevealDiffuseUv(x, nl, atlasUv)) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsSouthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsWestWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 1.0, 0.0) : (r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0)))));
+					accumCol += (uR7310C1SouthWallDiffuseMode > 0.5 && r7310C1SouthWallWindowRevealDiffuseUv(x, nl, r7310RuntimeProbeAtlasUv)) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsSouthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsWestWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 1.0, 0.0) : (r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0)))));
 				else if (r7310C1RuntimeProbeMode > 1.5 && r7310C1RuntimeProbeMode < 2.5)
 					accumCol += nl * 0.5 + 0.5;
 				else if (r7310C1RuntimeProbeMode > 2.5 && r7310C1RuntimeProbeMode < 3.5)

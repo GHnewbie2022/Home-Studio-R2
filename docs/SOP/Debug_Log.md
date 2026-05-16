@@ -8148,3 +8148,30 @@ validation:
   - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
   - node -e metadata reveal count check on formal south asset
 ```
+
+### R7-3.10-south-window-reveal-black-screen-hotfix
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-south-wall-only-bake
+status: fixed-local
+symptom:
+  - User reported r7310-south-window-reveal-v1 loaded UI and sample counter, but the render canvas stayed black.
+root_cause:
+  - The fragment shader runtime probe branch called r7310C1SouthWallWindowRevealDiffuseUv(x, nl, atlasUv).
+  - atlasUv was declared inside r7310C1FullRoomDiffuseShortCircuit, not in the render-loop scope where the probe branch lives.
+  - This caused fragment shader compile failure; UI stayed alive while WebGL output stayed black.
+fix:
+  - Added a local r7310RuntimeProbeAtlasUv variable in the probe branch.
+  - Added contract coverage so the invalid undeclared atlasUv call cannot return.
+validation:
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - git diff --check
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-232022/
+```
