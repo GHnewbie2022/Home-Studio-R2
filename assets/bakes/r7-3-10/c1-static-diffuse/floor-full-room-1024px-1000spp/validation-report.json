@@ -14,15 +14,22 @@
     "validTexelRatio": true,
     "atlasSamples": true,
     "patchSamples": true,
+    "atlasVisibleLuma": true,
     "reprojectionRecorded": true
   },
   "reprojectionStatus": "fail",
-  "medianRelativeLumaError": 0.39998626811526317,
-  "p90RelativeLumaError": 0.4658127282756201,
+  "medianRelativeLumaError": 0.2548346962763877,
+  "p90RelativeLumaError": 0.3715218984752089,
   "reprojectionComparisons": 17,
   "rawHdrPixels": 921600,
   "atlasFloatCount": 4194304,
   "metadataFloatCount": 12582912,
+  "atlasVisibleLuma": {
+    "texels": 1048576,
+    "nonzeroTexels": 763601,
+    "meanLuma": 0.28591789090398806,
+    "maxLuma": 0.616704265276591
+  },
   "browserValidationStatus": "pass",
   "runnerStatus": "pass",
   "runnerChecks": {
@@ -38,8 +45,21 @@
     "metadataBytes": true,
     "finiteRaw": true,
     "finiteAtlas": true,
+    "atlasVisibleLuma": true,
     "validTexelRatio": true,
     "browserValidation": true
   },
-  "runnerFailedChecks": []
+  "runnerFailedChecks": [],
+  "bakeContaminationGuardSnapshot": {
+    "phase": "during_capture",
+    "uR7310C1FullRoomDiffuseMode": 0,
+    "uR7310C1FullRoomDiffuseReady": 0,
+    "uR7310C1FloorDiffuseMode": 0,
+    "uR7310C1NorthWallDiffuseMode": 0,
+    "uR7310C1EastWallDiffuseMode": 0,
+    "uR7310C1WestWallDiffuseMode": 0,
+    "uR7310C1SouthWallDiffuseMode": 0,
+    "uR7310C1CeilingDiffuseMode": 0,
+    "uR738C1BakeCaptureMode": 2
+  }
 }

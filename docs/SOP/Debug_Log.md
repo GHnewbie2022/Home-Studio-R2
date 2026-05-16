@@ -8303,3 +8303,132 @@ notes:
   - This fix changes surface ownership, not neighbor filling.
   - The ceiling package was left unchanged.
 ```
+
+### R7-3.10-south-wall-reveal-atlas-edge-fix
+
+```yaml
+date: 2026-05-17
+branch: codex/r7-3-10-ceiling-bake-expansion
+status: implemented-local-awaiting-user-visual-check
+symptom:
+  - User reported both visible lines still remained after the south window opening fix.
+  - South wall / ceiling joint line remained above the south window.
+  - South window east vertical room-side reveal line remained.
+rootCause:
+  - The previous opening-size hypothesis was incomplete.
+  - The actual black pixels came from the reveal atlas entrance texels.
+  - The reveal atlas boundary sat between texel centers:
+      right reveal packed xMin: 0.46
+      top reveal packed yMin: 2.675
+  - Runtime entrance lookup landed on the texel immediately outside those reveal rectangles.
+  - That texel stayed invalid black even though the neighboring reveal interior texel was correct.
+debugEvidence:
+  - Before this fix, formal south atlas luma:
+      fake top front strip at x 0.0 / y 2.89: 0
+      fake east front strip at x 0.66 / y 1.90: 0
+      right reveal room edge at packed x 0.46 / y 1.90: 0
+      right reveal interior at packed x 0.545 / y 1.90: 0.20634669562180838
+      top reveal room edge at packed x 0.0 / y 2.675: 0
+      top reveal interior at packed x 0.0 / y 2.76: 0.2227965792020162
+fix:
+  - South reveal bake rectangle tests now include a half-texel atlas tolerance.
+  - South reveal bake positions still clamp one texel inward from z = 3.056 before sampling.
+  - JS metadata builder mirrors the shader rectangle tolerance and inward z clamp.
+  - Rebaked only the south wall package and promoted it over the formal south asset.
+package:
+  - source_package: .omc/r7-3-10-full-room-diffuse-bake/20260517-011755
+  - formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+  - samples: 1000
+  - atlasResolution: 1024
+postFixEvidence:
+  - Formal south atlas luma after promotion:
+      fake top front strip at x 0.0 / y 2.89: 0
+      fake east front strip at x 0.66 / y 1.90: 0
+      right reveal room edge at packed x 0.46 / y 1.90: 0.2273777276277542
+      top reveal room edge at packed x 0.0 / y 2.675: 0.21348585188388824
+  - Edge metadata after fix:
+      right reveal room edge posZ: 3.0608482360839844
+      top reveal room edge posZ: 3.059337615966797
+validation:
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - git diff --check
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+      status: pass
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=south-wall --samples=1000 --target-samples=1000 --atlas-resolution=1024 --timeout-ms=360000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260517-011755
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --samples=1 --target-samples=1 --atlas-resolution=1024 --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      package: .omc/r7-3-10-full-room-diffuse-runtime/20260517-012113
+notes:
+  - This is an atlas cell coverage fix for reveal rectangles.
+  - Floor / north / east / west / ceiling packages were left unchanged.
+```
+
+### R7-3.10-floor-east-west-contact-edge-fix
+
+```yaml
+date: 2026-05-17
+branch: codex/r7-3-10-ceiling-bake-expansion
+status: implemented-local-awaiting-user-visual-check
+symptom:
+  - User confirmed the south wall fix is OK.
+  - User then reported black lines at the east/west wall and floor contact when viewed very close.
+  - North wall and floor contact looked clean.
+rootCause:
+  - The east/west wall atlas first floor-adjacent row was not black.
+  - The floor atlas side-contact columns at the visible wall contact were black:
+      west contact x = -1.91
+      east contact x = 1.91
+  - The first inward floor texel was already bright, so the black line was a one-column floor bake-source contact issue.
+  - North contact stayed clean because the floor atlas north z-contact row was already bright.
+debugEvidenceBeforeFix:
+  - Formal floor atlas:
+      west contact x -1.91 / z 0.0: 0
+      east contact x 1.91 / z 0.0: 0
+      west first inward texel: 0.422612
+      east first inward texel: 0.416585
+      north contact x 0.0 / z -1.874: 0.354035
+  - Wall atlas checks:
+      east wall bottom row at z 0.0: 0.532436
+      west wall bottom row at z 0.0: 0.532959
+fix:
+  - Added floor bake-source x contact clamp for the east/west wall contact bands only.
+  - The affected floor contact texels keep their atlas cell but bake from one floor texel inward:
+      west edge sample x: -1.9058789
+      east edge sample x: 1.9058789
+  - Runtime UV lookup was left unchanged.
+  - Re-baked only the formal floor package.
+package:
+  - source_package: .omc/r7-3-10-full-room-diffuse-bake/20260517-014127
+  - formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp/
+  - samples: 1000
+  - atlasResolution: 1024
+postFixEvidence:
+  - Formal floor atlas after promotion:
+      west contact x -1.91 / z 0.0: 0.40856250127156574
+      east contact x 1.91 / z 0.0: 0.42621544003486633
+      north contact x 0.0 / z -1.874: 0.3540351490179698
+validation:
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - git diff --check
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+      status: pass
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=floor --samples=1000 --target-samples=1000 --atlas-resolution=1024 --timeout-ms=360000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260517-014127
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --samples=1 --target-samples=1 --atlas-resolution=1024 --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      package: .omc/r7-3-10-full-room-diffuse-runtime/20260517-014530
+notes:
+  - This fix is limited to floor bake-source positions near the east/west wall contacts.
+  - North / east / west / south / ceiling packages were left unchanged.
+```

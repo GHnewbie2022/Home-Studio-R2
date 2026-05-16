@@ -396,13 +396,34 @@ bool r7310C1FloorHiddenByStaticContact(float x, float z)
 {
 	return false;
 }
+float r7310C1FloorBakeSafeX(float x)
+{
+	float inset = 4.22 / max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+	float westBand = step(-1.91 - inset, x) * (1.0 - step(-1.91 + inset, x));
+	float eastBand = step(1.91 - inset, x) * (1.0 - step(1.91 + inset, x));
+	x = mix(x, -1.91 + inset, westBand);
+	x = mix(x, 1.91 - inset, eastBand);
+	return x;
+}
 bool r7310C1NorthWallHiddenByStaticContact(float x, float y)
 {
 	return false;
 }
 bool r7310C1SouthWallAtlasRect(float x, float y, float xMin, float xMax, float yMin, float yMax)
 {
-	return x >= xMin && x <= xMax && y >= yMin && y <= yMax;
+	float halfX = 2.11 / max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+	float halfY = 1.4525 / max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+	return x >= xMin - halfX && x <= xMax + halfX && y >= yMin - halfY && y <= yMax + halfY;
+}
+float r7310C1SouthWallRevealBakePackedX(float x, float xMin, float xMax)
+{
+	float inset = 4.22 / max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+	return clamp(x, xMin + inset, xMax - inset);
+}
+float r7310C1SouthWallRevealBakePackedY(float y, float yMin, float yMax)
+{
+	float inset = 2.905 / max(1.0, uR7310C1RuntimeAtlasPatchResolution);
+	return clamp(y, yMin + inset, yMax - inset);
 }
 vec2 r7310C1SouthWallAtlasUvFromPackedPoint(float x, float y)
 {
@@ -415,32 +436,36 @@ bool r7310C1SouthWallWindowRevealBakePoint(float x, float y, out vec3 position, 
 	float revealX = 0.0;
 	if (r7310C1SouthWallAtlasRect(x, y, -1.69, -1.52, 1.10, 2.845))
 	{
+		float safeX = r7310C1SouthWallRevealBakePackedX(x, -1.69, -1.52);
 		revealY = mix(1.04, 2.905, (y - 1.10) / (2.845 - 1.10));
-		revealZ = mix(3.056, 3.256, (x + 1.69) / (-1.52 + 1.69));
+		revealZ = mix(3.056, 3.256, (safeX + 1.69) / (-1.52 + 1.69));
 		position = vec3(-1.75, revealY, revealZ);
 		normal = vec3(1.0, 0.0, 0.0);
 		return true;
 	}
 	if (r7310C1SouthWallAtlasRect(x, y, 0.46, 0.63, 1.10, 2.845))
 	{
+		float safeX = r7310C1SouthWallRevealBakePackedX(x, 0.46, 0.63);
 		revealY = mix(1.04, 2.905, (y - 1.10) / (2.845 - 1.10));
-		revealZ = mix(3.056, 3.256, (x - 0.46) / (0.63 - 0.46));
+		revealZ = mix(3.056, 3.256, (safeX - 0.46) / (0.63 - 0.46));
 		position = vec3(0.69, revealY, revealZ);
 		normal = vec3(-1.0, 0.0, 0.0);
 		return true;
 	}
 	if (r7310C1SouthWallAtlasRect(x, y, -1.45, 0.39, 1.10, 1.27))
 	{
+		float safeY = r7310C1SouthWallRevealBakePackedY(y, 1.10, 1.27);
 		revealX = mix(-1.75, 0.69, (x + 1.45) / (0.39 + 1.45));
-		revealZ = mix(3.056, 3.256, (y - 1.10) / (1.27 - 1.10));
+		revealZ = mix(3.056, 3.256, (safeY - 1.10) / (1.27 - 1.10));
 		position = vec3(revealX, 1.04, revealZ);
 		normal = vec3(0.0, 1.0, 0.0);
 		return true;
 	}
 	if (r7310C1SouthWallAtlasRect(x, y, -1.45, 0.39, 2.675, 2.845))
 	{
+		float safeY = r7310C1SouthWallRevealBakePackedY(y, 2.675, 2.845);
 		revealX = mix(-1.75, 0.69, (x + 1.45) / (0.39 + 1.45));
-		revealZ = mix(3.056, 3.256, (y - 2.675) / (2.845 - 2.675));
+		revealZ = mix(3.056, 3.256, (safeY - 2.675) / (2.845 - 2.675));
 		position = vec3(revealX, 2.905, revealZ);
 		normal = vec3(0.0, -1.0, 0.0);
 		return true;
@@ -454,7 +479,7 @@ bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out v
 	{
 		float x = mix(uR7310C1BakeFloorWorldBounds.x, uR7310C1BakeFloorWorldBounds.y, uv.x);
 		float z = mix(uR7310C1BakeFloorWorldBounds.z, uR7310C1BakeFloorWorldBounds.w, uv.y);
-		position = vec3(x, 0.01, z);
+		position = vec3(r7310C1FloorBakeSafeX(x), 0.01, z);
 		normal = vec3(0.0, 1.0, 0.0);
 		hitType = 1;
 		objectID = 0.0;

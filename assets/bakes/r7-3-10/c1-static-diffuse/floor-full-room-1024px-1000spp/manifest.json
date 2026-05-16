@@ -11,8 +11,8 @@
     "zMax": 3.256,
     "y": 0.01
   },
-  "createdAt": "2026-05-15T13:57:27.821Z",
-  "branch": "codex/r7-3-10-c1-full-floor-diffuse-bake",
+  "createdAt": "2026-05-16T17:41:28.124Z",
+  "branch": "codex/r7-3-10-ceiling-bake-expansion",
   "commit": "WORKTREE_DIRTY",
   "smokeTest": false,
   "targetAtlasResolution": 1024,

@@ -2323,7 +2323,41 @@ function buildR738TexelMetadata(size, worldBounds)
 
 function buildR7310C1FloorTexelMetadata(size)
 {
-	return buildR738TexelMetadata(size, R7310_C1_FLOOR_WORLD_BOUNDS);
+	var bounds = R7310_C1_FLOOR_WORLD_BOUNDS;
+	var metadata = new Float32Array(size * size * 12);
+	var worldXStep = (bounds.xMax - bounds.xMin) / Math.max(1, size);
+	var valid = 0;
+	for (var y = 0; y < size; y += 1)
+	{
+		for (var x = 0; x < size; x += 1)
+		{
+			var u = (x + 0.5) / size;
+			var v = (y + 0.5) / size;
+			var worldX = bounds.xMin + (bounds.xMax - bounds.xMin) * u;
+			var worldZ = bounds.zMin + (bounds.zMax - bounds.zMin) * v;
+			var westContactBand = worldX >= -1.91 - worldXStep && worldX < -1.91 + worldXStep;
+			var eastContactBand = worldX > 1.91 - worldXStep && worldX <= 1.91 + worldXStep;
+			if (westContactBand)
+				worldX = -1.91 + worldXStep;
+			else if (eastContactBand)
+				worldX = 1.91 - worldXStep;
+			var offset = (y * size + x) * 12;
+			metadata[offset] = worldX;
+			metadata[offset + 1] = bounds.y;
+			metadata[offset + 2] = worldZ;
+			metadata[offset + 3] = 0.0;
+			metadata[offset + 4] = 1.0;
+			metadata[offset + 5] = 0.0;
+			metadata[offset + 6] = 1.0;
+			metadata[offset + 7] = 0.0;
+			metadata[offset + 8] = 0.0;
+			metadata[offset + 9] = 0.0;
+			metadata[offset + 10] = u;
+			metadata[offset + 11] = v;
+			valid += 1;
+		}
+	}
+	return { metadata: metadata, validTexelRatio: valid / Math.max(1, size * size) };
 }
 
 function buildR7310C1NorthWallTexelMetadata(size)
@@ -2435,6 +2469,14 @@ function buildR7310C1SouthWallTexelMetadata(size)
 	var hole = R7310_C1_SOUTH_WALL_WINDOW_HOLE;
 	var reveal = R7310_C1_SOUTH_WALL_WINDOW_REVEAL;
 	var revealAtlas = reveal.atlas;
+	var worldXStep = (b.xMax - b.xMin) / Math.max(1, size);
+	var worldYStep = (b.yMax - b.yMin) / Math.max(1, size);
+	var revealAtlasContains = function(rect, worldXValue, worldYValue) {
+		return worldXValue >= rect.xMin - worldXStep * 0.5 &&
+			worldXValue <= rect.xMax + worldXStep * 0.5 &&
+			worldYValue >= rect.yMin - worldYStep * 0.5 &&
+			worldYValue <= rect.yMax + worldYStep * 0.5;
+	};
 	var valid = 0;
 	for (var y = 0; y < size; y += 1)
 	{
@@ -2454,39 +2496,39 @@ function buildR7310C1SouthWallTexelMetadata(size)
 			var isValid = !isWindowHole;
 			if (isWindowHole)
 			{
-				if (worldX >= revealAtlas.leftReveal.xMin && worldX <= revealAtlas.leftReveal.xMax &&
-					worldY >= revealAtlas.leftReveal.yMin && worldY <= revealAtlas.leftReveal.yMax)
+				if (revealAtlasContains(revealAtlas.leftReveal, worldX, worldY))
 				{
+					var safeWorldX = Math.min(revealAtlas.leftReveal.xMax - worldXStep, Math.max(revealAtlas.leftReveal.xMin + worldXStep, worldX));
 					posX = reveal.xMin;
 					posY = reveal.yMin + (reveal.yMax - reveal.yMin) * ((worldY - revealAtlas.leftReveal.yMin) / Math.max(0.00001, revealAtlas.leftReveal.yMax - revealAtlas.leftReveal.yMin));
-					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldX - revealAtlas.leftReveal.xMin) / Math.max(0.00001, revealAtlas.leftReveal.xMax - revealAtlas.leftReveal.xMin));
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((safeWorldX - revealAtlas.leftReveal.xMin) / Math.max(0.00001, revealAtlas.leftReveal.xMax - revealAtlas.leftReveal.xMin));
 					normalX = 1.0; normalY = 0.0; normalZ = 0.0;
 					isValid = true;
 				}
-				else if (worldX >= revealAtlas.rightReveal.xMin && worldX <= revealAtlas.rightReveal.xMax &&
-					worldY >= revealAtlas.rightReveal.yMin && worldY <= revealAtlas.rightReveal.yMax)
+				else if (revealAtlasContains(revealAtlas.rightReveal, worldX, worldY))
 				{
+					var safeWorldX = Math.min(revealAtlas.rightReveal.xMax - worldXStep, Math.max(revealAtlas.rightReveal.xMin + worldXStep, worldX));
 					posX = reveal.xMax;
 					posY = reveal.yMin + (reveal.yMax - reveal.yMin) * ((worldY - revealAtlas.rightReveal.yMin) / Math.max(0.00001, revealAtlas.rightReveal.yMax - revealAtlas.rightReveal.yMin));
-					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldX - revealAtlas.rightReveal.xMin) / Math.max(0.00001, revealAtlas.rightReveal.xMax - revealAtlas.rightReveal.xMin));
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((safeWorldX - revealAtlas.rightReveal.xMin) / Math.max(0.00001, revealAtlas.rightReveal.xMax - revealAtlas.rightReveal.xMin));
 					normalX = -1.0; normalY = 0.0; normalZ = 0.0;
 					isValid = true;
 				}
-				else if (worldX >= revealAtlas.bottomReveal.xMin && worldX <= revealAtlas.bottomReveal.xMax &&
-					worldY >= revealAtlas.bottomReveal.yMin && worldY <= revealAtlas.bottomReveal.yMax)
+				else if (revealAtlasContains(revealAtlas.bottomReveal, worldX, worldY))
 				{
+					var safeWorldY = Math.min(revealAtlas.bottomReveal.yMax - worldYStep, Math.max(revealAtlas.bottomReveal.yMin + worldYStep, worldY));
 					posX = reveal.xMin + (reveal.xMax - reveal.xMin) * ((worldX - revealAtlas.bottomReveal.xMin) / Math.max(0.00001, revealAtlas.bottomReveal.xMax - revealAtlas.bottomReveal.xMin));
 					posY = reveal.yMin;
-					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldY - revealAtlas.bottomReveal.yMin) / Math.max(0.00001, revealAtlas.bottomReveal.yMax - revealAtlas.bottomReveal.yMin));
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((safeWorldY - revealAtlas.bottomReveal.yMin) / Math.max(0.00001, revealAtlas.bottomReveal.yMax - revealAtlas.bottomReveal.yMin));
 					normalX = 0.0; normalY = 1.0; normalZ = 0.0;
 					isValid = true;
 				}
-				else if (worldX >= revealAtlas.topReveal.xMin && worldX <= revealAtlas.topReveal.xMax &&
-					worldY >= revealAtlas.topReveal.yMin && worldY <= revealAtlas.topReveal.yMax)
+				else if (revealAtlasContains(revealAtlas.topReveal, worldX, worldY))
 				{
+					var safeWorldY = Math.min(revealAtlas.topReveal.yMax - worldYStep, Math.max(revealAtlas.topReveal.yMin + worldYStep, worldY));
 					posX = reveal.xMin + (reveal.xMax - reveal.xMin) * ((worldX - revealAtlas.topReveal.xMin) / Math.max(0.00001, revealAtlas.topReveal.xMax - revealAtlas.topReveal.xMin));
 					posY = reveal.yMax;
-					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((worldY - revealAtlas.topReveal.yMin) / Math.max(0.00001, revealAtlas.topReveal.yMax - revealAtlas.topReveal.yMin));
+					posZ = reveal.zMin + (reveal.zMax - reveal.zMin) * ((safeWorldY - revealAtlas.topReveal.yMin) / Math.max(0.00001, revealAtlas.topReveal.yMax - revealAtlas.topReveal.yMin));
 					normalX = 0.0; normalY = -1.0; normalZ = 0.0;
 					isValid = true;
 				}

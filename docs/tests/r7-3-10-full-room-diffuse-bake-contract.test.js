@@ -62,6 +62,16 @@ function southWallAtlasRow(y)
 	return Math.round((y / 2.905) * (r7310SouthWall.targetAtlasResolution - 1));
 }
 
+function floorAtlasColumn(x)
+{
+	return Math.round(((x + 2.11) / 4.22) * (r7310.targetAtlasResolution - 1));
+}
+
+function floorAtlasRow(z)
+{
+	return Math.round(((z + 2.074) / 5.33) * (r7310.targetAtlasResolution - 1));
+}
+
 const initCommon = fs.readFileSync('js/InitCommon.js', 'utf8');
 const pathTracingCommon = fs.readFileSync('js/PathTracingCommon.js', 'utf8');
 const shader = fs.readFileSync('shaders/Home_Studio_Fragment.glsl', 'utf8');
@@ -255,6 +265,14 @@ const r7310SouthWallAtlasStats = summarizeAtlasLuma(r7310SouthWall);
 const r7310CeilingAtlasStats = summarizeAtlasLuma(r7310Ceiling);
 assert.ok(r7310FloorAtlasStats.nonzeroTexels > 0);
 assert.ok(r7310FloorAtlasStats.meanLuma > 0.001);
+assert.ok(
+  atlasLumaAt(r7310, floorAtlasColumn(-1.91), floorAtlasRow(0.0)) > 0.01,
+  'floor west wall contact edge must stay baked'
+);
+assert.ok(
+  atlasLumaAt(r7310, floorAtlasColumn(1.91), floorAtlasRow(0.0)) > 0.01,
+  'floor east wall contact edge must stay baked'
+);
 assert.ok(r7310NorthWallAtlasStats.nonzeroTexels > 0);
 assert.ok(r7310NorthWallAtlasStats.meanLuma > 0.001);
 assert.ok(r7310EastWallAtlasStats.nonzeroTexels > 0);
@@ -393,8 +411,16 @@ assert.equal(
   'south wall fake east front strip must remain unbaked'
 );
 assert.ok(
+  atlasLumaAt(r7310SouthWall, southWallAtlasColumn(0.46), southWallAtlasRow(1.90)) > 0.01,
+  'south wall right reveal room edge must stay baked'
+);
+assert.ok(
   atlasLumaAt(r7310SouthWall, southWallAtlasColumn(0.545), southWallAtlasRow(1.90)) > 0.01,
   'south wall right reveal interior must stay baked'
+);
+assert.ok(
+  atlasLumaAt(r7310SouthWall, southWallAtlasColumn(0.0), southWallAtlasRow(2.675)) > 0.01,
+  'south wall top reveal room edge must stay baked'
 );
 assert.match(shader, /r7310C1SouthWallWindowRevealDiffuseUv/);
 assert.match(shader, /position = vec3\(-1\.75, revealY, revealZ\)/);

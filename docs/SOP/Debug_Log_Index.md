@@ -79,6 +79,8 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
   - `docs/SOP/R7：採樣演算法升級.md` 的 `2026-05-16 目前共識：先收 hybrid room，再談架構加速`
   - `Debug_Log.md` 的 `R7-3.10-static-diffuse-bake-expansion-east-wall-1024-runtime`
   - `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`
+  - `Debug_Log.md` 的 `R7-3.10-south-wall-reveal-atlas-edge-fix`
+  - `Debug_Log.md` 的 `R7-3.10-floor-east-west-contact-edge-fix`
 
 目前狀態：
   - floor / north 1024 bake 已驗收，兩條衣櫃黑線看不出來。
@@ -92,6 +94,8 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
   - 目前主線先在現有 Home Studio 架構收成快速預覽 hybrid room。
   - hybrid room 技術分工：靜態漫射面讀 bake；反射保留 LIVE path tracing。
   - floor / north / east / west / south / ceiling 已接成可分開開關的靜態漫射 bake；下一批可往樑柱與細部結構擴張。
+  - south window reveal atlas edge 已補半格 texel coverage，右側與上側 room-edge 黑線對應的 atlas luma 已由 0 補到 0.21+。
+  - floor east/west contact edge 已把地板 bake source 往房間內退一格，東西牆貼地黑線對應的 floor atlas luma 已由 0 補到 0.40+。
   - 快速預覽成功後，再開高品質 bake 生產線與 WebGPU / Metal / Blender 加速候選評估。
   - PlayCanvas 只列展示承載候選，等 baked room 穩定後再談。
 ```
@@ -397,6 +401,8 @@ R7 採樣升級：
   - R7-3.10 south wall window reveal fix 已加入：南牆窗洞 front rim 與四個 reveal 切面都進入正式 south wall 1024/1000spp package，所有 bake toggles 預設為開，烘焙按鈕開啟時維持黑灰底加發光；讀 `Debug_Log.md` 的 `R7-3.10-south-wall-window-rim-and-bake-button-style-fix` 與 `R7-3.10-south-wall-window-reveal-and-default-on`。
   - R7-3.10 ceiling static diffuse bake 已加入：`assets/bakes/r7-3-10/c1-static-diffuse/ceiling-full-room-1024px-1000spp/`，第 6 個 runtime atlas slot，UI 新增 `天花板烘焙` 且預設開；讀 `Debug_Log.md` 的 `R7-3.10-ceiling-static-diffuse-bake-expansion`。
   - R7-3.10 south wall window opening seam debug 已修正：南牆主面窗洞排除改成真實 reveal 開口 `x -1.75..0.69 / y 1.04..2.905`，移除窗洞上方與東側不存在前平面造成的黑線，南牆 1024/1000spp package 已重烘；讀 `Debug_Log.md` 的 `R7-3.10-south-wall-window-opening-seam-debug`。
+  - R7-3.10 south wall reveal atlas edge fix 已加入：reveal atlas 邊界改吃進半格 texel 並把烘焙位置推入窗洞深度，右側與上側 room-edge 黑線的正式 south atlas luma 由 0 補到 0.21+；讀 `Debug_Log.md` 的 `R7-3.10-south-wall-reveal-atlas-edge-fix`。
+  - R7-3.10 floor east/west contact edge fix 已加入：地板在 `x = ±1.91` 的 side contact 欄位改由一格內側位置烘焙，正式 floor atlas luma 由 0 補到 0.40+；讀 `Debug_Log.md` 的 `R7-3.10-floor-east-west-contact-edge-fix`。
   - R7-3.10 keyboard movement frame-time clamp 已加入：W / A / S / D / E / C 不再直接吃 raw frameTime，render frame 偶發延遲時會限制單幀位移；讀 `Debug_Log.md` 的 `R7-3.10-keyboard-movement-frame-time-clamp`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`
