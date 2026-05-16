@@ -1224,19 +1224,21 @@ function r738C1BakePastePreviewConfigAllowed()
 	return config === 1;
 }
 
+function r7310C1FloorToggleOwnsSproutPaste()
+{
+	return r7310C1FullRoomDiffuseRuntimeConfigAllowed();
+}
+
 function updateR738C1BakePastePreviewUniforms()
 {
 	if (!pathTracingUniforms) return false;
 	var captureMode = pathTracingUniforms.uR738C1BakeCaptureMode ? pathTracingUniforms.uR738C1BakeCaptureMode.value : 0;
-	var r7310FloorRuntimeApplied = r7310C1FloorDiffuseRuntimeEnabled &&
-		r7310C1FullRoomDiffuseRuntimeReady &&
-		r7310C1FullRoomDiffuseRuntimeConfigAllowed() &&
-		captureMode === 0;
+	var disabledByR7310FloorToggle = r7310C1FloorToggleOwnsSproutPaste();
 	var applied = r738C1BakePastePreviewEnabled &&
 		r738C1BakePastePreviewReady &&
 		r738C1BakePastePreviewConfigAllowed() &&
 		captureMode === 0 &&
-		!r7310FloorRuntimeApplied;
+		!disabledByR7310FloorToggle;
 	if (pathTracingUniforms.uR738C1BakePastePreviewMode)
 		pathTracingUniforms.uR738C1BakePastePreviewMode.value = applied ? 1.0 : 0.0;
 	if (pathTracingUniforms.uR738C1BakePastePreviewReady)
@@ -3543,6 +3545,7 @@ window.reportR738C1BakePastePreviewConfig = function()
 		diffuseOnly: r738C1BakePastePreviewPackage ? r738C1BakePastePreviewPackage.diffuseOnly === true : null,
 		uniformMode: pathTracingUniforms && pathTracingUniforms.uR738C1BakePastePreviewMode ? pathTracingUniforms.uR738C1BakePastePreviewMode.value : null,
 		uniformReady: pathTracingUniforms && pathTracingUniforms.uR738C1BakePastePreviewReady ? pathTracingUniforms.uR738C1BakePastePreviewReady.value : null,
+		disabledByR7310FloorToggle: r7310C1FloorToggleOwnsSproutPaste(),
 		strength: r738C1BakePastePreviewStrength,
 		currentSamples: Math.round(typeof sampleCounter === 'number' ? sampleCounter : 0)
 	};
@@ -3567,6 +3570,7 @@ window.setR7310C1FullRoomDiffuseRuntimeEnabled = function(enabled)
 	r7310C1NorthWallDiffuseRuntimeEnabled = !!enabled;
 	r7310C1EastWallDiffuseRuntimeEnabled = !!enabled;
 	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	updateR738C1BakePastePreviewUniforms();
 	ensureR7310C1FullRoomDiffuseRuntimeLoading();
 	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-full-room-diffuse-runtime-toggle');
 	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
@@ -3577,6 +3581,7 @@ window.setR7310C1FloorDiffuseRuntimeEnabled = function(enabled)
 	r7310C1FloorDiffuseRuntimeEnabled = !!enabled;
 	r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled || r7310C1EastWallDiffuseRuntimeEnabled;
 	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	updateR738C1BakePastePreviewUniforms();
 	ensureR7310C1FullRoomDiffuseRuntimeLoading();
 	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-floor-diffuse-runtime-toggle');
 	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
@@ -3587,6 +3592,7 @@ window.setR7310C1NorthWallDiffuseRuntimeEnabled = function(enabled)
 	r7310C1NorthWallDiffuseRuntimeEnabled = !!enabled;
 	r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled || r7310C1EastWallDiffuseRuntimeEnabled;
 	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	updateR738C1BakePastePreviewUniforms();
 	ensureR7310C1FullRoomDiffuseRuntimeLoading();
 	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-north-wall-diffuse-runtime-toggle');
 	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
@@ -3597,6 +3603,7 @@ window.setR7310C1EastWallDiffuseRuntimeEnabled = function(enabled)
 	r7310C1EastWallDiffuseRuntimeEnabled = !!enabled;
 	r7310C1FullRoomDiffuseRuntimeEnabled = r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled || r7310C1EastWallDiffuseRuntimeEnabled;
 	updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	updateR738C1BakePastePreviewUniforms();
 	ensureR7310C1FullRoomDiffuseRuntimeLoading();
 	if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-east-wall-diffuse-runtime-toggle');
 	return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
@@ -3605,6 +3612,7 @@ window.setR7310C1EastWallDiffuseRuntimeEnabled = function(enabled)
 window.reportR7310C1FullRoomDiffuseRuntimeConfig = function()
 {
 	var applied = updateR7310C1FullRoomDiffuseRuntimeUniforms();
+	var sproutPasteApplied = updateR738C1BakePastePreviewUniforms();
 	return {
 		version: 'r7-3-10-c1-full-room-diffuse-runtime',
 		enabled: r7310C1FloorDiffuseRuntimeEnabled || r7310C1NorthWallDiffuseRuntimeEnabled || r7310C1EastWallDiffuseRuntimeEnabled,
@@ -3618,8 +3626,11 @@ window.reportR7310C1FullRoomDiffuseRuntimeConfig = function()
 		applied: applied,
 		error: r7310C1FullRoomDiffuseRuntimeError || r7310C1NorthWallDiffuseRuntimeError || r7310C1EastWallDiffuseRuntimeError,
 		configAllowed: r7310C1FullRoomDiffuseRuntimeConfigAllowed(),
-		uiMeaningOff: 'sprout_patch_plus_live_floor',
-		uiMeaningOn: 'selected_floor_north_or_east_wall_baked_diffuse_plus_live_reflection',
+		uiMeaningOff: 'all_live_path_tracing',
+		uiMeaningOn: 'selected_floor_north_or_east_wall_1024_baked_diffuse_plus_live_reflection',
+		sproutPasteApplied: sproutPasteApplied,
+		sproutPasteUniformMode: pathTracingUniforms && pathTracingUniforms.uR738C1BakePastePreviewMode ? pathTracingUniforms.uR738C1BakePastePreviewMode.value : null,
+		sproutPasteDisabledByFloorToggle: r7310C1FloorToggleOwnsSproutPaste(),
 		packageDir: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.packageDir : null,
 		targetId: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.targetId : null,
 		surfaceName: r7310C1FullRoomDiffuseRuntimePackage ? r7310C1FullRoomDiffuseRuntimePackage.surfaceName : null,

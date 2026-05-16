@@ -89,6 +89,8 @@ assert.match(runner, /btn-step-sampling/);
 assert.match(runner, /afterStepReport\.currentSamples === beforeStepReport\.currentSamples \+ 1/);
 assert.match(runner, /20260511-154229/);
 assert.match(runner, /previewReport\.diffuseOnly === true/);
+assert.match(runner, /previewReport\.applied === false/);
+assert.match(runner, /previewReport\.disabledByR7310FloorToggle === true/);
 assert.match(runner, /hibernationReport\.sleeping/);
 assert.match(runner, /hibernationReport\.framePending === false/);
 assert.match(runner, /cameraInfoText/);
