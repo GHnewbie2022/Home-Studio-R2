@@ -8241,3 +8241,65 @@ notes:
   - The in-app browser loaded the page and showed all six bake buttons, but its screenshot API timed out on the continuously rendering path tracing canvas.
   - Headless Brave runner is the primary verification source for shader/runtime health.
 ```
+
+### R7-3.10-south-wall-window-opening-seam-debug
+
+```yaml
+date: 2026-05-17
+branch: codex/r7-3-10-ceiling-bake-expansion
+status: implemented-local-awaiting-user-visual-check
+symptom:
+  - Ceiling bake passed user visual check.
+  - South wall / ceiling joint showed a thin line above the south window.
+  - South window east vertical room-side reveal showed a dark line.
+rootCause:
+  - The south wall bake still treated the front wall window hole as:
+      x -1.69..0.63
+      y 1.10..2.845
+  - The actual geometry opening around the reveal is:
+      x -1.75..0.69
+      y 1.04..2.905
+  - Because the old hole was too small, the bake generated non-real front-wall strips:
+      top strip: y 2.845..2.905
+      east strip: x 0.63..0.69
+  - Those strips matched the two user-reported black line locations.
+debugEvidence:
+  - Old south atlas luma readback:
+      top fake strip sample at x 0.0 / y 2.89: 0.009430897538550198
+      right reveal interior sample at packed x 0.545 / y 1.90: 0.2143967634320259
+      right room-edge band p50: 0
+  - Contract was changed to require the fake top/east front strips to stay unbaked.
+fix:
+  - Updated south wall main-front exclusion to the real window/reveal opening:
+      x -1.75..0.69
+      y 1.04..2.905
+  - Kept the reveal atlas subregions unchanged.
+  - Rebaked south wall from the corrected geometry.
+  - Promoted the corrected package over:
+      assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+package:
+  - source_package: .omc/r7-3-10-full-room-diffuse-bake/20260517-004208
+  - formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+  - samples: 1000
+  - atlasResolution: 1024
+  - nonzeroTexels: 366642
+  - meanLuma: 0.09833882783105341
+  - maxLuma: 0.6435913344224294
+validation:
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - git diff --check
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=south-wall --samples=1000 --target-samples=1000 --atlas-resolution=1024 --timeout-ms=360000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260517-004208
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --samples=1 --target-samples=1 --atlas-resolution=1024 --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      package: .omc/r7-3-10-full-room-diffuse-runtime/20260517-004940
+notes:
+  - This fix changes surface ownership, not neighbor filling.
+  - The ceiling package was left unchanged.
+```

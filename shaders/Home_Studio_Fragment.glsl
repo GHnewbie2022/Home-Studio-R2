@@ -504,7 +504,7 @@ bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out v
 			objectID = 0.0;
 			return true;
 		}
-		if (x >= -1.69 && x <= 0.63 && y >= 1.10 && y <= 2.845)
+		if (x >= -1.75 && x <= 0.69 && y >= 1.04 && y <= 2.905)
 			return false;
 		position = vec3(x, y, 3.056);
 		normal = vec3(0.0, 0.0, -1.0);
@@ -751,7 +751,7 @@ bool r7310C1SouthWallDiffuseUv(vec3 visiblePosition, vec3 visibleNormal, out vec
 		atlasUv = vec2(0.0);
 		return false;
 	}
-	if (visiblePosition.x >= -1.69 && visiblePosition.x <= 0.63 && visiblePosition.y >= 1.10 && visiblePosition.y <= 2.845)
+	if (visiblePosition.x >= -1.75 && visiblePosition.x <= 0.69 && visiblePosition.y >= 1.04 && visiblePosition.y <= 2.905)
 	{
 		atlasUv = vec2(0.0);
 		return false;

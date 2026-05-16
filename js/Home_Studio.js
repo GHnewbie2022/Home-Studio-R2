@@ -5174,7 +5174,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-static-east-hotfix-v2';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-south-window-opening-fix-v1';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 2;

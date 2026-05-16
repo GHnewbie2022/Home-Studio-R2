@@ -42,6 +42,26 @@ function summarizeAtlasLuma(pointer)
 	};
 }
 
+function atlasLumaAt(pointer, col, row)
+{
+	const atlasPath = `${pointer.packageDir}/${pointer.artifacts.atlasPatch0}`;
+	const resolution = pointer.targetAtlasResolution;
+	const bytes = fs.readFileSync(atlasPath);
+	const floats = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+	const i = (row * resolution + col) * 4;
+	return (floats[i] + floats[i + 1] + floats[i + 2]) / 3;
+}
+
+function southWallAtlasColumn(x)
+{
+	return Math.round(((x + 2.11) / 4.22) * (r7310SouthWall.targetAtlasResolution - 1));
+}
+
+function southWallAtlasRow(y)
+{
+	return Math.round((y / 2.905) * (r7310SouthWall.targetAtlasResolution - 1));
+}
+
 const initCommon = fs.readFileSync('js/InitCommon.js', 'utf8');
 const pathTracingCommon = fs.readFileSync('js/PathTracingCommon.js', 'utf8');
 const shader = fs.readFileSync('shaders/Home_Studio_Fragment.glsl', 'utf8');
@@ -162,10 +182,10 @@ assert.equal(contract.c1SouthWallBatch.surfaceName, 'c1_south_wall');
 assert.equal(contract.c1SouthWallBatch.targetId, 1005);
 assert.equal(contract.c1SouthWallBatch.mapping, 'planar_xy');
 assert.deepEqual(contract.c1SouthWallBatch.invalidTexelRegions.windowHole, {
-  xMin: -1.69,
-  xMax: 0.63,
-  yMin: 1.10,
-  yMax: 2.845
+  xMin: -1.75,
+  xMax: 0.69,
+  yMin: 1.04,
+  yMax: 2.905
 });
 assert.deepEqual(contract.c1SouthWallBatch.windowRevealAtlasRegions, {
   leftReveal: { xMin: -1.69, xMax: -1.52, yMin: 1.10, yMax: 2.845 },
@@ -355,13 +375,27 @@ assert.match(shader, /normal = vec3\(0\.0, 0\.0, -1\.0\)/);
 assert.match(shader, /patchId == 1006/);
 assert.match(shader, /position = vec3\(x, 2\.905, z\)/);
 assert.match(shader, /normal = vec3\(0\.0, -1\.0, 0\.0\)/);
-assert.match(initCommon, /const R7310_C1_SOUTH_WALL_WINDOW_HOLE = Object\.freeze\(\{\s*xMin: -1\.69,\s*xMax: 0\.63,\s*yMin: 1\.10,\s*yMax: 2\.845\s*\}\);/);
+assert.match(initCommon, /const R7310_C1_SOUTH_WALL_WINDOW_HOLE = Object\.freeze\(\{\s*xMin: -1\.75,\s*xMax: 0\.69,\s*yMin: 1\.04,\s*yMax: 2\.905\s*\}\);/);
 assert.match(initCommon, /const R7310_C1_SOUTH_WALL_WINDOW_REVEAL = Object\.freeze/);
 assert.match(initCommon, /leftReveal:\s*Object\.freeze\(\{\s*xMin: -1\.69,\s*xMax: -1\.52,\s*yMin: 1\.10,\s*yMax: 2\.845\s*\}\)/);
 assert.match(initCommon, /bottomReveal:\s*Object\.freeze\(\{\s*xMin: -1\.45,\s*xMax: 0\.39,\s*yMin: 1\.10,\s*yMax: 1\.27\s*\}\)/);
 assert.match(initCommon, /let r7310C1FloorDiffuseRuntimeEnabled = true;/);
 assert.match(initCommon, /let r7310C1SouthWallDiffuseRuntimeEnabled = true;/);
-assert.match(shader, /x >= -1\.69 && x <= 0\.63 && y >= 1\.10 && y <= 2\.845/);
+assert.match(shader, /x >= -1\.75 && x <= 0\.69 && y >= 1\.04 && y <= 2\.905/);
+assert.equal(
+  atlasLumaAt(r7310SouthWall, southWallAtlasColumn(0.0), southWallAtlasRow(2.89)),
+  0,
+  'south wall fake top front strip must remain unbaked'
+);
+assert.equal(
+  atlasLumaAt(r7310SouthWall, southWallAtlasColumn(0.66), southWallAtlasRow(1.90)),
+  0,
+  'south wall fake east front strip must remain unbaked'
+);
+assert.ok(
+  atlasLumaAt(r7310SouthWall, southWallAtlasColumn(0.545), southWallAtlasRow(1.90)) > 0.01,
+  'south wall right reveal interior must stay baked'
+);
 assert.match(shader, /r7310C1SouthWallWindowRevealDiffuseUv/);
 assert.match(shader, /position = vec3\(-1\.75, revealY, revealZ\)/);
 assert.match(shader, /position = vec3\(revealX, 1\.04, revealZ\)/);

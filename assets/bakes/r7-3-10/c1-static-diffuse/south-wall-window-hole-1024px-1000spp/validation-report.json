@@ -26,9 +26,9 @@
   "metadataFloatCount": 12582912,
   "atlasVisibleLuma": {
     "texels": 1048576,
-    "nonzeroTexels": 409341,
-    "meanLuma": 0.10247568845212614,
-    "maxLuma": 0.9339140256245931
+    "nonzeroTexels": 366642,
+    "meanLuma": 0.09833882783105341,
+    "maxLuma": 0.6435913344224294
   },
   "browserValidationStatus": "pass",
   "runnerStatus": "pass",
@@ -59,6 +59,7 @@
     "uR7310C1EastWallDiffuseMode": 0,
     "uR7310C1WestWallDiffuseMode": 0,
     "uR7310C1SouthWallDiffuseMode": 0,
+    "uR7310C1CeilingDiffuseMode": 0,
     "uR738C1BakeCaptureMode": 2
   }
 }

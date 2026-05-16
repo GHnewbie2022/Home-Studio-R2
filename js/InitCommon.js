@@ -1155,10 +1155,10 @@ const R7310_C1_SOUTH_WALL_WORLD_BOUNDS = Object.freeze({
 	z: 3.056
 });
 const R7310_C1_SOUTH_WALL_WINDOW_HOLE = Object.freeze({
-	xMin: -1.69,
-	xMax: 0.63,
-	yMin: 1.10,
-	yMax: 2.845
+	xMin: -1.75,
+	xMax: 0.69,
+	yMin: 1.04,
+	yMax: 2.905
 });
 const R7310_C1_SOUTH_WALL_WINDOW_REVEAL = Object.freeze({
 	xMin: -1.75,
