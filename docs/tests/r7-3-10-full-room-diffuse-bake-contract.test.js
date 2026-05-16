@@ -43,6 +43,7 @@ const shader = fs.readFileSync('shaders/Home_Studio_Fragment.glsl', 'utf8');
 const html = fs.readFileSync('Home_Studio.html', 'utf8');
 const homeStudio = fs.readFileSync('js/Home_Studio.js', 'utf8');
 const runner = fs.readFileSync('docs/tools/r7-3-8-c1-bake-capture-runner.mjs', 'utf8');
+const defaultCss = fs.readFileSync('css/default.css', 'utf8');
 const r7310RuntimeLoader = initCommon.slice(
   initCommon.indexOf('async function loadR7310C1FullRoomDiffuseRuntimePackage'),
   initCommon.indexOf('async function loadR7310C1NorthWallDiffuseRuntimePackage')
@@ -156,10 +157,10 @@ assert.equal(contract.c1SouthWallBatch.surfaceName, 'c1_south_wall');
 assert.equal(contract.c1SouthWallBatch.targetId, 1005);
 assert.equal(contract.c1SouthWallBatch.mapping, 'planar_xy');
 assert.deepEqual(contract.c1SouthWallBatch.invalidTexelRegions.windowHole, {
-  xMin: -1.75,
-  xMax: 0.69,
-  yMin: 1.04,
-  yMax: 2.905
+  xMin: -1.69,
+  xMax: 0.63,
+  yMin: 1.10,
+  yMax: 2.845
 });
 assert.equal(r7310.packageStatus, 'architecture_probe');
 assert.equal(r7310.runtimeScope, 'c1_floor_full_room_diffuse_short_circuit');
@@ -195,6 +196,7 @@ assert.equal(r7310SouthWall.targetId, 1005);
 assert.equal(r7310SouthWall.requestedSamples, 1000);
 assert.equal(r7310SouthWall.surfaceName, 'c1_south_wall');
 assert.equal(r7310SouthWall.artifacts.atlasPatch0, 'atlas-patch-000-rgba-f32.bin');
+assert.deepEqual(r7310SouthWall.invalidTexelRegions.windowHole, contract.c1SouthWallBatch.invalidTexelRegions.windowHole);
 const r7310FloorAtlasStats = summarizeAtlasLuma(r7310);
 const r7310NorthWallAtlasStats = summarizeAtlasLuma(r7310NorthWall);
 const r7310EastWallAtlasStats = summarizeAtlasLuma(r7310EastWall);
@@ -308,7 +310,8 @@ assert.match(shader, /z >= -1\.874 && z <= -0\.984 && y >= 0\.09 && y <= 2\.04/)
 assert.match(shader, /patchId == 1005/);
 assert.match(shader, /position = vec3\(x, y, 3\.056\)/);
 assert.match(shader, /normal = vec3\(0\.0, 0\.0, -1\.0\)/);
-assert.match(shader, /x >= -1\.75 && x <= 0\.69 && y >= 1\.04 && y <= 2\.905/);
+assert.match(initCommon, /const R7310_C1_SOUTH_WALL_WINDOW_HOLE = Object\.freeze\(\{\s*xMin: -1\.69,\s*xMax: 0\.63,\s*yMin: 1\.10,\s*yMax: 2\.845\s*\}\);/);
+assert.match(shader, /x >= -1\.69 && x <= 0\.63 && y >= 1\.10 && y <= 2\.845/);
 assert.doesNotMatch(initCommon, /R7310_C1_FLOOR_INVALID_TEXEL_REGIONS/);
 assert.doesNotMatch(initCommon, /R7310_C1_NORTH_WALL_STATIC_CONTACT_REGIONS/);
 assert.doesNotMatch(initCommon, /R7310_C1_EAST_WALL_INVALID_TEXEL_REGIONS/);
@@ -412,5 +415,9 @@ assert.match(runner, /btn-r7310-north-wall-diffuse/);
 assert.match(runner, /btn-r7310-east-wall-diffuse/);
 assert.match(runner, /btn-r7310-west-wall-diffuse/);
 assert.match(runner, /--target-samples=/);
+const snapshotGlowRule = defaultCss.match(/\.snapshot-action-btn\.glow-white\s*\{[\s\S]*?\}/)?.[0] || '';
+assert.match(snapshotGlowRule, /background:\s*rgba\(28,\s*28,\s*26,\s*0\.95\)/);
+assert.doesNotMatch(snapshotGlowRule, /background:\s*rgba\(255,\s*255,\s*255,\s*0\.1\)/);
+assert.match(snapshotGlowRule, /box-shadow:\s*0 0 12px rgba\(255,\s*255,\s*255,\s*0\.35\)/);
 
 console.log('R7-3.10 full-room diffuse bake architecture contract passed');

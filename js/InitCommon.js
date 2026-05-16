@@ -1154,10 +1154,10 @@ const R7310_C1_SOUTH_WALL_WORLD_BOUNDS = Object.freeze({
 	z: 3.056
 });
 const R7310_C1_SOUTH_WALL_WINDOW_HOLE = Object.freeze({
-	xMin: -1.75,
-	xMax: 0.69,
-	yMin: 1.04,
-	yMax: 2.905
+	xMin: -1.69,
+	xMax: 0.63,
+	yMin: 1.10,
+	yMax: 2.845
 });
 const R739_C1_ACCURATE_REFLECTION_ACCEPTED_PACKAGE_URL = 'docs/data/r7-3-9-c1-accurate-reflection-accepted-package.json';
 const R739_C1_SPROUT_REFLECTION_BOUNDS = Object.freeze({ xMin: -1.0, xMax: 1.0, zMin: -1.0, zMax: 1.0, y: 0.01 });

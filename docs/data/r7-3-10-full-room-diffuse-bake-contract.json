@@ -134,10 +134,10 @@
     },
     "invalidTexelRegions": {
       "windowHole": {
-        "xMin": -1.75,
-        "xMax": 0.69,
-        "yMin": 1.04,
-        "yMax": 2.905
+        "xMin": -1.69,
+        "xMax": 0.63,
+        "yMin": 1.10,
+        "yMax": 2.845
       }
     }
   },

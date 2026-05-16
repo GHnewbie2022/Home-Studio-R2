@@ -8056,3 +8056,54 @@ validation:
   - node --check js/InitCommon.js
   - node --check js/Home_Studio.js
 ```
+
+### R7-3.10-south-wall-window-rim-and-bake-button-style-fix
+
+```yaml
+date: 2026-05-16
+branch: codex/r7-3-10-south-wall-only-bake
+status: implemented-local-awaiting-user-visual-check
+scope:
+  - Fix south wall window opening rim that stayed black under south-wall bake.
+  - Keep R7-3.10 bake buttons dark when enabled, with glow added on top.
+root_cause:
+  - South wall bake invalid region used the full window opening bounds:
+      xMin: -1.75
+      xMax: 0.69
+      yMin: 1.04
+      yMax: 2.905
+  - That made the opening boundary share the invalid atlas area, so the rim could remain unbaked.
+  - .snapshot-action-btn.glow-white used a pale translucent background, unlike the rest of the dark UI.
+change:
+  - Shrunk south wall window invalid region to keep a 6cm baked rim:
+      xMin: -1.69
+      xMax: 0.63
+      yMin: 1.10
+      yMax: 2.845
+  - Re-baked the south wall package from a fresh passing runner output:
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260516-221922
+      formal_asset: assets/bakes/r7-3-10/c1-static-diffuse/south-wall-window-hole-1024px-1000spp/
+      samples: 1000
+      atlasResolution: 1024
+      validTexelRatio: 0.669795036315918
+      nonzeroTexels: 305271
+      meanLuma: 0.08123695182226183
+      maxLuma: 0.9339140256245931
+  - Updated pointer invalidTexelRegions to match the new rim contract.
+  - Updated HTML cache-bust token to r7310-south-wall-rim-fix-v1.
+  - Updated .snapshot-action-btn.glow-white to keep background rgba(28, 28, 26, 0.95) and add glow.
+notes:
+  - A first full 1024 retry produced an all-zero atlas and was rejected:
+      package: .omc/r7-3-10-full-room-diffuse-bake/20260516-221005
+      failedChecks: [atlasVisibleLuma, browserValidation]
+  - A 64px / 16 sample reproduction had nonzero atlas luma, confirming the shader and mask could work.
+  - The accepted full 1024 retry was generated after closing the temporary debug Brave session.
+validation:
+  - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+  - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
+  - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=south-wall --samples=1000 --target-samples=1000 --atlas-resolution=1024 --timeout-ms=360000 --http-port=9003 --cdp-port=9224 --angle=metal
+  - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9002 --cdp-port=9223 --angle=metal
+  - git diff --check
+```
