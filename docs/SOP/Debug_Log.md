@@ -8043,13 +8043,16 @@ change:
   - Added HOME_STUDIO_KEYBOARD_MOVE_FRAME_TIME_LIMIT = 1 / 30.
   - Added homeStudioKeyboardMoveFrameTime(value) to sanitize NaN / negative values and clamp delayed frames.
   - Routed W / S / A / D / E / C movement through keyboardMoveFrameTime instead of raw frameTime.
+  - After user visual check confirmed no more movement stalls, reduced cameraFlightSpeed from 3 to 2 for finer movement steps.
 expected_behavior:
   - Normal 60 FPS movement remains unchanged.
   - A delayed render frame no longer creates a single large camera jump.
   - Long stalls feel like a brief slow frame instead of a camera teleport.
+  - Movement distance per frame is smaller than the first clamp version.
 validation:
   - node docs/tests/home-studio-keyboard-movement-smoothing.test.js
   - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
   - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
   - node --check js/InitCommon.js
+  - node --check js/Home_Studio.js
 ```

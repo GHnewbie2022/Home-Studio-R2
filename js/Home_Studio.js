@@ -5177,7 +5177,7 @@ function initSceneData() {
     demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-static-east-hotfix-v2';
 
     sceneIsDynamic = false;
-    cameraFlightSpeed = 3;
+    cameraFlightSpeed = 2;
     pixelRatio = 1.0;
     EPS_intersect = 0.001;
 

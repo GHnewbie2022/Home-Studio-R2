@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const initCommon = fs.readFileSync('js/InitCommon.js', 'utf8');
+const homeStudio = fs.readFileSync('js/Home_Studio.js', 'utf8');
 
 assert.match(
 	initCommon,
@@ -32,6 +33,12 @@ assert.doesNotMatch(
 	initCommon,
 	/cameraControlsObject\.position\.(?:add|sub)\([^)]*cameraFlightSpeed \* frameTime/,
 	'Camera keyboard movement must not use raw frameTime directly'
+);
+
+assert.match(
+	homeStudio,
+	/cameraFlightSpeed = 2;/,
+	'Keyboard camera movement should use the slower verified walking speed'
 );
 
 console.log('Home Studio keyboard movement smoothing contract passed');
