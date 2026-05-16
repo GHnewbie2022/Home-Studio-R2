@@ -473,6 +473,30 @@ function buildManifest({ report, packageDir, smokeTest }) {
   };
 }
 
+function summarizeAtlasVisibleLuma(buffer) {
+  const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const texels = Math.floor(buffer.byteLength / 16);
+  let nonzeroTexels = 0;
+  let sumLuma = 0;
+  let maxLuma = 0;
+  for (let offset = 0; offset < texels * 16; offset += 16) {
+    const r = view.getFloat32(offset, true);
+    const g = view.getFloat32(offset + 4, true);
+    const b = view.getFloat32(offset + 8, true);
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b)) continue;
+    const luma = (r + g + b) / 3;
+    sumLuma += luma;
+    if (luma > 0) nonzeroTexels += 1;
+    if (luma > maxLuma) maxLuma = luma;
+  }
+  return {
+    texels,
+    nonzeroTexels,
+    meanLuma: texels ? sumLuma / texels : 0,
+    maxLuma
+  };
+}
+
 function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer, smokeTest }) {
   const resolution = report.targetAtlasResolution;
   const expectedAtlasBytes = resolution * resolution * 4 * 4;
@@ -480,6 +504,7 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
   const validTexelRatioMinimum = report.surfaceName === 'c1_north_wall'
     ? 0.80
     : 0.99;
+  const atlasVisibleLuma = summarizeAtlasVisibleLuma(atlasBuffer);
   const checks = {
     version: report.version === 'r7-3-8-c1-1000spp-bake-capture' || report.version === 'r7-3-10-full-room-diffuse-bake-architecture-probe',
     config: report.config === 1,
@@ -493,6 +518,7 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
     metadataBytes: metadataBuffer.length === expectedMetadataBytes,
     finiteRaw: report.rawHdrSummary.nonFinitePixels === 0,
     finiteAtlas: report.atlasSummary.nonFiniteTexels === 0,
+    atlasVisibleLuma: atlasVisibleLuma.nonzeroTexels > 0 && atlasVisibleLuma.meanLuma > 0.001 && atlasVisibleLuma.maxLuma > 0.01,
     validTexelRatio: report.atlasSummary.validTexelRatio >= validTexelRatioMinimum,
     browserValidation: smokeTest ? validationReport.status === 'pass' || validationReport.status === 'fail' : validationReport.status === 'pass'
   };
@@ -636,8 +662,10 @@ async function main() {
         return (async () => {
           const floorButton = document.getElementById('btn-r7310-floor-diffuse');
           const northButton = document.getElementById('btn-r7310-north-wall-diffuse');
+          const eastButton = document.getElementById('btn-r7310-east-wall-diffuse');
           if (!floorButton) throw new Error('btn-r7310-floor-diffuse missing');
           if (!northButton) throw new Error('btn-r7310-north-wall-diffuse missing');
+          if (!eastButton) throw new Error('btn-r7310-east-wall-diffuse missing');
           await window.waitForR7310C1FullRoomDiffuseRuntimeReady(${args.timeoutMs});
           if (window.reportR7310C1FullRoomDiffuseRuntimeConfig().enabled) {
             window.setR7310C1FullRoomDiffuseRuntimeEnabled(false);
@@ -645,6 +673,7 @@ async function main() {
           const before = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
+            eastText: eastButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           floorButton.click();
@@ -652,6 +681,7 @@ async function main() {
           const afterFloorOn = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
+            eastText: eastButton.textContent,
             floorClassName: floorButton.className,
             floorTitle: floorButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -661,8 +691,19 @@ async function main() {
           const afterNorthOn = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
+            eastText: eastButton.textContent,
             northClassName: northButton.className,
             northTitle: northButton.title,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          eastButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterEastOn = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            eastText: eastButton.textContent,
+            eastClassName: eastButton.className,
+            eastTitle: eastButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           floorButton.click();
@@ -670,13 +711,17 @@ async function main() {
           const afterFloorOff = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
+            eastText: eastButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           northButton.click();
           await new Promise((resolve) => setTimeout(resolve, 100));
+          eastButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
           const afterAllOff = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
+            eastText: eastButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           return {
@@ -684,27 +729,42 @@ async function main() {
             before,
             afterFloorOn,
             afterNorthOn,
+            afterEastOn,
             afterFloorOff,
             afterAllOff,
             status: before.floorText === '地板烘焙：關' &&
               before.northText === '北牆烘焙：關' &&
+              before.eastText === '東牆烘焙：關' &&
               before.report.uiMeaningOff === 'sprout_patch_plus_live_floor' &&
               afterFloorOn.floorText === '地板烘焙：開' &&
               afterFloorOn.northText === '北牆烘焙：關' &&
+              afterFloorOn.eastText === '東牆烘焙：關' &&
               afterFloorOn.report.enabled === true &&
               afterFloorOn.report.floorEnabled === true &&
               afterFloorOn.report.northWallEnabled === false &&
+              afterFloorOn.report.eastWallEnabled === false &&
               afterNorthOn.floorText === '地板烘焙：開' &&
               afterNorthOn.northText === '北牆烘焙：開' &&
+              afterNorthOn.eastText === '東牆烘焙：關' &&
               afterNorthOn.report.floorEnabled === true &&
               afterNorthOn.report.northWallEnabled === true &&
-              afterNorthOn.report.uiMeaningOn === 'selected_floor_or_north_wall_baked_diffuse_plus_live_reflection' &&
+              afterNorthOn.report.eastWallEnabled === false &&
+              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_or_east_wall_baked_diffuse_plus_live_reflection' &&
+              afterEastOn.floorText === '地板烘焙：開' &&
+              afterEastOn.northText === '北牆烘焙：開' &&
+              afterEastOn.eastText === '東牆烘焙：開' &&
+              afterEastOn.report.floorEnabled === true &&
+              afterEastOn.report.northWallEnabled === true &&
+              afterEastOn.report.eastWallEnabled === true &&
               afterFloorOff.floorText === '地板烘焙：關' &&
               afterFloorOff.northText === '北牆烘焙：開' &&
+              afterFloorOff.eastText === '東牆烘焙：開' &&
               afterFloorOff.report.floorEnabled === false &&
               afterFloorOff.report.northWallEnabled === true &&
+              afterFloorOff.report.eastWallEnabled === true &&
               afterAllOff.floorText === '地板烘焙：關' &&
               afterAllOff.northText === '北牆烘焙：關' &&
+              afterAllOff.eastText === '東牆烘焙：關' &&
               afterAllOff.report.enabled === false
                 ? 'pass'
                 : 'fail'
@@ -722,6 +782,7 @@ async function main() {
       console.log(`before: ${report.before.floorText} / ${report.before.northText}`);
       console.log(`afterFloorOn: ${report.afterFloorOn.floorText} / ${report.afterFloorOn.northText}`);
       console.log(`afterNorthOn: ${report.afterNorthOn.floorText} / ${report.afterNorthOn.northText}`);
+      console.log(`afterEastOn: ${report.afterEastOn.floorText} / ${report.afterEastOn.northText} / ${report.afterEastOn.eastText}`);
       console.log(`afterAllOff: ${report.afterAllOff.floorText} / ${report.afterAllOff.northText}`);
       console.log(`package: ${path.relative(repoRoot, packageDir)}`);
       if (report.status !== 'pass') process.exitCode = 1;

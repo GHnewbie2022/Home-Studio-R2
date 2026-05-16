@@ -2,7 +2,106 @@
 
 > 接手導讀：本檔是完整 debug 總帳，內容刻意保留歷史細節。一般接手請先讀 `docs/SOP/Debug_Log_Index.md`，再依任務讀本檔對應章節。只有使用者明確要求「全文讀完」或要追溯舊根因時，才全檔讀取。
 >
-> 目前接手重點：R7-3.10 C1 seam debug Phase 2 的 H7 / H7' 內部視角發光已修；floor / north 的 H5 / H3' 衣櫃邊界黑線已改用 1024 bake atlas 解決，使用者肉眼確認兩條黑線看不出來。floor / north runtime pointer 目前都指向 1024 package。C runtime fallback 實驗已移除，不回退。partial bake 與 LIVE 並存時的局部偏亮已定性為深度相加的過渡假象；後續驗收基準改為「全相關靜態漫射面 bake vs 全 LIVE」。下一步往全相關靜態漫射面烘焙推進。
+> 目前接手重點：R7-3.10 C1 seam debug Phase 2 的 H7 / H7' 內部視角發光已修；floor / north 的 H5 / H3' 衣櫃邊界黑線已改用 1024 bake atlas 解決，使用者肉眼確認兩條黑線看不出來。floor / north / east runtime pointer 目前都指向 1024 package。C runtime fallback 實驗已移除，不回退。partial bake 與 LIVE 並存時的局部偏亮已定性為深度相加的過渡假象；後續驗收基準改為「全相關靜態漫射面 bake vs 全 LIVE」。目前已完成 east wall 第一批接入；下一批往 west / south / ceiling 逐批擴張。架構 roadmap：先在現有架構收成快速預覽 hybrid room；成功後再處理高品質 bake 生產線，WebGPU / Metal / Blender 列加速候選，PlayCanvas 列展示承載候選。
+
+---
+
+## R7-3.10｜Static diffuse bake expansion roadmap consolidation
+
+```yaml
+- id: R7-3.10-static-diffuse-bake-expansion-roadmap
+  date: 2026-05-16
+  type: docs_roadmap_consolidation
+  scope:
+    - 整理 R7-3.10 之後的 hybrid room / 架構升級共識。
+    - 更新 SOP 入口，降低接棒代理讀到舊 R7-2 / WebGPU 立即搬遷資訊的機率。
+  current_line:
+    - 先在現有 Home Studio 架構內完成快速預覽 hybrid room。
+    - 靜態漫射面讀 bake。
+    - 反射保留 LIVE path tracing。
+    - floor / north 1024 bake 已驗收。
+    - 下一批從 east wall 開始，後續逐批 west / south / ceiling。
+  brightness_difference_policy:
+    - partial bake + LIVE 局部偏亮是深度相加的過渡假象。
+    - partial bake 畫面只作診斷。
+    - 正式驗收基準是全相關靜態漫射面 bake vs 全 LIVE。
+  architecture_roadmap:
+    - 快速預覽 hybrid room 成功後，先量化趨近真實模式 bake 成本。
+    - 下一層議題是高品質 bake 生產線：分面、分燈、分批、可續跑、可快取。
+    - WebGPU / Metal / Blender 只在高品質 bake 成本成為主要瓶頸後評估。
+    - PlayCanvas 用於後續展示承載，不作為目前光學 debug 工具。
+  docs_updated:
+    - docs/SOP/R0：全景地圖.md
+    - docs/SOP/R7：採樣演算法升級.md
+    - docs/SOP/Debug_Log_Index.md
+    - docs/架構升級計畫/混音室數位孿生_光照採購導向_ThreeJS_WebGPU架構升級與實作SOP.md
+    - docs/AI交接必讀.md
+```
+
+---
+
+## R7-3.10｜Static diffuse bake expansion east wall 1024 runtime
+
+```yaml
+- id: R7-3.10-static-diffuse-bake-expansion-east-wall-1024-runtime
+  date: 2026-05-16
+  type: diffuse_bake_runtime_expansion
+  branch: codex/r7-3-10-static-bake-expansion
+  scope:
+    - First static diffuse bake expansion batch after floor / north 1024 closeout.
+    - East wall runtime re-entry with the current 1024 atlas family.
+    - Floor / north 1024 runtime guard preservation.
+  source_docs:
+    - docs/superpowers/plans/2026-05-16-r7-3-10-static-bake-expansion-codex-handoff.md
+    - docs/superpowers/plans/2026-05-16-r7-3-10-static-diffuse-bake-expansion-investigation-opus.md
+  implementation:
+    - Added uR7310C1EastWallDiffuseMode.
+    - r7310C1FullRoomDiffuseShortCircuit() now uses east wall slot 2 only when the east per-surface flag is active.
+    - buildR7310C1CombinedDiffuseRuntimeTexture() now builds a 3-slot atlas: floor, north wall, east wall.
+    - Runtime loaders keep a shared resolution guard across all loaded slots.
+    - UI now has independent buttons for floor, north wall, and east wall.
+    - reportR7310C1FullRoomDiffuseRuntimeConfig() now reports eastWallEnabled, eastWallReady, eastWallPackageDir, and uniformEastWallMode.
+    - reportR7310C1FullRoomDiffuseRuntimeProbe() can target east wall runtime directly.
+    - Home_Studio cache-bust tag updated to r7310-static-east-hotfix-v2.
+  packages:
+    - floor_1024: .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/
+    - north_1024: .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/
+    - east_1024: .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+    - old_east_512_history: .omc/r7-3-10-full-room-diffuse-bake/20260513-214539/
+  pointer_state:
+    - docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json -> floor_1024.
+    - docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json -> north_1024.
+    - docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json -> east_1024.
+    - All three runtime pointers now use targetAtlasResolution: 1024.
+  east_1024_capture:
+    - command: node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=east-wall --atlas-resolution=1024 --target-samples=1000 --timeout-ms=900000 --http-port=9002 --cdp-port=9333
+    - status: pass
+    - samples: 1000
+    - upscaled: false
+    - diffuseOnly: true
+    - validTexelRatio: 1
+    - coveredSurfaceNames: [c1_east_wall]
+    - missingSurfaceNames: [c1_south_wall, c1_west_wall]
+    - finalC1Coverage: false
+  runtime_validation:
+    - contract: node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - syntax_init: node --check js/InitCommon.js
+    - syntax_home: node --check js/Home_Studio.js
+    - syntax_runner: node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - ui_toggle: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-092254/ status pass
+    - east_runtime: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123701/ status pass, eastWallSurfaceHitCount=699773, eastWallShortCircuitCount=699773
+    - floor_runtime_regression: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123351/ status pass, bakedSurfaceHitCount=96170, bakedSurfaceShortCircuitCount=95909
+    - north_runtime_regression: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123353/ status pass, northWallSurfaceHitCount=528987, northWallShortCircuitCount=480847
+  guardrails_kept:
+    - C runtime fallback remains removed.
+    - Neighbor-cell sampling remains unused.
+    - Floor / north 1024 packages and pointer resolution remain intact.
+    - Option B capture-mode guard remains active.
+    - Partial bake brightness remains diagnostic only.
+  next:
+    - Ask user for same-view visual acceptance of floor / north / east hybrid room.
+    - Continue west / south / ceiling only after this east batch is accepted.
+```
 
 ---
 
@@ -7680,4 +7779,73 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - Do not directly restore the old contact invalid region route.
     - Do not treat C' as decided before Phase 2 evidence.
     - Do not rely on floor-only / north-only runtime visual comparison until H8 / H7 are handled, because gate coupling pollutes the observation.
+```
+
+## R7-3.10｜Static bake expansion east wall black package and LIVE secondary hotfix
+
+```yaml
+- id: R7-3.10-static-bake-expansion-east-wall-hotfix
+  date: 2026-05-16
+  type: static_diffuse_runtime_hotfix
+  branch: codex/r7-3-10-static-bake-expansion
+  user_report:
+    - East wall bake on made the east wall fully black.
+    - LIVE objects still received baked diffuse contribution through secondary hits.
+  root_cause:
+    - East wall pointer targeted .omc/r7-3-10-full-room-diffuse-bake/20260516-092150/.
+    - That package atlas RGB was all zero:
+      nonzeroTexels: 0
+      meanLuma: 0
+      maxLuma: 0
+    - The validator accepted that package because it only checked sizes, sample count, finite values, and valid texel ratio.
+    - r7310C1FullRoomDiffuseShortCircuit ran inside the bounce loop without a bounces == 0 guard.
+  fix:
+    - Re-baked east wall 1024 / 1000SPP with Metal:
+      .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+    - Updated docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json to point to the new package.
+    - Added atlas visible-luma checks to browser validation, runner validation, and the contract test.
+    - Restricted r7310C1FullRoomDiffuseShortCircuit to bounces == 0.
+    - Primary camera hits still display baked diffuse.
+    - Secondary / LIVE bounces stay on live path tracing.
+    - Updated cache buster to r7310-static-east-hotfix-v2.
+  new_east_package_stats:
+    atlasResolution: 1024
+    requestedSamples: 1000
+    nonzeroTexels: 582109
+    meanLuma: 0.3059058627924159
+    maxLuma: 0.8272547324498495
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9015 --cdp-port=9235 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9016 --cdp-port=9236 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=180000 --http-port=9017 --cdp-port=9237 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9018 --cdp-port=9238 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9019 --cdp-port=9239 --angle=metal
+  runner_result:
+    - east runtime:
+      status: pass
+      eastWallSurfaceHitCount: 699773
+      eastWallShortCircuitCount: 699773
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123701/
+    - floor runtime regression:
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123351/
+    - north runtime regression:
+      status: pass
+      northWallSurfaceHitCount: 528987
+      northWallShortCircuitCount: 480847
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-123353/
+    - ui toggle:
+      status: pass
+      report: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-123411/
+  note:
+    - floor pointer stays at .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/.
+    - north pointer stays at .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/.
+    - floor / north 1024 bake remained intact.
 ```

@@ -7,6 +7,32 @@ const r739 = JSON.parse(fs.readFileSync('docs/data/r7-3-9-c1-accurate-reflection
 const r7310 = JSON.parse(fs.readFileSync('docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json', 'utf8'));
 assert.equal(fs.existsSync('docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json'), true);
 const r7310NorthWall = JSON.parse(fs.readFileSync('docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json', 'utf8'));
+assert.equal(fs.existsSync('docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json'), true);
+const r7310EastWall = JSON.parse(fs.readFileSync('docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json', 'utf8'));
+
+function summarizeAtlasLuma(pointer)
+{
+	const atlasPath = `${pointer.packageDir}/${pointer.artifacts.atlasPatch0}`;
+	assert.equal(fs.existsSync(atlasPath), true);
+	const bytes = fs.readFileSync(atlasPath);
+	const floats = new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
+	let maxLuma = 0.0;
+	let sumLuma = 0.0;
+	let nonzeroTexels = 0;
+	for (let i = 0; i < floats.length; i += 4)
+	{
+		const luma = (floats[i] + floats[i + 1] + floats[i + 2]) / 3;
+		if (luma > 0.0) nonzeroTexels += 1;
+		if (luma > maxLuma) maxLuma = luma;
+		sumLuma += luma;
+	}
+	return {
+		maxLuma,
+		meanLuma: sumLuma / Math.max(1, floats.length / 4),
+		nonzeroTexels
+	};
+}
+
 const initCommon = fs.readFileSync('js/InitCommon.js', 'utf8');
 const pathTracingCommon = fs.readFileSync('js/PathTracingCommon.js', 'utf8');
 const shader = fs.readFileSync('shaders/Home_Studio_Fragment.glsl', 'utf8');
@@ -112,6 +138,23 @@ assert.equal(r7310NorthWall.targetId, 1002);
 assert.equal(r7310NorthWall.requestedSamples, 1000);
 assert.equal(r7310NorthWall.surfaceName, 'c1_north_wall');
 assert.equal(r7310NorthWall.artifacts.atlasPatch0, 'atlas-patch-000-rgba-f32.bin');
+assert.equal(r7310EastWall.packageStatus, 'architecture_probe');
+assert.equal(r7310EastWall.runtimeScope, 'c1_east_wall_diffuse_short_circuit');
+assert.equal(r7310EastWall.runtimeEnabledDefault, false);
+assert.equal(r7310EastWall.targetId, 1003);
+assert.equal(r7310EastWall.requestedSamples, 1000);
+assert.equal(r7310EastWall.surfaceName, 'c1_east_wall');
+assert.equal(r7310EastWall.artifacts.atlasPatch0, 'atlas-patch-000-rgba-f32.bin');
+const r7310FloorAtlasStats = summarizeAtlasLuma(r7310);
+const r7310NorthWallAtlasStats = summarizeAtlasLuma(r7310NorthWall);
+const r7310EastWallAtlasStats = summarizeAtlasLuma(r7310EastWall);
+assert.ok(r7310FloorAtlasStats.nonzeroTexels > 0);
+assert.ok(r7310FloorAtlasStats.meanLuma > 0.001);
+assert.ok(r7310NorthWallAtlasStats.nonzeroTexels > 0);
+assert.ok(r7310NorthWallAtlasStats.meanLuma > 0.001);
+assert.ok(r7310EastWallAtlasStats.nonzeroTexels > 0);
+assert.ok(r7310EastWallAtlasStats.meanLuma > 0.001);
+assert.ok(r7310EastWallAtlasStats.maxLuma > 0.01);
 
 assert.equal(r738.packageStatus, 'accepted');
 assert.equal(r738.diffuseOnly, true);
@@ -142,8 +185,9 @@ assert.match(shader, /r7310NorthWallBakedRadiance/);
 assert.match(shader, /r7310C1EastWallDiffuseUv/);
 assert.match(shader, /r7310C1RuntimeSurfaceIsEastWall/);
 assert.match(shader, /r7310C1EastWallHiddenByStaticContact/);
-assert.doesNotMatch(shader, /r7310EastWallBakedRadiance/);
-assert.doesNotMatch(shader, /r7310C1CombinedAtlasUv\(atlasUv, 2\.0\)/);
+assert.match(shader, /uR7310C1EastWallDiffuseMode/);
+assert.match(shader, /r7310EastWallBakedRadiance/);
+assert.match(shader, /r7310C1CombinedAtlasUv\(atlasUv, 2\.0\)/);
 assert.match(shader, /r7310C1CombinedAtlasUv/);
 assert.match(shader, /uR7310C1RuntimeAtlasPatchResolution/);
 assert.match(shader, /uR7310C1RuntimeAtlasPatchCount/);
@@ -161,7 +205,7 @@ assert.match(shader, /r7310C1RuntimeProbeMode < 6\.5/);
 assert.match(shader, /hitIsRayExiting == TRUE/);
 assert.match(shader, /r7310C1FullRoomDiffuseShortCircuit\([^)]*int visibleIsRayExiting/);
 assert.match(shader, /if \(visibleIsRayExiting == TRUE\)\s+return false;/);
-assert.match(shader, /r7310C1FullRoomDiffuseShortCircuit\(hitType, hitObjectID, nl, x, hitIsRayExiting, r7310BakedRadiance\)/);
+assert.match(shader, /bounces == 0 &&\s*r7310C1FullRoomDiffuseShortCircuit\(hitType, hitObjectID, nl, x, hitIsRayExiting, r7310BakedRadiance\)/);
 assert.match(shader, /uCamPos\.y - 0\.5/);
 assert.match(shader, /uR7310C1BakeFloorWorldBounds/);
 assert.match(pathTracingCommon, /r7310C1BakeSurfacePoint/);
@@ -193,18 +237,22 @@ assert.match(initCommon, /window\.reportR7310C1FloorDiffuseBakeAfterSamples/);
 assert.match(initCommon, /loadR7310C1FullRoomDiffuseRuntimePackage/);
 assert.match(initCommon, /R7310_C1_NORTH_WALL_DIFFUSE_RUNTIME_PACKAGE_URL/);
 assert.match(initCommon, /loadR7310C1NorthWallDiffuseRuntimePackage/);
-assert.doesNotMatch(r7310RuntimeLoader, /loadR7310C1EastWallDiffuseRuntimePackage/);
+assert.match(initCommon, /R7310_C1_EAST_WALL_DIFFUSE_RUNTIME_PACKAGE_URL/);
+assert.match(initCommon, /loadR7310C1EastWallDiffuseRuntimePackage/);
 assert.match(initCommon, /buildR7310C1CombinedDiffuseRuntimeTexture/);
 assert.match(initCommon, /window\.setR7310C1FullRoomDiffuseRuntimeEnabled/);
 assert.match(initCommon, /window\.setR7310C1FloorDiffuseRuntimeEnabled/);
 assert.match(initCommon, /window\.setR7310C1NorthWallDiffuseRuntimeEnabled/);
+assert.match(initCommon, /window\.setR7310C1EastWallDiffuseRuntimeEnabled/);
 assert.match(pasteUniformBlock, /r7310FloorRuntimeApplied/);
 assert.doesNotMatch(pasteUniformBlock, /r7310C1NorthWallDiffuseRuntimeEnabled[\s\S]*!r7310RuntimeApplied/);
 assert.doesNotMatch(pasteUniformBlock, /r7310C1FloorDiffuseRuntimeEnabled \|\| r7310C1NorthWallDiffuseRuntimeEnabled/);
 assert.match(fullRuntimeUniformBlock, /floorApplied/);
 assert.match(fullRuntimeUniformBlock, /northWallApplied/);
+assert.match(fullRuntimeUniformBlock, /eastWallApplied/);
 assert.match(fullRuntimeUniformBlock, /uR7310C1FloorDiffuseMode\.value = floorApplied \? 1\.0 : 0\.0/);
 assert.match(fullRuntimeUniformBlock, /uR7310C1NorthWallDiffuseMode\.value = northWallApplied \? 1\.0 : 0\.0/);
+assert.match(fullRuntimeUniformBlock, /uR7310C1EastWallDiffuseMode\.value = eastWallApplied \? 1\.0 : 0\.0/);
 assert.doesNotMatch(fullRuntimeUniformBlock, /r7310C1FullRoomDiffuseRuntimeReady &&\s*r7310C1NorthWallDiffuseRuntimeReady/);
 assert.match(initCommon, /window\.reportR7310C1FullRoomDiffuseRuntimeProbe/);
 assert.match(initCommon, /bakedSurfaceHitCount/);
@@ -222,21 +270,25 @@ assert.match(runner, /--r7310-runtime-probe-sample-test/);
 assert.match(runner, /probeLevel: level/);
 assert.match(runner, /samplePointSpace: 'canvasCssPixel'/);
 assert.match(initCommon, /uiMeaningOff:\s*'sprout_patch_plus_live_floor'/);
-assert.match(initCommon, /uiMeaningOn:\s*'selected_floor_or_north_wall_baked_diffuse_plus_live_reflection'/);
-assert.match(initCommon, /uR7310C1RuntimeAtlasPatchCount\.value = 2\.0/);
+assert.match(initCommon, /uiMeaningOn:\s*'selected_floor_north_or_east_wall_baked_diffuse_plus_live_reflection'/);
+assert.match(initCommon, /uR7310C1RuntimeAtlasPatchCount\.value = 3\.0/);
 assert.match(html, /id="r7310-full-floor-actions"/);
 assert.match(html, /id="btn-r7310-floor-diffuse"/);
 assert.match(html, /id="btn-r7310-north-wall-diffuse"/);
+assert.match(html, /id="btn-r7310-east-wall-diffuse"/);
 assert.match(html, />地板烘焙：關</);
 assert.match(html, />北牆烘焙：關</);
+assert.match(html, />東牆烘焙：關</);
 assert.doesNotMatch(html, /btn-r739-ab-|data-r739-ab-mode|A 漫射|B 原V2|C 反射|D 粗1/);
 assert.match(homeStudio, /bindR7310FullFloorDiffuseControls/);
 assert.match(homeStudio, /refreshR7310FullFloorDiffuseButton/);
 assert.match(initCommon, /setR7310C1FullRoomDiffuseRuntimeEnabled/);
 assert.match(homeStudio, /setR7310C1FloorDiffuseRuntimeEnabled/);
 assert.match(homeStudio, /setR7310C1NorthWallDiffuseRuntimeEnabled/);
+assert.match(homeStudio, /setR7310C1EastWallDiffuseRuntimeEnabled/);
 assert.match(homeStudio, /地板烘焙：開/);
 assert.match(homeStudio, /北牆烘焙：開/);
+assert.match(homeStudio, /東牆烘焙：開/);
 assert.doesNotMatch(homeStudio, /bindR739SproutABControls|refreshR739SproutABButtons|btn-r739-ab-|r739-sprout-ab-actions/);
 assert.match(homeStudio, /'snapshot-controls', 'floor-roughness-actions', 'r7310-full-floor-actions', 'snapshot-bar', 'snapshot-actions'/);
 assert.match(runner, /--r7310-full-room-diffuse-bake/);
@@ -247,6 +299,7 @@ assert.match(runner, /--r7310-east-wall-runtime-test/);
 assert.match(runner, /--r7310-ui-toggle-test/);
 assert.match(runner, /btn-r7310-floor-diffuse/);
 assert.match(runner, /btn-r7310-north-wall-diffuse/);
+assert.match(runner, /btn-r7310-east-wall-diffuse/);
 assert.match(runner, /--target-samples=/);
 
 console.log('R7-3.10 full-room diffuse bake architecture contract passed');

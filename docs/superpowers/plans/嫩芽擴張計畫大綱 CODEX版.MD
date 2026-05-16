@@ -41,6 +41,56 @@
 11. 任何加速收斂機制只能影響收斂速度，不可變動材質參數。
 ```
 
+## 目前執行狀態
+
+```markdown
+1.  2026-05-13 已完成 C1 第一批全地板漫射烘焙，使用者已目視確認成功。
+2.  2026-05-13 已開始第二批牆面，第一面選擇北牆。
+3.  北牆使用 R7-3.10 獨立目標編號 `1002`，表面名稱 `c1_north_wall`。
+4.  北牆映射使用 `x/y` 平面映射，室內可見面位置為 `z = -1.874`。
+5.  北牆門洞 `x=-1.52..-0.73, y=0.0..2.03` 已列為無效紋素（invalid texel）區域。
+6.  北牆正式 1000SPP 候選包已產出：`.omc/r7-3-10-full-room-diffuse-bake/20260513-210338/`。
+7.  北牆 coverage：`validTexelRatio = 0.8702621459960938`，`missingSurfaceNames = [c1_south_wall, c1_east_wall, c1_west_wall]`。
+8.  北牆已接入執行期查表，與全地板共用 R7-3.10 開關。
+9.  黑畫面修正已完成：地板與北牆合併成同一張 R7-3.10 runtime atlas，不新增北牆獨立 sampler。
+10. 合併 atlas 佈局：左半是全地板，右半是北牆；shader 用 `r7310C1CombinedAtlasUv()` 選擇半邊。
+11. 北牆 runtime probe 已通過：`.omc/r7-3-10-full-room-diffuse-runtime/20260513-213111/`。
+12. UI 開關語意更新為 `地板北牆：關 / 地板北牆：開`。
+13. 2026-05-13 實機瀏覽器路徑驗證已通過：地板 runtime、北牆 runtime、UI toggle 三項皆 pass。
+14. 使用者已目視確認北牆成功，且北牆與地板接縫沒有問題。
+15. 2026-05-13 已依使用者指示改為先處理東牆。
+16. 東牆使用 R7-3.10 獨立目標編號 `1003`，表面名稱 `c1_east_wall`。
+17. 東牆映射使用 `z/y` 平面映射，室內可見面位置為 `x = 1.91`，法線朝 `-X`。
+18. 東牆正式 1000SPP 候選包已產出：`.omc/r7-3-10-full-room-diffuse-bake/20260513-214539/`。
+19. 東牆 coverage：`validTexelRatio = 1`，`missingSurfaceNames = [c1_south_wall, c1_west_wall]`。
+20. 東牆曾接入執行期查表，合併 atlas 曾擴為三格：全地板、北牆、東牆。
+21. 東牆 runtime probe 曾通過：`.omc/r7-3-10-full-room-diffuse-runtime/20260513-214711/`，但後續使用者目視判定接縫失敗。
+22. UI 開關後來曾更新為 `地板北東牆：關 / 地板北東牆：開`，目前已回退。
+23. 使用者回報東牆接縫比北牆髒，東牆衣櫃 / 地板 / 北牆交界有明顯黑邊。
+24. 使用者跑到約 334 samples 後黑線仍穩定存在，已確認它不是低取樣噪點。
+25. 使用者關閉烘焙後黑線消失，確認問題在 R7-3.10 烘焙貼圖或查表路徑。
+26. 第一段修正：合併 atlas 原本用精準 slot 邊界查表，已改為半 texel 內縮，避免地板 / 北牆 / 東牆 slot 邊界取到隔壁格或空邊；這段保留。
+27. 第二段與第三段 contact invalid region + flood-fill dilation 路線，經使用者視覺回報與 OPUS 審查判定為退化來源。
+28. 退化症狀包含：黑線轉白線、北牆 / 地板近距離像素格子、東北角牆牆黑線、衣櫃上方牆面白線。
+29. 量測證據：地板衣櫃 footprint 內側 mean luma 約 `0.0036 -> 0.5113`；北牆衣櫃 contact 內側 mean luma 約 `0.0008 -> 0.5829`。
+30. 判定：整張 atlas flood-fill 把家具外側受光亮環複製進遮擋區，接縫由黑變白。
+31. 失敗證據包保留，不再接入 runtime：東牆 `.omc/r7-3-10-full-room-diffuse-bake/20260513-221112/`。
+32. 失敗證據包保留，不再接入 runtime：地板 `.omc/r7-3-10-full-room-diffuse-bake/20260513-222644/`。
+33. 失敗證據包保留，不再接入 runtime：北牆 `.omc/r7-3-10-full-room-diffuse-bake/20260513-222958/`。
+34. 已回退到 Option A 基準：地板 package 指向 `.omc/r7-3-10-full-room-diffuse-bake/20260513-165203/`。
+35. 已回退到 Option A 基準：北牆 package 指向 `.omc/r7-3-10-full-room-diffuse-bake/20260513-210338/`。
+36. Option A 回退後，使用者確認畫面回到兩條黑線版本，但希望再往前回到「只有地板 + 北牆烘焙」。
+37. 已進一步回退：R7-3.10 runtime 合併 atlas 回到兩格：全地板、北牆。
+38. 已進一步回退：東牆不再接入 `r7310C1FullRoomDiffuseShortCircuit()`，東牆畫面回到 live path tracing。
+39. UI 開關語意回到 `地板北牆：關 / 地板北牆：開`。
+40. 地板 + 北牆回退後 runtime smoke 已通過：地板 `.omc/r7-3-10-full-room-diffuse-runtime/20260514-000207/`、北牆 `.omc/r7-3-10-full-room-diffuse-runtime/20260514-000241/`、UI toggle `.omc/r7-3-10-full-room-diffuse-ui-toggle/20260514-000324/`。
+41. 因使用者仍看見兩條黑線，已新增地板 / 北牆獨立 runtime 開關。
+42. UI 目前有兩顆按鈕：`地板烘焙：關 / 開`、`北牆烘焙：關 / 開`。
+43. 獨立開關 smoke 已通過：地板 `.omc/r7-3-10-full-room-diffuse-runtime/20260514-002029/`、北牆 `.omc/r7-3-10-full-room-diffuse-runtime/20260514-002105/`、UI toggle `.omc/r7-3-10-full-room-diffuse-ui-toggle/20260514-002138/`。
+44. 已新增 seam policy 草案：`docs/superpowers/plans/2026-05-13-r7-3-10-c1-seam-policy.md`。
+45. 下一步先用獨立開關定位黑線來源，再審 seam policy，之後進入統一 occluder / surface registry、alpha fall-through、shared edge test 與新 bake。
+```
+
 ## 檔案結構
 
 ```markdown
@@ -49,6 +99,9 @@ docs/superpowers/plans/嫩芽擴張計畫大綱 CODEX版.MD
 
 docs/superpowers/plans/2026-05-11-r7-3-8-c1-1000spp-bake-capture.md
   既有 R7-3.8 嫩芽區漫射烘焙流程的參考計畫。
+
+docs/superpowers/plans/2026-05-13-r7-3-10-c1-seam-policy.md
+  R7-3.10 C1 接縫政策草案。記錄 Option A 回退、失敗證據包、官方 three.js filter 依據、alpha fall-through 與 shared edge 測試設計。
 
 docs/data/r7-3-8-c1-bake-accepted-package.json
   既有已驗收嫩芽區漫射套件（package）指標。除非 R7-3.10 建立新的套件（package）指標，否則只讀取參考。

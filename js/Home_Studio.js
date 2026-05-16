@@ -5174,7 +5174,7 @@ function switchCamera(preset) {
 }
 
 function initSceneData() {
-    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-1024-bake-v1';
+    demoFragmentShaderFileName = 'Home_Studio_Fragment.glsl?v=r7310-static-east-hotfix-v2';
 
     sceneIsDynamic = false;
     cameraFlightSpeed = 3;
@@ -5446,9 +5446,10 @@ function initSceneData() {
     pathTracingUniforms.uR7310C1FullRoomDiffuseReady = { value: 0.0 };
     pathTracingUniforms.uR7310C1FloorDiffuseMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1NorthWallDiffuseMode = { value: 0.0 };
+    pathTracingUniforms.uR7310C1EastWallDiffuseMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1RuntimeProbeMode = { value: 0.0 };
     pathTracingUniforms.uR7310C1RuntimeAtlasPatchResolution = { value: 512.0 };
-    pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 2.0 };
+    pathTracingUniforms.uR7310C1RuntimeAtlasPatchCount = { value: 3.0 };
     pathTracingUniforms.uR738C1BakePastePreviewMode = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewReady = { value: 0.0 };
     pathTracingUniforms.uR738C1BakePastePreviewStrength = { value: 1.0 };
@@ -5842,8 +5843,10 @@ function syncFloorRoughnessActionWidth() {
 function refreshR7310SurfaceDiffuseButtons(report) {
     var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
     var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
+    var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
     var floorActive = !!(report && report.floorEnabled);
     var northActive = !!(report && report.northWallEnabled);
+    var eastActive = !!(report && report.eastWallEnabled);
     if (floorBtn) {
         floorBtn.textContent = floorActive ? '地板烘焙：開' : '地板烘焙：關';
         floorBtn.classList.toggle('glow-white', floorActive);
@@ -5858,12 +5861,20 @@ function refreshR7310SurfaceDiffuseButtons(report) {
             ? '北牆漫射使用 1000SPP 烘焙'
             : '北牆回到 live path tracing';
     }
+    if (eastBtn) {
+        eastBtn.textContent = eastActive ? '東牆烘焙：開' : '東牆烘焙：關';
+        eastBtn.classList.toggle('glow-white', eastActive);
+        eastBtn.title = eastActive
+            ? '東牆漫射使用 1000SPP 烘焙'
+            : '東牆回到 live path tracing';
+    }
 }
 
 function bindR7310FullFloorDiffuseControls() {
     var floorBtn = document.getElementById('btn-r7310-floor-diffuse');
     var northBtn = document.getElementById('btn-r7310-north-wall-diffuse');
-    if (!floorBtn && !northBtn) return;
+    var eastBtn = document.getElementById('btn-r7310-east-wall-diffuse');
+    if (!floorBtn && !northBtn && !eastBtn) return;
     var bindButton = function(btn, surfaceKey, setterName) {
         if (!btn) return;
         btn.addEventListener('click', function(e) {
@@ -5878,6 +5889,7 @@ function bindR7310FullFloorDiffuseControls() {
     };
     bindButton(floorBtn, 'floorEnabled', 'setR7310C1FloorDiffuseRuntimeEnabled');
     bindButton(northBtn, 'northWallEnabled', 'setR7310C1NorthWallDiffuseRuntimeEnabled');
+    bindButton(eastBtn, 'eastWallEnabled', 'setR7310C1EastWallDiffuseRuntimeEnabled');
     if (typeof window.reportR7310C1FullRoomDiffuseRuntimeConfig === 'function')
         refreshR7310SurfaceDiffuseButtons(window.reportR7310C1FullRoomDiffuseRuntimeConfig());
 }

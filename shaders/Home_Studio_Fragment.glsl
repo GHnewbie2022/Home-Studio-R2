@@ -48,6 +48,7 @@ uniform float uR7310C1FullRoomDiffuseMode;
 uniform float uR7310C1FullRoomDiffuseReady;
 uniform float uR7310C1FloorDiffuseMode;
 uniform float uR7310C1NorthWallDiffuseMode;
+uniform float uR7310C1EastWallDiffuseMode;
 uniform float uR7310C1RuntimeProbeMode;
 uniform float uR7310C1RuntimeAtlasPatchResolution;
 uniform float uR7310C1RuntimeAtlasPatchCount;
@@ -568,6 +569,14 @@ bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectI
 	{
 		vec3 r7310NorthWallBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 1.0));
 		bakedRadiance = r7310NorthWallBakedRadiance;
+		return true;
+	}
+	if (uR7310C1EastWallDiffuseMode > 0.5 &&
+		r7310C1RuntimeSurfaceIsEastWall(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		r7310C1EastWallDiffuseUv(visiblePosition, atlasUv))
+	{
+		vec3 r7310EastWallBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 2.0));
+		bakedRadiance = r7310EastWallBakedRadiance;
 		return true;
 	}
 	return false;
@@ -2992,7 +3001,8 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 				continue;
 			}
 			vec3 r7310BakedRadiance = vec3(0.0);
-			if (r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, hitIsRayExiting, r7310BakedRadiance))
+			if (bounces == 0 &&
+				r7310C1FullRoomDiffuseShortCircuit(hitType, hitObjectID, nl, x, hitIsRayExiting, r7310BakedRadiance))
 			{
 				float r7310C1RuntimeProbeMode = uR7310C1RuntimeProbeMode;
 				if (r7310C1RuntimeProbeMode > 0.5 && r7310C1RuntimeProbeMode < 1.5)

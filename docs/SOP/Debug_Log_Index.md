@@ -1,7 +1,7 @@
 # Debug Log Index
 
 > 目的：讓接手代理先用本檔路由，再回 `Debug_Log.md` 讀必要章節。`Debug_Log.md` 保留為完整總帳，不建議每次接手全讀。
-> 更新日：2026-05-15
+> 更新日：2026-05-16
 
 ---
 
@@ -68,6 +68,33 @@ rtk rg -n '^## |^### |R7-3|v3k|effectiveStrength|sampleCounter|S2' docs/SOP/Debu
 ---
 
 ## 目前優先路線
+
+### R7-3.10 static diffuse bake expansion current line
+
+```
+必讀：
+  - `docs/superpowers/plans/2026-05-16-r7-3-10-static-bake-expansion-codex-handoff.md`
+  - `docs/superpowers/plans/2026-05-16-r7-3-10-static-diffuse-bake-expansion-investigation-opus.md`
+  - `docs/superpowers/plans/2026-05-15-r7-3-10-c1-1024-bake-resolution-plan.md`
+  - `docs/SOP/R7：採樣演算法升級.md` 的 `2026-05-16 目前共識：先收 hybrid room，再談架構加速`
+  - `Debug_Log.md` 的 `R7-3.10-static-diffuse-bake-expansion-east-wall-1024-runtime`
+  - `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`
+
+目前狀態：
+  - floor / north 1024 bake 已驗收，兩條衣櫃黑線看不出來。
+  - east wall 第一批 1024 runtime 已接入，pointer 指到 `.omc/r7-3-10-full-room-diffuse-bake/20260516-123227/`。
+  - floor / north / east 三個 runtime slot 目前同為 1024，合併 atlas 為三格。
+  - UI 目前拆成三顆按鈕：`地板烘焙`、`北牆烘焙`、`東牆烘焙`。
+  - C runtime fallback 已移除；不回 fallback，不改鄰格取樣。
+  - Option A / Option B bake 防污染保護已保留。
+  - partial bake + LIVE 局部偏亮已定性為深度相加的過渡假象。
+  - 正式驗收基準是全相關靜態漫射面 bake vs 全 LIVE。
+  - 目前主線先在現有 Home Studio 架構收成快速預覽 hybrid room。
+  - hybrid room 技術分工：靜態漫射面讀 bake；反射保留 LIVE path tracing。
+  - 第一批新增面是 east wall；後續逐批 west / south / ceiling。
+  - 快速預覽成功後，再開高品質 bake 生產線與 WebGPU / Metal / Blender 加速候選評估。
+  - PlayCanvas 只列展示承載候選，等 baked room 穩定後再談。
+```
 
 ### R7-3.10 C1 H5 / H3' 1024 bake resolution closeout
 
@@ -364,6 +391,7 @@ R7 採樣升級：
   - R7-3.8 C1 diffuse-only paste fix 已移除 floor patch 內的 ceiling-lamp reflection spike，補休眠 framePending=false、keyboard idle、snapshot UI、1000SPP 顯示、floor roughness UI 驗證；後續使用者肉眼確認 350SPP 已難見界線、1000SPP 隱形，diffuse bake 架構通過 floor-center patch 驗收，反射另開處理線；讀 `Debug_Log.md` 的 `R7-3.8-c1-bake-diffuse-paste-fix1`
   - R7-3.8 C1 嫩芽成功版已覆蓋為「diffuse bake + 可用 floor roughness UI」版本；右緣對齊手動存圖，數字欄不壓住滑桿，成功 tag `r7-3-8-c1-diffuse-bake-success-20260511` 代表這個恢復版；讀 `Debug_Log.md` 的 `R7-3.8-c1-diffuse-bake-sprout-ui-recovery`
   - R7-3.10 C1 full-room diffuse bake 已完成 Phase 2 第一刀 H8 / C'、第二刀 H7、第三刀 H7'，並以 1024 bake resolution 收斂 H5 / H3' 兩條衣櫃黑線；現況先讀 `docs/superpowers/plans/2026-05-14-r7-3-10-c1-phase-2-design-codex.md`、`docs/superpowers/plans/2026-05-14-r7-3-10-c1-seam-debug-consensus-codex.md` 與 `Debug_Log.md` 的 `R7-3.10-c1-phase2-h5-h3-1024-bake-resolution-closeout`。
+  - R7-3.10 static bake expansion 已完成 east wall hotfix：舊 east package 全黑已換成 `.omc/r7-3-10-full-room-diffuse-bake/20260516-123227/`，runtime baked diffuse short-circuit 限制為 `bounces == 0`，secondary / LIVE 反彈維持 live path tracing；讀 `Debug_Log.md` 的 `R7-3.10-static-bake-expansion-east-wall-hotfix`。
   - R7-3.9 C1 reflection bake 已清回純漫射 runtime：`.omc/r7-3-9-c1-accurate-reflection-bake/` 與 preview 產物移除，pointer 狀態為 `none`，runtime 預設不載入 R7-3.9 反射；讀 `Debug_Log.md` 的 `R7-3.9-c1-reflection-bake-reset-to-diffuse-only`
   - R7-3.9 C1 reflection bake 新 SOP 已改成官方依據版本：平面反射需反射視點或等價幾何，SSR 只依當前畫面，ray tracing 可取畫面外資料，CubeCamera 只代表特定 3D 位置；讀 `docs/superpowers/plans/2026-05-11-r7-3-9-c1-reflection-bake.md`
   - R7-3.9 C1 舊 sprout-only package `.omc/r7-3-9-c1-accurate-reflection-bake/20260512-134902/` 已判定為 camera-space reference，不是 runtime 可接受反射包；後續必須改走 surface position + outgoing direction 或 true planar reflection pass。
