@@ -15,8 +15,8 @@
 ```text
 0.  2026-05-16 CODEX 已完成 east wall 第一批 runtime 接入。
     目前 floor / north / east runtime pointer 都是 1024。
-    east 1024 package:
-    .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+    正式 runtime bake package 已移到：
+    assets/bakes/r7-3-10/c1-static-diffuse/
 
 1.  codex/r7-3-10-integration 目前暫停作為本機整合保存分支。
     不開 PR。
@@ -40,10 +40,11 @@
 
 6.  2026-05-16 hotfix 已處理：
     - 舊 east package .omc/r7-3-10-full-room-diffuse-bake/20260516-092150/ 全黑。
-    - east pointer 已改指 .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/。
+    - east pointer 已改指 assets/bakes/r7-3-10/c1-static-diffuse/east-wall-1024px-1000spp/。
     - runtime baked diffuse short-circuit 已限制為 bounces == 0。
     - LIVE 反彈維持 LIVE path tracing，不再把 baked diffuse 當成二次反彈光源。
     - cache buster 已更新為 r7310-static-east-hotfix-v2。
+    - floor / north / east accepted bake packages 已移出 .omc，改放 assets/bakes/r7-3-10/c1-static-diffuse/。
 ```
 
 ## 2026-05-16 CODEX 實作結果
@@ -67,11 +68,11 @@
 
 3.  套件：
     - floor:
-      .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/
+      assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp/
     - north:
-      .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/
+      assets/bakes/r7-3-10/c1-static-diffuse/north-wall-door-hole-1024px-1000spp/
     - east:
-      .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+      assets/bakes/r7-3-10/c1-static-diffuse/east-wall-1024px-1000spp/
 
 4.  驗證：
     - contract pass:

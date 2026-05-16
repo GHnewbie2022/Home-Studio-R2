@@ -64,9 +64,9 @@
     - reportR7310C1FullRoomDiffuseRuntimeProbe() can target east wall runtime directly.
     - Home_Studio cache-bust tag updated to r7310-static-east-hotfix-v2.
   packages:
-    - floor_1024: .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/
-    - north_1024: .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/
-    - east_1024: .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+    - floor_1024: assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp/
+    - north_1024: assets/bakes/r7-3-10/c1-static-diffuse/north-wall-door-hole-1024px-1000spp/
+    - east_1024: assets/bakes/r7-3-10/c1-static-diffuse/east-wall-1024px-1000spp/
     - old_east_512_history: .omc/r7-3-10-full-room-diffuse-bake/20260513-214539/
   pointer_state:
     - docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json -> floor_1024.
@@ -372,8 +372,8 @@
     - "Do not advance to 2048 in this round because the nearest-interval phase result predicts north-line regression at 2048."
     - "C runtime fallback was an abandoned diagnostic experiment; it proved the boundary-texel path but created a live/bake quality seam, and has been removed."
   packages:
-    floor_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-215727"
-    north_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-212509"
+    floor_1024: "assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp"
+    north_1024: "assets/bakes/r7-3-10/c1-static-diffuse/north-wall-door-hole-1024px-1000spp"
     contamination_evidence_north_1024: ".omc/r7-3-10-full-room-diffuse-bake/20260515-225147"
     pointer_backup_512: ".omc/r7-3-10-1024-pointer-backups/20260515-212327"
   pointer_state:
@@ -7801,7 +7801,7 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - r7310C1FullRoomDiffuseShortCircuit ran inside the bounce loop without a bounces == 0 guard.
   fix:
     - Re-baked east wall 1024 / 1000SPP with Metal:
-      .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+      assets/bakes/r7-3-10/c1-static-diffuse/east-wall-1024px-1000spp/
     - Updated docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json to point to the new package.
     - Added atlas visible-luma checks to browser validation, runner validation, and the contract test.
     - Restricted r7310C1FullRoomDiffuseShortCircuit to bounces == 0.
@@ -7845,7 +7845,34 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       status: pass
       report: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-123411/
   note:
-    - floor pointer stays at .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/.
-    - north pointer stays at .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/.
+    - floor pointer now targets assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp/.
+    - north pointer now targets assets/bakes/r7-3-10/c1-static-diffuse/north-wall-door-hole-1024px-1000spp/.
     - floor / north 1024 bake remained intact.
+```
+
+## R7-3.10｜Formal static diffuse bake asset migration
+
+```yaml
+- id: R7-3.10-static-diffuse-bake-asset-migration
+  date: 2026-05-16
+  type: asset_packaging_cleanup
+  branch: main
+  reason:
+    - Runtime pointers should not depend on local .omc experiment folders.
+    - The accepted 1024 / 1000SPP floor, north, and east packages should clone with the repo.
+    - Folder names should identify the surface and bake settings without opening the folder.
+  moved_packages:
+    - from: .omc/r7-3-10-full-room-diffuse-bake/20260515-215727/
+      to: assets/bakes/r7-3-10/c1-static-diffuse/floor-full-room-1024px-1000spp/
+    - from: .omc/r7-3-10-full-room-diffuse-bake/20260515-212509/
+      to: assets/bakes/r7-3-10/c1-static-diffuse/north-wall-door-hole-1024px-1000spp/
+    - from: .omc/r7-3-10-full-room-diffuse-bake/20260516-123227/
+      to: assets/bakes/r7-3-10/c1-static-diffuse/east-wall-1024px-1000spp/
+  pointer_updates:
+    - docs/data/r7-3-10-c1-floor-full-room-diffuse-runtime-package.json
+    - docs/data/r7-3-10-c1-north-wall-full-room-diffuse-runtime-package.json
+    - docs/data/r7-3-10-c1-east-wall-full-room-diffuse-runtime-package.json
+  policy:
+    - assets/bakes/ stores accepted runtime bake packages.
+    - .omc stays for experiments, probe output, temporary reports, and failed packages.
 ```

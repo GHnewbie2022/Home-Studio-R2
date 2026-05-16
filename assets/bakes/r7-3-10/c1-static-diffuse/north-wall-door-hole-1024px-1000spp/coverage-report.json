@@ -1,0 +1,26 @@
+{
+  "config": 1,
+  "batch": "north_wall",
+  "surfaceTargetCount": 1,
+  "coveredSurfaceNames": [
+    "c1_north_wall"
+  ],
+  "missingSurfaceNames": [
+    "c1_south_wall",
+    "c1_east_wall",
+    "c1_west_wall"
+  ],
+  "validTexelRatioBySurface": {
+    "c1_north_wall": 0.868896484375
+  },
+  "dilationAppliedBySurface": {
+    "c1_north_wall": false
+  },
+  "atlasPathBySurface": {
+    "c1_north_wall": "atlas-patch-000-rgba-f32.bin"
+  },
+  "allMajorSurfacesCovered": false,
+  "allStaticVisibleSurfacesAccountedFor": false,
+  "allStaticVisibleSurfacesCovered": false,
+  "finalC1Coverage": false
+}

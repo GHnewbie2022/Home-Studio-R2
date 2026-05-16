@@ -1,0 +1,25 @@
+{
+  "config": 1,
+  "batch": "east_wall",
+  "surfaceTargetCount": 1,
+  "coveredSurfaceNames": [
+    "c1_east_wall"
+  ],
+  "missingSurfaceNames": [
+    "c1_south_wall",
+    "c1_west_wall"
+  ],
+  "validTexelRatioBySurface": {
+    "c1_east_wall": 1
+  },
+  "dilationAppliedBySurface": {
+    "c1_east_wall": false
+  },
+  "atlasPathBySurface": {
+    "c1_east_wall": "atlas-patch-000-rgba-f32.bin"
+  },
+  "allMajorSurfacesCovered": false,
+  "allStaticVisibleSurfacesAccountedFor": false,
+  "allStaticVisibleSurfacesCovered": false,
+  "finalC1Coverage": false
+}

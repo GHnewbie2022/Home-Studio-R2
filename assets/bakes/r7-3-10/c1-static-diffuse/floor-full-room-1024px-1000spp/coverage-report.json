@@ -1,0 +1,22 @@
+{
+  "config": 1,
+  "batch": "floor",
+  "surfaceTargetCount": 1,
+  "coveredSurfaceNames": [
+    "c1_floor_full_room"
+  ],
+  "missingSurfaceNames": [],
+  "validTexelRatioBySurface": {
+    "c1_floor_full_room": 1
+  },
+  "dilationAppliedBySurface": {
+    "c1_floor_full_room": false
+  },
+  "atlasPathBySurface": {
+    "c1_floor_full_room": "atlas-patch-000-rgba-f32.bin"
+  },
+  "allMajorSurfacesCovered": false,
+  "allStaticVisibleSurfacesAccountedFor": false,
+  "allStaticVisibleSurfacesCovered": false,
+  "finalC1Coverage": false
+}
