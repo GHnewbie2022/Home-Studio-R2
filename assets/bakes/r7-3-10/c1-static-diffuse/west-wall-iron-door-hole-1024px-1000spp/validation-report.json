@@ -1,0 +1,63 @@
+{
+  "status": "pass",
+  "checks": {
+    "version": true,
+    "config": true,
+    "rawSamples": true,
+    "rawFinite": true,
+    "surfaceClass": true,
+    "atlasResolution": true,
+    "upscaled": true,
+    "diffuseOnly": true,
+    "atlasFloatCount": true,
+    "metadataFloatCount": true,
+    "validTexelRatio": true,
+    "atlasSamples": true,
+    "patchSamples": true,
+    "atlasVisibleLuma": true,
+    "reprojectionRecorded": true
+  },
+  "reprojectionStatus": "fail",
+  "medianRelativeLumaError": null,
+  "p90RelativeLumaError": null,
+  "reprojectionComparisons": 0,
+  "rawHdrPixels": 921600,
+  "atlasFloatCount": 4194304,
+  "metadataFloatCount": 12582912,
+  "atlasVisibleLuma": {
+    "texels": 1048576,
+    "nonzeroTexels": 666091,
+    "meanLuma": 0.3414857399163225,
+    "maxLuma": 0.8055359323819479
+  },
+  "browserValidationStatus": "pass",
+  "runnerStatus": "pass",
+  "runnerChecks": {
+    "version": true,
+    "config": true,
+    "rawSamples": true,
+    "atlasSamples": true,
+    "patchSamples": true,
+    "diffuseOnly": true,
+    "upscaled": true,
+    "atlasResolution": true,
+    "atlasBytes": true,
+    "metadataBytes": true,
+    "finiteRaw": true,
+    "finiteAtlas": true,
+    "atlasVisibleLuma": true,
+    "validTexelRatio": true,
+    "browserValidation": true
+  },
+  "runnerFailedChecks": [],
+  "bakeContaminationGuardSnapshot": {
+    "phase": "during_capture",
+    "uR7310C1FullRoomDiffuseMode": 0,
+    "uR7310C1FullRoomDiffuseReady": 0,
+    "uR7310C1FloorDiffuseMode": 0,
+    "uR7310C1NorthWallDiffuseMode": 0,
+    "uR7310C1EastWallDiffuseMode": 0,
+    "uR7310C1WestWallDiffuseMode": 0,
+    "uR738C1BakeCaptureMode": 2
+  }
+}

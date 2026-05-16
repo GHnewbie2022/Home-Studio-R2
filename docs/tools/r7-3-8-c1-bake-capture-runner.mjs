@@ -34,6 +34,7 @@ function parseArgs(argv) {
     runtimeShortCircuitTest: false,
     northWallRuntimeTest: false,
     eastWallRuntimeTest: false,
+    westWallRuntimeTest: false,
     r7310RuntimeProbeSampleTest: false,
     r738SproutPasteProbeTest: false,
     h5BlackLineProbeTest: false,
@@ -63,6 +64,7 @@ function parseArgs(argv) {
     else if (arg === '--r7310-runtime-short-circuit-test') out.runtimeShortCircuitTest = true;
     else if (arg === '--r7310-north-wall-runtime-test') out.northWallRuntimeTest = true;
     else if (arg === '--r7310-east-wall-runtime-test') out.eastWallRuntimeTest = true;
+    else if (arg === '--r7310-west-wall-runtime-test') out.westWallRuntimeTest = true;
     else if (arg === '--r7310-runtime-probe-sample-test') out.r7310RuntimeProbeSampleTest = true;
     else if (arg === '--r738-sprout-paste-probe-test') out.r738SproutPasteProbeTest = true;
     else if (arg === '--r7310-h5-black-line-probe') out.h5BlackLineProbeTest = true;
@@ -70,7 +72,7 @@ function parseArgs(argv) {
     else if (arg.startsWith('--target-samples=')) out.targetSamples = Number(arg.slice('--target-samples='.length));
   }
   if (!['metal', 'swiftshader', 'opengl'].includes(out.angle)) throw new Error('Invalid angle mode');
-  if (!['floor', 'north-wall', 'east-wall'].includes(out.r7310Surface)) throw new Error('Invalid r7310Surface');
+  if (!['floor', 'north-wall', 'east-wall', 'west-wall'].includes(out.r7310Surface)) throw new Error('Invalid r7310Surface');
   for (const key of ['samples', 'atlasResolution', 'timeoutMs', 'httpPort', 'cdpPort']) {
     if (!Number.isFinite(out[key]) || out[key] <= 0) throw new Error(`Invalid ${key}`);
     out[key] = Math.trunc(out[key]);
@@ -501,7 +503,7 @@ function validatePayload({ report, validationReport, atlasBuffer, metadataBuffer
   const resolution = report.targetAtlasResolution;
   const expectedAtlasBytes = resolution * resolution * 4 * 4;
   const expectedMetadataBytes = resolution * resolution * 12 * 4;
-  const validTexelRatioMinimum = report.surfaceName === 'c1_north_wall'
+  const validTexelRatioMinimum = report.surfaceName === 'c1_north_wall' || report.surfaceName === 'c1_west_wall'
     ? 0.80
     : 0.99;
   const atlasVisibleLuma = summarizeAtlasVisibleLuma(atlasBuffer);
@@ -648,7 +650,7 @@ async function main() {
               ? 'typeof window.reportR738C1BakePastePreviewConfig === "function"'
               : args.accurateReflectionCapture
                 ? 'typeof window.reportR739C1AccurateReflectionAfterSamples === "function"'
-                : args.runtimeShortCircuitTest || args.northWallRuntimeTest || args.eastWallRuntimeTest || args.r7310RuntimeProbeSampleTest || args.h5BlackLineProbeTest || args.uiToggleTest
+                : args.runtimeShortCircuitTest || args.northWallRuntimeTest || args.eastWallRuntimeTest || args.westWallRuntimeTest || args.r7310RuntimeProbeSampleTest || args.h5BlackLineProbeTest || args.uiToggleTest
                   ? 'typeof window.reportR7310C1FullRoomDiffuseRuntimeProbe === "function"'
                   : args.r738SproutPasteProbeTest
                     ? 'typeof window.reportR738C1SproutPasteRuntimeProbe === "function"'
@@ -663,9 +665,11 @@ async function main() {
           const floorButton = document.getElementById('btn-r7310-floor-diffuse');
           const northButton = document.getElementById('btn-r7310-north-wall-diffuse');
           const eastButton = document.getElementById('btn-r7310-east-wall-diffuse');
+          const westButton = document.getElementById('btn-r7310-west-wall-diffuse');
           if (!floorButton) throw new Error('btn-r7310-floor-diffuse missing');
           if (!northButton) throw new Error('btn-r7310-north-wall-diffuse missing');
           if (!eastButton) throw new Error('btn-r7310-east-wall-diffuse missing');
+          if (!westButton) throw new Error('btn-r7310-west-wall-diffuse missing');
           await window.waitForR7310C1FullRoomDiffuseRuntimeReady(${args.timeoutMs});
           if (window.reportR7310C1FullRoomDiffuseRuntimeConfig().enabled) {
             window.setR7310C1FullRoomDiffuseRuntimeEnabled(false);
@@ -674,6 +678,7 @@ async function main() {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
+            westText: westButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           floorButton.click();
@@ -682,6 +687,7 @@ async function main() {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
+            westText: westButton.textContent,
             floorClassName: floorButton.className,
             floorTitle: floorButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -692,6 +698,7 @@ async function main() {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
+            westText: westButton.textContent,
             northClassName: northButton.className,
             northTitle: northButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
@@ -702,8 +709,20 @@ async function main() {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
+            westText: westButton.textContent,
             eastClassName: eastButton.className,
             eastTitle: eastButton.title,
+            report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
+          };
+          westButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          const afterWestOn = {
+            floorText: floorButton.textContent,
+            northText: northButton.textContent,
+            eastText: eastButton.textContent,
+            westText: westButton.textContent,
+            westClassName: westButton.className,
+            westTitle: westButton.title,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           floorButton.click();
@@ -712,16 +731,20 @@ async function main() {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
+            westText: westButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           northButton.click();
           await new Promise((resolve) => setTimeout(resolve, 100));
           eastButton.click();
           await new Promise((resolve) => setTimeout(resolve, 100));
+          westButton.click();
+          await new Promise((resolve) => setTimeout(resolve, 100));
           const afterAllOff = {
             floorText: floorButton.textContent,
             northText: northButton.textContent,
             eastText: eastButton.textContent,
+            westText: westButton.textContent,
             report: window.reportR7310C1FullRoomDiffuseRuntimeConfig()
           };
           return {
@@ -730,67 +753,99 @@ async function main() {
             afterFloorOn,
             afterNorthOn,
             afterEastOn,
+            afterWestOn,
             afterFloorOff,
             afterAllOff,
             status: before.floorText === '地板烘焙：關' &&
               before.northText === '北牆烘焙：關' &&
               before.eastText === '東牆烘焙：關' &&
+              before.westText === '西牆烘焙：關' &&
               before.report.uiMeaningOff === 'all_live_path_tracing' &&
               before.report.sproutPasteApplied === false &&
               before.report.sproutPasteUniformMode === 0 &&
               afterFloorOn.floorText === '地板烘焙：開' &&
               afterFloorOn.northText === '北牆烘焙：關' &&
               afterFloorOn.eastText === '東牆烘焙：關' &&
+              afterFloorOn.westText === '西牆烘焙：關' &&
               afterFloorOn.report.enabled === true &&
               afterFloorOn.report.floorEnabled === true &&
               afterFloorOn.report.northWallEnabled === false &&
               afterFloorOn.report.eastWallEnabled === false &&
+              afterFloorOn.report.westWallEnabled === false &&
               afterFloorOn.report.uniformFloorMode === 1 &&
               afterFloorOn.report.uniformNorthWallMode === 0 &&
               afterFloorOn.report.uniformEastWallMode === 0 &&
+              afterFloorOn.report.uniformWestWallMode === 0 &&
               afterFloorOn.report.sproutPasteApplied === false &&
               afterFloorOn.report.sproutPasteUniformMode === 0 &&
               afterNorthOn.floorText === '地板烘焙：開' &&
               afterNorthOn.northText === '北牆烘焙：開' &&
               afterNorthOn.eastText === '東牆烘焙：關' &&
+              afterNorthOn.westText === '西牆烘焙：關' &&
               afterNorthOn.report.floorEnabled === true &&
               afterNorthOn.report.northWallEnabled === true &&
               afterNorthOn.report.eastWallEnabled === false &&
+              afterNorthOn.report.westWallEnabled === false &&
               afterNorthOn.report.uniformFloorMode === 1 &&
               afterNorthOn.report.uniformNorthWallMode === 1 &&
               afterNorthOn.report.uniformEastWallMode === 0 &&
+              afterNorthOn.report.uniformWestWallMode === 0 &&
               afterNorthOn.report.sproutPasteApplied === false &&
               afterNorthOn.report.sproutPasteUniformMode === 0 &&
-              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_or_east_wall_1024_baked_diffuse_plus_live_reflection' &&
+              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_east_or_west_wall_1024_baked_diffuse_plus_live_reflection' &&
               afterEastOn.floorText === '地板烘焙：開' &&
               afterEastOn.northText === '北牆烘焙：開' &&
               afterEastOn.eastText === '東牆烘焙：開' &&
+              afterEastOn.westText === '西牆烘焙：關' &&
               afterEastOn.report.floorEnabled === true &&
               afterEastOn.report.northWallEnabled === true &&
               afterEastOn.report.eastWallEnabled === true &&
+              afterEastOn.report.westWallEnabled === false &&
               afterEastOn.report.uniformFloorMode === 1 &&
               afterEastOn.report.uniformNorthWallMode === 1 &&
               afterEastOn.report.uniformEastWallMode === 1 &&
+              afterEastOn.report.uniformWestWallMode === 0 &&
+              afterEastOn.report.sproutPasteApplied === false &&
+              afterEastOn.report.sproutPasteUniformMode === 0 &&
+              afterWestOn.floorText === '地板烘焙：開' &&
+              afterWestOn.northText === '北牆烘焙：開' &&
+              afterWestOn.eastText === '東牆烘焙：開' &&
+              afterWestOn.westText === '西牆烘焙：開' &&
+              afterWestOn.report.floorEnabled === true &&
+              afterWestOn.report.northWallEnabled === true &&
+              afterWestOn.report.eastWallEnabled === true &&
+              afterWestOn.report.westWallEnabled === true &&
+              afterWestOn.report.uniformFloorMode === 1 &&
+              afterWestOn.report.uniformNorthWallMode === 1 &&
+              afterWestOn.report.uniformEastWallMode === 1 &&
+              afterWestOn.report.uniformWestWallMode === 1 &&
+              afterWestOn.report.sproutPasteApplied === false &&
+              afterWestOn.report.sproutPasteUniformMode === 0 &&
               afterEastOn.report.sproutPasteApplied === false &&
               afterEastOn.report.sproutPasteUniformMode === 0 &&
               afterFloorOff.floorText === '地板烘焙：關' &&
               afterFloorOff.northText === '北牆烘焙：開' &&
               afterFloorOff.eastText === '東牆烘焙：開' &&
+              afterFloorOff.westText === '西牆烘焙：開' &&
               afterFloorOff.report.floorEnabled === false &&
               afterFloorOff.report.northWallEnabled === true &&
               afterFloorOff.report.eastWallEnabled === true &&
+              afterFloorOff.report.westWallEnabled === true &&
               afterFloorOff.report.uniformFloorMode === 0 &&
               afterFloorOff.report.uniformNorthWallMode === 1 &&
               afterFloorOff.report.uniformEastWallMode === 1 &&
+              afterFloorOff.report.uniformWestWallMode === 1 &&
               afterFloorOff.report.sproutPasteApplied === false &&
               afterFloorOff.report.sproutPasteUniformMode === 0 &&
               afterAllOff.floorText === '地板烘焙：關' &&
               afterAllOff.northText === '北牆烘焙：關' &&
               afterAllOff.eastText === '東牆烘焙：關' &&
+              afterAllOff.westText === '西牆烘焙：關' &&
               afterAllOff.report.enabled === false &&
               afterAllOff.report.uniformFloorMode === 0 &&
               afterAllOff.report.uniformNorthWallMode === 0 &&
               afterAllOff.report.uniformEastWallMode === 0 &&
+              afterAllOff.report.uniformWestWallMode === 0 &&
               afterAllOff.report.sproutPasteApplied === false &&
               afterAllOff.report.sproutPasteUniformMode === 0
                 ? 'pass'
@@ -810,6 +865,7 @@ async function main() {
       console.log(`afterFloorOn: ${report.afterFloorOn.floorText} / ${report.afterFloorOn.northText}`);
       console.log(`afterNorthOn: ${report.afterNorthOn.floorText} / ${report.afterNorthOn.northText}`);
       console.log(`afterEastOn: ${report.afterEastOn.floorText} / ${report.afterEastOn.northText} / ${report.afterEastOn.eastText}`);
+      console.log(`afterWestOn: ${report.afterWestOn.floorText} / ${report.afterWestOn.northText} / ${report.afterWestOn.eastText} / ${report.afterWestOn.westText}`);
       console.log(`afterAllOff: ${report.afterAllOff.floorText} / ${report.afterAllOff.northText}`);
       console.log(`package: ${path.relative(repoRoot, packageDir)}`);
       if (report.status !== 'pass') process.exitCode = 1;
@@ -1109,6 +1165,26 @@ async function main() {
       console.log(`status: ${report.status}`);
       console.log(`eastWallSurfaceHitCount: ${report.eastWallSurfaceHitCount}`);
       console.log(`eastWallShortCircuitCount: ${report.eastWallShortCircuitCount}`);
+      console.log(`package: ${path.relative(repoRoot, packageDir)}`);
+      if (report.status !== 'pass') process.exitCode = 1;
+      completed = true;
+      return;
+    }
+    if (args.westWallRuntimeTest) {
+      console.error('[r738-runner] running R7-3.10 west wall runtime helper');
+      const report = await evaluate(cdp, `(() => {
+        return window.reportR7310C1FullRoomDiffuseRuntimeProbe({ timeoutMs: ${args.timeoutMs}, westWallCamera: true });
+      })()`, {
+        awaitPromise: true,
+        timeoutMs: args.timeoutMs + 60000
+      });
+      const packageDir = path.join(repoRoot, '.omc', 'r7-3-10-full-room-diffuse-runtime', timestampForPath());
+      fs.mkdirSync(packageDir, { recursive: true });
+      fs.writeFileSync(path.join(packageDir, 'runtime-report.json'), `${JSON.stringify(report, null, 2)}\n`);
+      console.log('R7-3.10 C1 west wall diffuse runtime short-circuit test completed');
+      console.log(`status: ${report.status}`);
+      console.log(`westWallSurfaceHitCount: ${report.westWallSurfaceHitCount}`);
+      console.log(`westWallShortCircuitCount: ${report.westWallShortCircuitCount}`);
       console.log(`package: ${path.relative(repoRoot, packageDir)}`);
       if (report.status !== 'pass') process.exitCode = 1;
       completed = true;
@@ -1716,7 +1792,9 @@ async function main() {
       ? 'reportR7310C1NorthWallDiffuseBakeAfterSamples'
       : (args.r7310Surface === 'east-wall'
         ? 'reportR7310C1EastWallDiffuseBakeAfterSamples'
-        : 'reportR7310C1FloorDiffuseBakeAfterSamples');
+        : (args.r7310Surface === 'west-wall'
+          ? 'reportR7310C1WestWallDiffuseBakeAfterSamples'
+          : 'reportR7310C1FloorDiffuseBakeAfterSamples'));
 	    const expression = `(() => {
 	      function f32ToBase64(arr) {
         if (!arr) return null;

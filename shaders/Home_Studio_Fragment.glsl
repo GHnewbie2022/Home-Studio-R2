@@ -49,6 +49,7 @@ uniform float uR7310C1FullRoomDiffuseReady;
 uniform float uR7310C1FloorDiffuseMode;
 uniform float uR7310C1NorthWallDiffuseMode;
 uniform float uR7310C1EastWallDiffuseMode;
+uniform float uR7310C1WestWallDiffuseMode;
 uniform float uR7310C1RuntimeProbeMode;
 uniform float uR7310C1RuntimeAtlasPatchResolution;
 uniform float uR7310C1RuntimeAtlasPatchCount;
@@ -432,6 +433,18 @@ bool r7310C1BakeSurfacePoint(int patchId, vec2 texelUv, out vec3 position, out v
 		objectID = 0.0;
 		return true;
 	}
+	if (patchId == 1004)
+	{
+		float z = mix(-1.874, 3.056, uv.x);
+		float y = mix(0.0, 2.905, uv.y);
+		if (z >= -1.874 && z <= -0.984 && y >= 0.09 && y <= 2.04)
+			return false;
+		position = vec3(-1.91, y, z);
+		normal = vec3(1.0, 0.0, 0.0);
+		hitType = 1;
+		objectID = 0.0;
+		return true;
+	}
 	position = vec3(0.0);
 	normal = vec3(0.0, 1.0, 0.0);
 	hitType = 0;
@@ -515,6 +528,17 @@ bool r7310C1RuntimeSurfaceIsEastWall(int visibleHitType, float visibleObjectID, 
 		visiblePosition.y >= 0.0 &&
 		visiblePosition.y <= 2.905;
 }
+bool r7310C1RuntimeSurfaceIsWestWall(int visibleHitType, float visibleObjectID, vec3 visibleNormal, vec3 visiblePosition)
+{
+	return visibleObjectID < 1.5 &&
+		visibleNormal.x > 0.5 &&
+		visiblePosition.x >= -1.92 &&
+		visiblePosition.x <= -1.90 &&
+		visiblePosition.z >= -1.874 &&
+		visiblePosition.z <= 3.056 &&
+		visiblePosition.y >= 0.0 &&
+		visiblePosition.y <= 2.905;
+}
 bool r7310C1NorthWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
 {
 	if (!r7310C1RuntimeSurfaceIsNorthWall(1, 0.0, vec3(0.0, 0.0, 1.0), visiblePosition))
@@ -536,6 +560,24 @@ bool r7310C1NorthWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
 bool r7310C1EastWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
 {
 	if (!r7310C1RuntimeSurfaceIsEastWall(1, 0.0, vec3(-1.0, 0.0, 0.0), visiblePosition))
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	atlasUv = vec2(
+		(visiblePosition.z + 1.874) / 4.93,
+		visiblePosition.y / 2.905
+	);
+	return true;
+}
+bool r7310C1WestWallDiffuseUv(vec3 visiblePosition, out vec2 atlasUv)
+{
+	if (!r7310C1RuntimeSurfaceIsWestWall(1, 0.0, vec3(1.0, 0.0, 0.0), visiblePosition))
+	{
+		atlasUv = vec2(0.0);
+		return false;
+	}
+	if (visiblePosition.z >= -1.874 && visiblePosition.z <= -0.984 && visiblePosition.y >= 0.09 && visiblePosition.y <= 2.04)
 	{
 		atlasUv = vec2(0.0);
 		return false;
@@ -577,6 +619,14 @@ bool r7310C1FullRoomDiffuseShortCircuit(int visibleHitType, float visibleObjectI
 	{
 		vec3 r7310EastWallBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 2.0));
 		bakedRadiance = r7310EastWallBakedRadiance;
+		return true;
+	}
+	if (uR7310C1WestWallDiffuseMode > 0.5 &&
+		r7310C1RuntimeSurfaceIsWestWall(visibleHitType, visibleObjectID, visibleNormal, visiblePosition) &&
+		r7310C1WestWallDiffuseUv(visiblePosition, atlasUv))
+	{
+		vec3 r7310WestWallBakedRadiance = r7310C1FullRoomDiffuseSample(r7310C1CombinedAtlasUv(atlasUv, 3.0));
+		bakedRadiance = r7310WestWallBakedRadiance;
 		return true;
 	}
 	return false;
@@ -3006,7 +3056,7 @@ vec3 CalculateRadiance( out vec3 objectNormal, out vec3 objectColor, out float o
 			{
 				float r7310C1RuntimeProbeMode = uR7310C1RuntimeProbeMode;
 				if (r7310C1RuntimeProbeMode > 0.5 && r7310C1RuntimeProbeMode < 1.5)
-					accumCol += r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0));
+					accumCol += r7310C1RuntimeSurfaceIsWestWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 1.0, 0.0) : (r7310C1RuntimeSurfaceIsEastWall(hitType, hitObjectID, nl, x) ? vec3(1.0, 0.0, 1.0) : (r7310C1RuntimeSurfaceIsNorthWall(hitType, hitObjectID, nl, x) ? vec3(0.0, 1.0, 1.0) : vec3(0.0, 1.0, 0.0)));
 				else if (r7310C1RuntimeProbeMode > 1.5 && r7310C1RuntimeProbeMode < 2.5)
 					accumCol += nl * 0.5 + 0.5;
 				else if (r7310C1RuntimeProbeMode > 2.5 && r7310C1RuntimeProbeMode < 3.5)

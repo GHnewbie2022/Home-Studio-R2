@@ -7938,3 +7938,94 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
       applied: false
       report: .omc/r7-3-8-c1-bake-paste-preview/20260516-163828/
 ```
+
+## R7-3.10｜West Wall Static Diffuse Bake Expansion
+
+```yaml
+- id: R7-3.10-west-wall-static-diffuse-bake-expansion
+  date: 2026-05-16
+  type: static_diffuse_runtime_expansion
+  branch: codex/r7-3-10-west-wall-bake-expansion
+  scope:
+    - Add C1 west wall as the fourth R7-3.10 static diffuse runtime surface.
+    - Keep reflection live.
+    - Keep floor / north / east 1024 bake behavior intact.
+    - Keep R7-3.8 sprout paste disabled under the R7-3.10 C1 room path.
+  bake_package:
+    source: .omc/r7-3-10-full-room-diffuse-bake/20260516-171604/
+    promoted_to: assets/bakes/r7-3-10/c1-static-diffuse/west-wall-iron-door-hole-1024px-1000spp/
+    pointer: docs/data/r7-3-10-c1-west-wall-full-room-diffuse-runtime-package.json
+    targetId: 1004
+    surfaceName: c1_west_wall
+    atlasResolution: 1024
+    requestedSamples: 1000
+    diffuseOnly: true
+    upscaled: false
+    worldBounds:
+      zMin: -1.874
+      zMax: 3.056
+      yMin: 0
+      yMax: 2.905
+      x: -1.91
+    invalidTexelRegions:
+      ironDoorHole:
+        zMin: -1.874
+        zMax: -0.984
+        yMin: 0.09
+        yMax: 2.04
+  bake_validation:
+    status: pass
+    runnerStatus: pass
+    nonzeroTexels: 666091
+    meanLuma: 0.3414857399163225
+    maxLuma: 0.8055359323819479
+    validTexelRatio: 0.8787927627563477
+    contaminationGuard:
+      uR7310C1FullRoomDiffuseMode: 0
+      uR7310C1FloorDiffuseMode: 0
+      uR7310C1NorthWallDiffuseMode: 0
+      uR7310C1EastWallDiffuseMode: 0
+      uR7310C1WestWallDiffuseMode: 0
+      uR738C1BakeCaptureMode: 2
+  runtime_changes:
+    - Added uR7310C1WestWallDiffuseMode.
+    - Added c1_west_wall runtime loader and pointer.
+    - Expanded the combined runtime atlas from 3 slots to 4 slots.
+    - Added West Wall UI toggle.
+    - Added runner support for --r7310-surface=west-wall and --r7310-west-wall-runtime-test.
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-full-room-diffuse-bake --r7310-surface=west-wall --atlas-resolution=1024 --target-samples=1000 --timeout-ms=240000 --http-port=9025 --cdp-port=9245 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-west-wall-runtime-test --timeout-ms=180000 --http-port=9026 --cdp-port=9246 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9027 --cdp-port=9247 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9028 --cdp-port=9248 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=180000 --http-port=9029 --cdp-port=9249 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9030 --cdp-port=9250 --angle=metal
+  runner_result:
+    - west runtime:
+      status: pass
+      westWallSurfaceHitCount: 771911
+      westWallShortCircuitCount: 771911
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171748/
+    - ui toggle:
+      status: pass
+      report: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-171808/
+    - floor runtime regression:
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171826/
+    - north runtime regression:
+      status: pass
+      northWallSurfaceHitCount: 528987
+      northWallShortCircuitCount: 480847
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171848/
+    - east runtime regression:
+      status: pass
+      eastWallSurfaceHitCount: 699773
+      eastWallShortCircuitCount: 699773
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-171904/
+```
