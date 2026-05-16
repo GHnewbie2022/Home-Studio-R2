@@ -735,7 +735,9 @@ async function main() {
             status: before.floorText === '地板烘焙：關' &&
               before.northText === '北牆烘焙：關' &&
               before.eastText === '東牆烘焙：關' &&
-              before.report.uiMeaningOff === 'sprout_patch_plus_live_floor' &&
+              before.report.uiMeaningOff === 'all_live_path_tracing' &&
+              before.report.sproutPasteApplied === false &&
+              before.report.sproutPasteUniformMode === 0 &&
               afterFloorOn.floorText === '地板烘焙：開' &&
               afterFloorOn.northText === '北牆烘焙：關' &&
               afterFloorOn.eastText === '東牆烘焙：關' &&
@@ -743,29 +745,54 @@ async function main() {
               afterFloorOn.report.floorEnabled === true &&
               afterFloorOn.report.northWallEnabled === false &&
               afterFloorOn.report.eastWallEnabled === false &&
+              afterFloorOn.report.uniformFloorMode === 1 &&
+              afterFloorOn.report.uniformNorthWallMode === 0 &&
+              afterFloorOn.report.uniformEastWallMode === 0 &&
+              afterFloorOn.report.sproutPasteApplied === false &&
+              afterFloorOn.report.sproutPasteUniformMode === 0 &&
               afterNorthOn.floorText === '地板烘焙：開' &&
               afterNorthOn.northText === '北牆烘焙：開' &&
               afterNorthOn.eastText === '東牆烘焙：關' &&
               afterNorthOn.report.floorEnabled === true &&
               afterNorthOn.report.northWallEnabled === true &&
               afterNorthOn.report.eastWallEnabled === false &&
-              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_or_east_wall_baked_diffuse_plus_live_reflection' &&
+              afterNorthOn.report.uniformFloorMode === 1 &&
+              afterNorthOn.report.uniformNorthWallMode === 1 &&
+              afterNorthOn.report.uniformEastWallMode === 0 &&
+              afterNorthOn.report.sproutPasteApplied === false &&
+              afterNorthOn.report.sproutPasteUniformMode === 0 &&
+              afterNorthOn.report.uiMeaningOn === 'selected_floor_north_or_east_wall_1024_baked_diffuse_plus_live_reflection' &&
               afterEastOn.floorText === '地板烘焙：開' &&
               afterEastOn.northText === '北牆烘焙：開' &&
               afterEastOn.eastText === '東牆烘焙：開' &&
               afterEastOn.report.floorEnabled === true &&
               afterEastOn.report.northWallEnabled === true &&
               afterEastOn.report.eastWallEnabled === true &&
+              afterEastOn.report.uniformFloorMode === 1 &&
+              afterEastOn.report.uniformNorthWallMode === 1 &&
+              afterEastOn.report.uniformEastWallMode === 1 &&
+              afterEastOn.report.sproutPasteApplied === false &&
+              afterEastOn.report.sproutPasteUniformMode === 0 &&
               afterFloorOff.floorText === '地板烘焙：關' &&
               afterFloorOff.northText === '北牆烘焙：開' &&
               afterFloorOff.eastText === '東牆烘焙：開' &&
               afterFloorOff.report.floorEnabled === false &&
               afterFloorOff.report.northWallEnabled === true &&
               afterFloorOff.report.eastWallEnabled === true &&
+              afterFloorOff.report.uniformFloorMode === 0 &&
+              afterFloorOff.report.uniformNorthWallMode === 1 &&
+              afterFloorOff.report.uniformEastWallMode === 1 &&
+              afterFloorOff.report.sproutPasteApplied === false &&
+              afterFloorOff.report.sproutPasteUniformMode === 0 &&
               afterAllOff.floorText === '地板烘焙：關' &&
               afterAllOff.northText === '北牆烘焙：關' &&
               afterAllOff.eastText === '東牆烘焙：關' &&
-              afterAllOff.report.enabled === false
+              afterAllOff.report.enabled === false &&
+              afterAllOff.report.uniformFloorMode === 0 &&
+              afterAllOff.report.uniformNorthWallMode === 0 &&
+              afterAllOff.report.uniformEastWallMode === 0 &&
+              afterAllOff.report.sproutPasteApplied === false &&
+              afterAllOff.report.sproutPasteUniformMode === 0
                 ? 'pass'
                 : 'fail'
           };
@@ -1530,7 +1557,8 @@ async function main() {
       fs.mkdirSync(previewDir, { recursive: true });
       const previewValidation = {
         status: previewReport.ready &&
-          previewReport.applied &&
+          previewReport.applied === false &&
+          previewReport.disabledByR7310FloorToggle === true &&
           previewReport.packageDir === '.omc/r7-3-8-c1-1000spp-bake-capture/20260511-154229' &&
           previewReport.targetAtlasResolution === 512 &&
           previewReport.samplesPerTexel === 1000 &&

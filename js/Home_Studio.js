@@ -5851,21 +5851,21 @@ function refreshR7310SurfaceDiffuseButtons(report) {
         floorBtn.textContent = floorActive ? '地板烘焙：開' : '地板烘焙：關';
         floorBtn.classList.toggle('glow-white', floorActive);
         floorBtn.title = floorActive
-            ? '全地板漫射使用 1000SPP 烘焙，反射仍即時計算'
-            : '地板回到 live path tracing';
+            ? '全地板漫射使用 R7-3.10 1024 bake，反射仍即時計算'
+            : '地板與嫩芽區都回到全 LIVE';
     }
     if (northBtn) {
         northBtn.textContent = northActive ? '北牆烘焙：開' : '北牆烘焙：關';
         northBtn.classList.toggle('glow-white', northActive);
         northBtn.title = northActive
-            ? '北牆漫射使用 1000SPP 烘焙'
+            ? '北牆漫射使用 R7-3.10 1024 bake'
             : '北牆回到 live path tracing';
     }
     if (eastBtn) {
         eastBtn.textContent = eastActive ? '東牆烘焙：開' : '東牆烘焙：關';
         eastBtn.classList.toggle('glow-white', eastActive);
         eastBtn.title = eastActive
-            ? '東牆漫射使用 1000SPP 烘焙'
+            ? '東牆漫射使用 R7-3.10 1024 bake'
             : '東牆回到 live path tracing';
     }
 }

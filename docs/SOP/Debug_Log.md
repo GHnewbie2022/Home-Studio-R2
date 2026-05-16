@@ -7876,3 +7876,65 @@ Bounced direct NEE floor/GIK 與 receiver-class probe v13/v14（2026-05-05）：
     - assets/bakes/ stores accepted runtime bake packages.
     - .omc stays for experiments, probe output, temporary reports, and failed packages.
 ```
+
+## R7-3.10｜Floor Toggle Unifies Sprout Paste
+
+```yaml
+- id: R7-3.10-floor-toggle-unifies-sprout
+  date: 2026-05-16
+  type: runtime_toggle_semantics_fix
+  branch: codex/r7-3-10-floor-toggle-unifies-sprout
+  user_goal:
+    - Three static bake buttons off means full LIVE path tracing.
+    - Floor bake on means R7-3.10 floor 1024 bake only.
+    - R7-3.8 sprout paste must not layer on top of floor / north / east runtime choices.
+  implementation:
+    - Added r7310C1FloorToggleOwnsSproutPaste() as the C1 ownership gate for the old R7-3.8 sprout paste.
+    - updateR738C1BakePastePreviewUniforms() now reports disabledByR7310FloorToggle and keeps uR738C1BakePastePreviewMode at 0 in the R7-3.10 C1 room path.
+    - R7-3.10 floor / north / east toggles refresh the R7-3.8 paste uniform after each change.
+    - reportR7310C1FullRoomDiffuseRuntimeConfig() now reports sproutPasteApplied and sproutPasteUniformMode.
+    - uiMeaningOff is now all_live_path_tracing.
+    - uiMeaningOn is now selected_floor_north_or_east_wall_1024_baked_diffuse_plus_live_reflection.
+  contract:
+    - Three bakes off: floor / north / east uniform modes are all 0 and sproutPasteApplied is false.
+    - Floor bake on: uniformFloorMode is 1 and sproutPasteApplied is false.
+    - North / east bake on: their own uniform modes can turn on, but sproutPasteApplied stays false.
+  validation:
+    - node docs/tests/r7-3-10-full-room-diffuse-bake-contract.test.js
+    - node docs/tests/r7-3-8-c1-bake-paste-preview.test.js
+    - node --check js/InitCommon.js
+    - node --check js/Home_Studio.js
+    - node --check docs/tools/r7-3-8-c1-bake-capture-runner.mjs
+    - git diff --check
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-ui-toggle-test --timeout-ms=180000 --http-port=9020 --cdp-port=9240 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-runtime-short-circuit-test --timeout-ms=180000 --http-port=9021 --cdp-port=9241 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-north-wall-runtime-test --timeout-ms=180000 --http-port=9022 --cdp-port=9242 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --r7310-east-wall-runtime-test --timeout-ms=180000 --http-port=9023 --cdp-port=9243 --angle=metal
+    - node docs/tools/r7-3-8-c1-bake-capture-runner.mjs --preview-test --timeout-ms=180000 --http-port=9024 --cdp-port=9244 --angle=metal
+  runner_result:
+    - ui toggle:
+      status: pass
+      report: .omc/r7-3-10-full-room-diffuse-ui-toggle/20260516-163552/
+      allOffUniformMode: 0
+      allOffSproutPasteApplied: false
+    - floor runtime:
+      status: pass
+      bakedSurfaceHitCount: 96170
+      bakedSurfaceShortCircuitCount: 95909
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-163621/
+    - north runtime:
+      status: pass
+      northWallSurfaceHitCount: 528987
+      northWallShortCircuitCount: 480847
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-163641/
+    - east runtime:
+      status: pass
+      eastWallSurfaceHitCount: 699773
+      eastWallShortCircuitCount: 699773
+      report: .omc/r7-3-10-full-room-diffuse-runtime/20260516-163655/
+    - r7-3.8 preview compatibility:
+      status: pass
+      ready: true
+      applied: false
+      report: .omc/r7-3-8-c1-bake-paste-preview/20260516-163828/
+```
