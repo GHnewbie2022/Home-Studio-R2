@@ -98,6 +98,109 @@ let movementProtectionLastBlend = 0.0;
 let movementProtectionLastPreviewStrength = 0.0;
 let movementProtectionLastSpatialPreviewStrength = 0.0;
 let movementProtectionLastWidePreviewStrength = 0.0;
+let homeStudioLoadingDisplayedProgress = 0.0;
+let homeStudioLoadingTargetProgress = 0.0;
+let homeStudioLoadingFrameId = 0;
+let homeStudioLoadingHidden = false;
+let r7310C1RuntimeLoadingCompleted = Object.create(null);
+
+function updateHomeStudioLoadingUi(targetProgress)
+{
+	var loadingScreen = document.getElementById('loading-screen');
+	var loadingRing = document.getElementById('loading-ring');
+	var loadingText = document.getElementById('loading-text');
+	if (!loadingScreen || !loadingRing || !loadingText)
+		return;
+	homeStudioLoadingTargetProgress = Math.max(0.0, Math.min(1.0, Number(targetProgress) || 0.0));
+	if (!homeStudioLoadingHidden)
+	{
+		loadingScreen.style.display = 'flex';
+		loadingScreen.style.opacity = '1';
+		loadingScreen.style.pointerEvents = 'auto';
+	}
+	if (homeStudioLoadingFrameId)
+		return;
+	var step = function()
+	{
+		if (homeStudioLoadingHidden)
+		{
+			loadingRing.style.strokeDashoffset = '0';
+			loadingText.innerText = '100%';
+			homeStudioLoadingFrameId = 0;
+			return;
+		}
+		var delta = homeStudioLoadingTargetProgress - homeStudioLoadingDisplayedProgress;
+		homeStudioLoadingDisplayedProgress += delta * 0.18;
+		if (Math.abs(delta) < 0.004)
+			homeStudioLoadingDisplayedProgress = homeStudioLoadingTargetProgress;
+		var clamped = Math.max(0.0, Math.min(1.0, homeStudioLoadingDisplayedProgress));
+		loadingRing.style.strokeDashoffset = String(226 - clamped * 226);
+		loadingText.innerText = Math.floor(clamped * 100) + '%';
+		if (homeStudioLoadingDisplayedProgress !== homeStudioLoadingTargetProgress && !homeStudioLoadingHidden)
+		{
+			homeStudioLoadingFrameId = requestAnimationFrame(step);
+			return;
+		}
+		homeStudioLoadingFrameId = 0;
+	};
+	homeStudioLoadingFrameId = requestAnimationFrame(step);
+}
+
+function hideHomeStudioLoadingScreen()
+{
+	var loadingScreen = document.getElementById('loading-screen');
+	var loadingRing = document.getElementById('loading-ring');
+	var loadingText = document.getElementById('loading-text');
+	if (!loadingScreen)
+		return;
+	updateHomeStudioLoadingUi(1.0);
+	if (loadingRing)
+		loadingRing.style.strokeDashoffset = '0';
+	if (loadingText)
+		loadingText.innerText = '100%';
+	homeStudioLoadingHidden = true;
+	loadingScreen.style.opacity = '0';
+	loadingScreen.style.pointerEvents = 'none';
+	setTimeout(function()
+	{
+		loadingScreen.style.display = 'none';
+	}, 550);
+}
+
+function updateR7310C1RuntimeLoadingProgress()
+{
+	var states = [
+		{ enabled: r7310C1FloorDiffuseRuntimeEnabled, ready: r7310C1FullRoomDiffuseRuntimeReady },
+		{ enabled: r7310C1NorthWallDiffuseRuntimeEnabled, ready: r7310C1NorthWallDiffuseRuntimeReady },
+		{ enabled: r7310C1EastWallDiffuseRuntimeEnabled, ready: r7310C1EastWallDiffuseRuntimeReady },
+		{ enabled: r7310C1WestWallDiffuseRuntimeEnabled, ready: r7310C1WestWallDiffuseRuntimeReady },
+		{ enabled: r7310C1SouthWallDiffuseRuntimeEnabled, ready: r7310C1SouthWallDiffuseRuntimeReady },
+		{ enabled: r7310C1CeilingDiffuseRuntimeEnabled, ready: r7310C1CeilingDiffuseRuntimeReady }
+	];
+	var total = 0;
+	var ready = 0;
+	for (var i = 0; i < states.length; i += 1)
+	{
+		if (!states[i].enabled) continue;
+		total += 1;
+		if (states[i].ready) ready += 1;
+	}
+	if (total === 0)
+	{
+		hideHomeStudioLoadingScreen();
+		return;
+	}
+	var progress = 0.08 + 0.90 * (ready / total);
+	updateHomeStudioLoadingUi(progress);
+	if (ready >= total)
+		hideHomeStudioLoadingScreen();
+}
+
+function markR7310C1RuntimeLoadingStepComplete(surfaceKey)
+{
+	r7310C1RuntimeLoadingCompleted[surfaceKey] = true;
+	updateR7310C1RuntimeLoadingProgress();
+}
 
 function runAfterCommonVertexShaderReady(callback)
 {
@@ -1695,10 +1798,11 @@ async function loadR7310C1FullRoomDiffuseRuntimePackage()
 					throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
 				refreshR7310C1CombinedDiffuseRuntimeTexture();
 			r7310C1FullRoomDiffuseRuntimeReady = true;
-			updateR7310C1FullRoomDiffuseRuntimeUniforms();
-			resetR738MainAccumulation();
-			if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-full-room-diffuse-runtime-ready');
-			return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
+				updateR7310C1FullRoomDiffuseRuntimeUniforms();
+				resetR738MainAccumulation();
+				if (typeof wakeRender === 'function') wakeRender('r7-3-10-c1-full-room-diffuse-runtime-ready');
+				markR7310C1RuntimeLoadingStepComplete('floor');
+				return window.reportR7310C1FullRoomDiffuseRuntimeConfig();
 		}
 		catch (error)
 		{
@@ -1757,10 +1861,11 @@ async function loadR7310C1NorthWallDiffuseRuntimePackage()
 					throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
 				r7310C1NorthWallDiffuseRuntimePackage = pointer;
 			r7310C1NorthWallDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
-			refreshR7310C1CombinedDiffuseRuntimeTexture();
-			r7310C1NorthWallDiffuseRuntimeReady = true;
-			updateR7310C1FullRoomDiffuseRuntimeUniforms();
-			return pointer;
+				refreshR7310C1CombinedDiffuseRuntimeTexture();
+				r7310C1NorthWallDiffuseRuntimeReady = true;
+				updateR7310C1FullRoomDiffuseRuntimeUniforms();
+				markR7310C1RuntimeLoadingStepComplete('northWall');
+				return pointer;
 		}
 		catch (error)
 		{
@@ -1819,10 +1924,11 @@ async function loadR7310C1EastWallDiffuseRuntimePackage()
 					throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
 				r7310C1EastWallDiffuseRuntimePackage = pointer;
 			r7310C1EastWallDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
-			refreshR7310C1CombinedDiffuseRuntimeTexture();
-			r7310C1EastWallDiffuseRuntimeReady = true;
-			updateR7310C1FullRoomDiffuseRuntimeUniforms();
-			return pointer;
+				refreshR7310C1CombinedDiffuseRuntimeTexture();
+				r7310C1EastWallDiffuseRuntimeReady = true;
+				updateR7310C1FullRoomDiffuseRuntimeUniforms();
+				markR7310C1RuntimeLoadingStepComplete('eastWall');
+				return pointer;
 		}
 		catch (error)
 		{
@@ -1881,10 +1987,11 @@ async function loadR7310C1WestWallDiffuseRuntimePackage()
 					throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
 				r7310C1WestWallDiffuseRuntimePackage = pointer;
 			r7310C1WestWallDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
-			refreshR7310C1CombinedDiffuseRuntimeTexture();
-			r7310C1WestWallDiffuseRuntimeReady = true;
-			updateR7310C1FullRoomDiffuseRuntimeUniforms();
-			return pointer;
+				refreshR7310C1CombinedDiffuseRuntimeTexture();
+				r7310C1WestWallDiffuseRuntimeReady = true;
+				updateR7310C1FullRoomDiffuseRuntimeUniforms();
+				markR7310C1RuntimeLoadingStepComplete('westWall');
+				return pointer;
 		}
 		catch (error)
 		{
@@ -1943,10 +2050,11 @@ async function loadR7310C1SouthWallDiffuseRuntimePackage()
 					throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
 				r7310C1SouthWallDiffuseRuntimePackage = pointer;
 			r7310C1SouthWallDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
-			refreshR7310C1CombinedDiffuseRuntimeTexture();
-			r7310C1SouthWallDiffuseRuntimeReady = true;
-			updateR7310C1FullRoomDiffuseRuntimeUniforms();
-			return pointer;
+				refreshR7310C1CombinedDiffuseRuntimeTexture();
+				r7310C1SouthWallDiffuseRuntimeReady = true;
+				updateR7310C1FullRoomDiffuseRuntimeUniforms();
+				markR7310C1RuntimeLoadingStepComplete('southWall');
+				return pointer;
 		}
 		catch (error)
 		{
@@ -2005,10 +2113,11 @@ async function loadR7310C1CeilingDiffuseRuntimePackage()
 				throw new Error('R7-3.10 combined diffuse atlas resolution mismatch');
 			r7310C1CeilingDiffuseRuntimePackage = pointer;
 			r7310C1CeilingDiffuseRuntimeTexture = new Float32Array(atlasBuffer);
-			refreshR7310C1CombinedDiffuseRuntimeTexture();
-			r7310C1CeilingDiffuseRuntimeReady = true;
-			updateR7310C1FullRoomDiffuseRuntimeUniforms();
-			return pointer;
+				refreshR7310C1CombinedDiffuseRuntimeTexture();
+				r7310C1CeilingDiffuseRuntimeReady = true;
+				updateR7310C1FullRoomDiffuseRuntimeUniforms();
+				markR7310C1RuntimeLoadingStepComplete('ceiling');
+				return pointer;
 		}
 		catch (error)
 		{
@@ -4396,6 +4505,7 @@ window.reportR738C1BakePastePreviewConfig = function()
 
 function ensureR7310C1FullRoomDiffuseRuntimeLoading()
 {
+	updateR7310C1RuntimeLoadingProgress();
 	if (r7310C1FloorDiffuseRuntimeEnabled && !r7310C1FullRoomDiffuseRuntimeReady)
 		loadR7310C1FullRoomDiffuseRuntimePackage().catch(function() {});
 	if (r7310C1NorthWallDiffuseRuntimeEnabled && !r7310C1NorthWallDiffuseRuntimeReady)
